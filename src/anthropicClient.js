@@ -34,7 +34,6 @@ async function sampleJson(prompt, opts) {
   const resp = await client.messages.create({
     model: MODEL,
     max_tokens: opts.maxTokens || 4096,
-    temperature: 0,
     messages: [{ role: 'user', content }]
   });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
