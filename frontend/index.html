@@ -1,0 +1,1023 @@
+<title>Bedrijfchecker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Anne's designsysteem: paars voor koppen, oranje als actiekleur, warme neutrals. */
+  :root{
+    --bg:#fffdfc;
+    --surface:#f9f9f8;
+    --surface-2:#f2efec;
+    --border:#ccc9c6;
+    --text:#0f0f0e;
+    --text-muted:#6e6862;
+    --heading:#730499;
+    --heading-2:#4d0266;
+    --accent:#f63d00;
+    --accent-strong:#a63406;
+    --accent-light:#ff7b00;
+    --accent-soft:#fff1ea;
+    --ok:#1a7f4b;
+    --ok-soft:#e3f3e8;
+    --warn:#a8710a;
+    --warn-soft:#faf0dc;
+    --danger:#ac2b21;
+    --danger-soft:#fbe7e4;
+    --grey:#6e6862;
+    --grey-soft:#f2efec;
+    --shadow: 0 1px 2px rgba(15,15,14,.05), 0 10px 28px -14px rgba(15,15,14,.16);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#17100a;
+      --surface:#211911;
+      --surface-2:#2a2016;
+      --border:#3d2f22;
+      --text:#f6efe8;
+      --text-muted:#b9a99a;
+      --heading:#e2a6f5;
+      --heading-2:#d98bf0;
+      --accent:#ff5a1f;
+      --accent-strong:#ff8a4d;
+      --accent-light:#ffa14d;
+      --accent-soft:#3a2113;
+      --ok:#4cbf80;
+      --ok-soft:#17281e;
+      --warn:#d9a441;
+      --warn-soft:#2c250f;
+      --danger:#e07468;
+      --danger-soft:#2e1815;
+      --grey:#b9a99a;
+      --grey-soft:#2a2016;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.55);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#17100a;
+    --surface:#211911;
+    --surface-2:#2a2016;
+    --border:#3d2f22;
+    --text:#f6efe8;
+    --text-muted:#b9a99a;
+    --heading:#e2a6f5;
+    --heading-2:#d98bf0;
+    --accent:#ff5a1f;
+    --accent-strong:#ff8a4d;
+    --accent-light:#ffa14d;
+    --accent-soft:#3a2113;
+    --ok:#4cbf80;
+    --ok-soft:#17281e;
+    --warn:#d9a441;
+    --warn-soft:#2c250f;
+    --danger:#e07468;
+    --danger-soft:#2e1815;
+    --grey:#b9a99a;
+    --grey-soft:#2a2016;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.55);
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Open Sans", system-ui, sans-serif;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:1040px;
+    margin:0 auto;
+    padding-inline:20px;
+    padding-block:0 64px;
+  }
+  h1,h2,h3{
+    font-family:"Baloo 2", system-ui, sans-serif;
+    font-weight:600;
+    text-wrap:balance;
+    margin:0;
+    color:var(--text);
+  }
+  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+  a{ color:var(--accent-strong); }
+
+  header.top{
+    display:flex; align-items:center; gap:16px;
+    padding-block:16px; margin-bottom:8px;
+    border-bottom:1px solid var(--border);
+  }
+  .brand-link{
+    appearance:none; background:none; border:none; padding:0; cursor:pointer;
+    font-family:"Baloo 2", system-ui, sans-serif; font-weight:700; font-size:1.05rem; color:var(--heading);
+  }
+  .brand-link:hover{ color:var(--accent); }
+  .btn{
+    appearance:none; border:1px solid var(--accent-strong); background:var(--accent); color:#fff9f5;
+    font:inherit; font-weight:600; font-size:.92rem;
+    padding:10px 16px; border-radius:8px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:8px;
+  }
+  .btn:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn.secondary{ background:transparent; color:var(--text); border-color:var(--border); }
+  .btn.secondary:hover{ background:var(--surface-2); }
+  .btn.ghost{ background:transparent; color:var(--accent-strong); border-color:transparent; padding-inline:4px; }
+
+  /* hero + start-audit / eerdere-audits kaarten (naar Anne's designsysteem in Figma) */
+  .hero{ text-align:center; padding:28px 0 40px; }
+  .hero h1{ font-size:clamp(2.1rem,5vw,3.4rem); color:var(--heading); letter-spacing:-.02em; line-height:1.05; }
+  .hero .hero-tag{ font-size:1.05rem; color:var(--text); max-width:640px; margin:12px auto 0; }
+
+  .hero-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:24px;
+    padding:40px 32px; max-width:820px; margin:0 auto 28px; box-shadow:var(--shadow);
+  }
+  .hero-card-inner{ max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:20px; align-items:center; }
+  .hero-card-title{ font-size:1.6rem; text-align:center; margin:0; }
+  .hero-card-title.c1{ color:var(--heading); }
+  .hero-card-title.c2{ color:var(--heading-2); }
+  .hero-card-note{ font-size:.85rem; color:var(--text-muted); text-align:center; }
+
+  .audit-form{ display:flex; gap:12px; width:100%; align-items:flex-start; }
+  .audit-form-row{ display:flex; gap:12px; width:100%; }
+  .audit-form input[type=text]{ flex:1; height:56px; border-radius:8px; padding:0 14px; font-size:1rem; }
+  .field-error{ color:var(--danger); font-size:.82rem; }
+  input.has-error{ border-color:var(--danger); }
+  @media (max-width:640px){
+    .audit-form-row{ flex-direction:column; }
+    .btn-cta{ width:100%; }
+  }
+
+  .btn-cta{
+    appearance:none; border:1px solid var(--accent-strong);
+    background:linear-gradient(135deg, var(--accent) 50%, var(--accent-light) 100%);
+    color:#fff9f5; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem;
+    padding:0 24px; height:56px; border-radius:999px; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; gap:10px; white-space:nowrap; flex-shrink:0;
+  }
+  .btn-cta:hover{ filter:brightness(1.05); }
+  .btn-cta:disabled{ opacity:.5; cursor:not-allowed; }
+  .btn-cta svg{ width:18px; height:18px; flex-shrink:0; }
+
+  .disclosure-toggle{
+    display:flex; align-items:center; gap:10px; background:none; border:none; font:inherit;
+    font-size:.95rem; color:var(--text); cursor:pointer; padding:4px 0; width:100%; text-align:left;
+  }
+  .disclosure-caret{ display:inline-flex; transition:transform .15s ease; transform:rotate(90deg); color:var(--accent); flex-shrink:0; }
+  .disclosure-toggle[aria-expanded="true"] .disclosure-caret{ transform:rotate(0deg); }
+  .disclosure-body{ margin-top:14px; width:100%; }
+
+  .dropzone{
+    border:1.5px dashed var(--accent); border-radius:8px; padding:36px 20px; text-align:center;
+    color:var(--text); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:10px;
+    background:transparent; width:100%;
+  }
+  .dropzone:hover{ border-color:var(--accent-strong); background:var(--accent-soft); }
+  .dropzone svg{ width:34px; height:34px; color:var(--accent-strong); }
+  .dropzone .dz-text{ font-size:.92rem; color:var(--text); }
+
+  .audit-list{ display:flex; flex-direction:column; width:100%; }
+  .audit-row{
+    display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 0;
+    border-bottom:1px solid var(--border); background:none; border-left:none; border-right:none; border-top:none;
+    width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
+  }
+  .audit-row:last-child{ border-bottom:none; }
+  .audit-row .left{ display:flex; align-items:center; gap:10px; min-width:0; flex-wrap:wrap; }
+  .audit-row .name{ font-weight:600; }
+  .audit-row .domain{ color:var(--text-muted); font-size:.85rem; }
+  .textlink{
+    display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-weight:700;
+    font-family:"Baloo 2", sans-serif; border-bottom:1px solid var(--accent); padding-bottom:1px;
+    white-space:nowrap; flex-shrink:0;
+  }
+  .textlink svg{ width:12px; height:12px; }
+
+  input[type=text], input[type=url], textarea{
+    font:inherit; font-size:.96rem; color:var(--text);
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    padding:10px 12px; width:100%;
+  }
+  textarea{ min-height:80px; resize:vertical; }
+  input:focus, textarea:focus, button:focus-visible, a:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:20px; box-shadow:var(--shadow);
+  }
+
+  .empty-state{ padding:40px 20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:12px; }
+
+  .chip{
+    display:inline-flex; align-items:center; gap:6px; font-size:.78rem; font-weight:600;
+    padding:4px 10px; border-radius:999px; white-space:nowrap;
+  }
+  .chip.ok{ background:var(--ok-soft); color:var(--ok); }
+  .chip.warn{ background:var(--warn-soft); color:var(--warn); }
+  .chip.danger{ background:var(--danger-soft); color:var(--danger); }
+  .chip.grey{ background:var(--grey-soft); color:var(--grey); }
+
+  .file-list{ display:flex; flex-direction:column; gap:6px; margin-top:12px; width:100%; }
+  .file-item{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 12px;
+    font-size:.86rem;
+  }
+  .file-item button{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:.8rem; font-weight:600; padding:0; }
+  .overview-grid{ display:grid; grid-template-columns:140px 1fr; gap:8px 14px; font-size:.92rem; }
+  .overview-grid dt{ color:var(--text-muted); font-weight:600; }
+  .overview-grid dd{ margin:0; }
+
+  /* case detail */
+  .detail-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+  .detail-head h2{ font-size:1.5rem; }
+  .detail-head .site{ color:var(--text-muted); font-size:.9rem; }
+  .kv-row{ display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:.85rem; color:var(--text-muted); }
+  .kv-row .mono{ color:var(--text); }
+
+  .progress-list{ display:flex; flex-direction:column; gap:10px; margin:18px 0; }
+  .progress-item{ display:flex; align-items:center; gap:10px; font-size:.9rem; }
+  .progress-item .dot{ width:9px; height:9px; border-radius:50%; background:var(--border); flex-shrink:0; }
+  .progress-item.done .dot{ background:var(--ok); }
+  .progress-item.active .dot{ background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+  .progress-item.done{ color:var(--text-muted); }
+  .progress-item.active{ color:var(--text); font-weight:600; }
+  .step-label{ flex:1; }
+  .step-hint{ color:var(--text-muted); font-size:.78rem; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .step-retry{ padding:2px 9px; font-size:.72rem; font-weight:600; border:1px solid var(--border); border-radius:6px; flex-shrink:0; }
+
+  section.report-block{ margin-top:30px; }
+  section.report-block h3{ font-size:1.05rem; margin-bottom:10px; }
+  section.report-block p{ margin:0; color:var(--text); }
+  .findings{ display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }
+  .findings li{ padding:10px 14px; border-radius:8px; background:var(--surface-2); font-size:.92rem; border-left:3px solid var(--border); }
+  .findings li.danger{ border-left-color:var(--danger); background:var(--danger-soft); }
+  .findings li.ok{ border-left-color:var(--ok); background:var(--ok-soft); }
+  .findings li .src{ display:block; margin-top:4px; font-size:.78rem; color:var(--text-muted); }
+
+  .score-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+  .score-tile{ border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface); }
+  .score-tile .label{ font-size:.8rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; }
+  .score-tile .note{ font-size:.82rem; color:var(--text-muted); margin-top:6px; }
+
+  ol.numbered{ margin:0; padding-left:22px; display:flex; flex-direction:column; gap:8px; }
+  .deepen-item{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:10px 14px; background:var(--surface-2); border-radius:8px; }
+  .sources{ display:flex; flex-direction:column; gap:4px; font-size:.85rem; }
+  .disclaimer{ margin-top:34px; padding:14px 16px; border-radius:10px; background:var(--surface-2); color:var(--text-muted); font-size:.82rem; border:1px solid var(--border); }
+  details.raw{ margin-top:20px; font-size:.85rem; }
+  details.raw summary{ cursor:pointer; color:var(--text-muted); }
+  .banner{ padding:12px 14px; border-radius:8px; background:var(--warn-soft); color:var(--warn); font-size:.88rem; margin-bottom:18px; }
+  .banner.danger{ background:var(--danger-soft); color:var(--danger); }
+  .spinner{ display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+  @media (prefers-reduced-motion: reduce){ .spinner{ animation:none; } }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  [hidden]{ display:none !important; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <button type="button" class="brand-link" id="brand-home">Bedrijfchecker</button>
+  </header>
+
+  <div id="capability-banner"></div>
+  <main id="app"></main>
+</div>
+
+<script>
+(function(){
+
+  // Losse, publiek gehoste backend (Node/Express + Postgres + Anthropic +
+  // Tavily) die de volledige research/scoring/synthese-pipeline server-side
+  // draait. Deze frontend praat er alleen nog met fetch() tegenaan — geen
+  // window.claude-capabilities (db/mcp/sample/assets) meer nodig, dus dit
+  // werkt voor iedere bezoeker, ook zonder Claude-account.
+  var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
+
+  // ---------- app state ----------
+  var state = {
+    view: 'dashboard',      // dashboard | detail
+    cases: [],
+    casesLoaded: false,
+    apiError: null,
+    currentCaseId: null,
+    currentCase: null,
+    startDraft: { website:'' },
+    startFiles: [],          // {file: File, kind: 'image'|'other'}
+    startUploadOpen: false,  // documenten-uploadvak: standaard ingeklapt, caret naar links
+    startUrlError: null,
+    runningCaseIds: {}       // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
+  };
+
+  var stepStats = {};        // nog geen live-stats-endpoint op de backend; avgForStep valt terug op DEFAULT_STEP_MS
+  var casePoller = null;     // herhaalt GET /api/audits/:id zolang een case 'bezig' is
+
+  var app = document.getElementById('app');
+  var banner = document.getElementById('capability-banner');
+
+  // Free Supplier Evidence Check v1.1: gratis dekt vrijwel alles — publieke
+  // bedrijfsbasis, domein/website, elk lab, de volledige COA-dataset/audit,
+  // testscope, reputatie, toezicht, affiliates, tegenbewijs en tijdlijn.
+  // Alleen personen/netwerken/volledige registerhistorie (onderdeel 2) is
+  // Deep, en Deep zelf staat nog uit tot de KvK-koppeling er is: voorlopig
+  // dus geen betaalmuur, gewoon de volledige gratis check.
+  var STEP_DEFS = [
+    { key:'identiteit', label:'Juridische identiteit' },
+    { key:'domein', label:'Domein- en websitegeschiedenis' },
+    { key:'laboratorium', label:'Laboratorium' },
+    { key:'coaDataset', label:'COA-dataset en -authenticiteit' },
+    { key:'socialAffiliates', label:'Social media, affiliates en commerciële relaties' },
+    { key:'reputatie', label:'Reputatie' },
+    { key:'regelgeving', label:'Regelgeving en toezicht' },
+    { key:'tegenbewijs', label:'Tegenbewijs en positieve signalen' },
+    { key:'categorize', label:'Categoriebeoordeling (17 categorieën)' },
+    { key:'reportA', label:'Evidence Check samenstellen (1/2)' },
+    { key:'reportB', label:'Evidence Check samenstellen (2/2)' }
+  ];
+  var DEFAULT_STEP_MS = 45000; // fallback average tot er een live-stats-endpoint is
+  function stepLabel(key){
+    for (var i=0;i<STEP_DEFS.length;i++) if (STEP_DEFS[i].key===key) return STEP_DEFS[i].label;
+    return key;
+  }
+  function avgForStep(key){
+    var s = stepStats && stepStats[key];
+    return (s && s.avgMs) || DEFAULT_STEP_MS;
+  }
+  function isStuck(c){
+    if (c.status !== 'bezig' || !c.currentStep) return false;
+    var threshold = Math.max(avgForStep(c.currentStep.key) * 2.5, 60000);
+    return (Date.now() - c.currentStep.startedAt) > threshold;
+  }
+
+  // ---------- categorie-indeling (Supplier Evidence Scoring & Result Logic
+  // v1.0) ----------
+  // De kleuren/scores zelf worden nu volledig server-side berekend (zie
+  // src/scoringEngine.js in de backend, 1-op-1 dezelfde deterministische
+  // logica); hier staat alleen de indeling die nodig is om
+  // engineResult.assessments overzichtelijk te groeperen bij het renderen.
+  var CATEGORY_DEFS = [
+    { id:'C01', pillar:'COA', label:'COA-authenticiteit' },
+    { id:'C02', pillar:'COA', label:'Identity' },
+    { id:'C03', pillar:'COA', label:'Purity' },
+    { id:'C04', pillar:'COA', label:'Quantity' },
+    { id:'C05', pillar:'COA', label:'Batchtraceerbaarheid' },
+    { id:'C06', pillar:'COA', label:'Sample→COA' },
+    { id:'C07', pillar:'COA', label:'Sterility' },
+    { id:'C08', pillar:'COA', label:'Endotoxin' },
+    { id:'C09', pillar:'COA', label:'Overige contaminantentests' },
+    { id:'L01', pillar:'LAB', label:'Lab' },
+    { id:'B01', pillar:'COMPANY', label:'Juridische transparantie' },
+    { id:'B02', pillar:'COMPANY', label:'Eigenaren/bestuurders' },
+    { id:'B03', pillar:'COMPANY', label:'Bedrijfshistorie' },
+    { id:'B04', pillar:'COMPANY', label:'Domein/websitehistorie' },
+    { id:'B05', pillar:'COMPANY', label:'Regelgeving/toezicht' },
+    { id:'R01', pillar:'REPUTATION', label:'Reputatie' },
+    { id:'R02', pillar:'REPUTATION', label:'Affiliate/commerciële transparantie' }
+  ];
+  var PILLARS = ['COA','LAB','COMPANY','REPUTATION'];
+  function categoryDef(id){
+    for (var i=0;i<CATEGORY_DEFS.length;i++) if (CATEGORY_DEFS[i].id===id) return CATEGORY_DEFS[i];
+    return null;
+  }
+  function pillarCategoryIds(pillar){
+    return CATEGORY_DEFS.filter(function(c){ return c.pillar===pillar; }).map(function(c){ return c.id; });
+  }
+
+  // ---------- helpers ----------
+  function escapeHtml(s){
+    return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+  function normalizeUrl(input){
+    var s = (input||'').trim();
+    if(!s) return '';
+    if(!/^https?:\/\//i.test(s)) s = 'https://' + s;
+    return s;
+  }
+  function domainOf(url){
+    try { return new URL(url).hostname.replace(/^www\./,''); } catch(e){ return url; }
+  }
+  // Client-side check dat het ingevoerde veld een geldige web-URL kan zijn
+  // (na eventueel https:// voorvoegen). Gebruikt vóór het aanmaken van een
+  // case; de backend valideert exact dezelfde regel nogmaals server-side
+  // (src/validate.js) en geeft anders 400 invalid_url terug.
+  function isValidWebUrl(input){
+    var s = (input||'').trim();
+    if (!s) return false;
+    var withScheme = /^https?:\/\//i.test(s) ? s : 'https://' + s;
+    try {
+      var u = new URL(withScheme);
+      if (!/^https?:$/.test(u.protocol)) return false;
+      var host = u.hostname;
+      if (!host || host.indexOf('.') === -1) return false;
+      return /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/i.test(host);
+    } catch(e){ return false; }
+  }
+  function fmtDate(ts){
+    try { return new Date(ts).toLocaleDateString('nl-NL', {day:'numeric', month:'short', year:'numeric'}); }
+    catch(e){ return ''; }
+  }
+  function fmtDateTime(ts){
+    try { return new Date(ts).toLocaleString('nl-NL', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}); }
+    catch(e){ return ''; }
+  }
+  function fmtDuration(ms){
+    if (ms == null || isNaN(ms)) return '';
+    var s = Math.max(0, Math.round(ms/1000));
+    if (s < 60) return '~' + s + 's';
+    var m = Math.floor(s/60), r = s%60;
+    return '~' + m + 'm' + (r ? ' ' + r + 's' : '');
+  }
+  // Kleurmapping voor de 17 vaste categorieën (Supplier Evidence Scoring &
+  // Result Logic v1.0): green/orange/red/white, nooit de oude groen/oranje/
+  // rood/grijs-scorekaart-strings.
+  function catColorClass(color){
+    if (color === 'green') return 'ok';
+    if (color === 'orange') return 'warn';
+    if (color === 'red') return 'danger';
+    return 'grey';
+  }
+  function catColorLabel(color){
+    if (color === 'green') return 'Sterk verifieerbaar';
+    if (color === 'orange') return 'Aandachtspunt';
+    if (color === 'red') return 'Aangetoond probleem';
+    return 'Onvoldoende informatie';
+  }
+
+  // ---------- API-client (vervangt de Artifact's window.claude db/mcp/sample-
+  // capabilities) ----------
+  async function apiListCases(){
+    var res = await fetch(API_BASE + '/api/audits');
+    if (!res.ok) throw new Error('Kon eerdere audits niet laden (' + res.status + ')');
+    var data = await res.json();
+    return data.cases || [];
+  }
+  async function apiGetCase(id){
+    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id));
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error('Kon deze audit niet laden (' + res.status + ')');
+    var data = await res.json();
+    return data.case || null;
+  }
+  async function apiCreateCase(fields, files){
+    var fd = new FormData();
+    fd.append('website', fields.website);
+    if (fields.naam) fd.append('naam', fields.naam);
+    if (fields.land) fd.append('land', fields.land);
+    if (fields.kvkNummer) fd.append('kvkNummer', fields.kvkNummer);
+    if (fields.notities) fd.append('notities', fields.notities);
+    (files||[]).forEach(function(f){ fd.append('files', f); });
+    var res = await fetch(API_BASE + '/api/audits', { method:'POST', body: fd });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok){
+      var err = new Error(data.message || data.error || 'Aanmaken van de audit is mislukt (' + res.status + ')');
+      err.code = data.error;
+      throw err;
+    }
+    return data.case;
+  }
+  async function apiStopCase(id){
+    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id) + '/stop', { method:'POST' });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(data.error || 'Stoppen is mislukt (' + res.status + ')');
+    return data.case;
+  }
+  async function apiRetryStep(id, key){
+    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id) + '/retry-step', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: key })
+    });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(data.error || 'Opnieuw proberen is mislukt (' + res.status + ')');
+    return data.case;
+  }
+
+  function renderBanner(){
+    if (!state.apiError){ banner.innerHTML=''; return; }
+    banner.innerHTML = '<div class="banner danger">Kan geen verbinding maken met de Bedrijfchecker-server: ' + escapeHtml(state.apiError) + '. Probeer de pagina te verversen.</div>';
+  }
+
+  // ---------- init ----------
+  async function initApp(){
+    try {
+      state.cases = await apiListCases();
+      state.apiError = null;
+    } catch(e){
+      state.apiError = e.message;
+    }
+    state.casesLoaded = true;
+    renderBanner();
+    render();
+  }
+
+  // ---------- routing / render ----------
+  function stopCasePoller(){
+    if (casePoller){ clearInterval(casePoller); casePoller = null; }
+  }
+  function ensureCasePoller(id){
+    stopCasePoller();
+    casePoller = setInterval(function(){
+      if (state.view !== 'detail' || state.currentCaseId !== id){ stopCasePoller(); return; }
+      apiGetCase(id).then(function(c){
+        if (!c || state.currentCaseId !== id) return;
+        state.currentCase = c;
+        render();
+        if (c.status !== 'bezig') stopCasePoller();
+      }).catch(function(){ /* netwerkhikje: gewoon volgende tik opnieuw proberen */ });
+    }, 4000);
+  }
+  function goDashboard(){
+    stopCasePoller();
+    state.view='dashboard'; state.currentCaseId=null; state.currentCase=null;
+    state.startDraft = { website:'' };
+    state.startFiles = [];
+    state.startUploadOpen = false;
+    state.startUrlError = null;
+    render();
+    apiListCases().then(function(cases){
+      state.cases = cases; state.apiError = null; renderBanner();
+      if (state.view==='dashboard') render();
+    }).catch(function(e){ state.apiError = e.message; renderBanner(); });
+  }
+  function goDetail(id){
+    state.view='detail'; state.currentCaseId=id;
+    state.currentCase = state.cases.find(function(c){ return c.id===id; }) || null;
+    render();
+    apiGetCase(id).then(function(c){
+      if (!c || state.currentCaseId !== id) return;
+      state.currentCase = c;
+      render();
+      if (c.status === 'bezig') ensureCasePoller(id);
+    }).catch(function(e){ if (state.currentCaseId === id && !state.currentCase) alert('Kon deze audit niet laden: ' + e.message); });
+  }
+
+  function render(){
+    if (state.view === 'dashboard') return renderDashboard();
+    if (state.view === 'detail') return renderDetail();
+  }
+
+  // ---------- icons (inline SVG, geen externe iconfont nodig) ----------
+  var ICON_CARET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+  var ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
+  var ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="12" y2="19"/><line x1="9" y1="16" x2="15" y2="16"/></svg>';
+  var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>';
+
+  // ---------- dashboard (landingspagina: direct starten + eerder gedraaide audits) ----------
+  // Naar het ontwerp van Anne's designsysteem in Figma: geen aparte wizard-stap
+  // meer, alles staat direct op de landingspagina. Het documenten-uploadvak
+  // staat standaard ingeklapt (caret naar links) en opent pas na een klik.
+  function renderDashboard(){
+    if (!state.casesLoaded){
+      app.innerHTML = '<p style="color:var(--text-muted)">Cases laden…</p>';
+      return;
+    }
+    var d = state.startDraft;
+    var items = state.startFiles.map(function(f, i){
+      return '<div class="file-item"><span>' + escapeHtml(f.file.name) + ' <span class="hint mono">(' + Math.round(f.file.size/1024) + ' kB)</span></span>' +
+        '<button type="button" data-i="' + i + '" class="wiz-remove-file">Verwijderen</button></div>';
+    }).join('');
+
+    var starting = !!state.runningCaseIds['__new__'];
+    var startCard = '<div class="hero-card"><div class="hero-card-inner">' +
+      '<h2 class="hero-card-title c1">Start hier je Gratis Audit</h2>' +
+      '<div class="audit-form">' +
+        '<div style="display:flex;flex-direction:column;gap:8px;width:100%;">' +
+          '<div class="audit-form-row">' +
+            '<input type="text" id="f-website" class="' + (state.startUrlError?'has-error':'') + '" value="' + escapeHtml(d.website) + '" placeholder="Website-URL van de leverancier *" autofocus>' +
+            '<button type="button" class="btn-cta" id="wiz-start" ' + (starting ? 'disabled' : '') + '>' + ICON_SEARCH + '<span>' + (starting ? 'Starten…' : 'Start gratis check') + '</span></button>' +
+          '</div>' +
+          (state.startUrlError ? '<div class="field-error">' + escapeHtml(state.startUrlError) + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="width:100%;">' +
+        '<button type="button" class="disclosure-toggle" id="doc-toggle" aria-expanded="' + (state.startUploadOpen?'true':'false') + '">' +
+          '<span class="disclosure-caret">' + ICON_CARET + '</span>' +
+          '<span>Documenten toevoegen (optioneel: COA\'s, screenshots, productfoto\'s)</span>' +
+        '</button>' +
+        '<div class="disclosure-body"' + (state.startUploadOpen ? '' : ' hidden') + '>' +
+          '<label class="dropzone" for="f-files">' + ICON_UPLOAD +
+            '<span class="dz-text">Documenten toevoegen<br>(optioneel: COA\'s, screenshots, productfoto\'s)</span>' +
+          '</label>' +
+          '<input type="file" id="f-files" multiple accept="image/*,application/pdf" style="display:none">' +
+          '<div class="file-list">' + items + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<p class="hero-card-note">Dit is de gratis Evidence Check: juridische basisidentiteit, domein- en websitegeschiedenis, laboratorium, de volledige COA-dataset en -authenticiteit, social media/affiliates, reputatie, regelgeving/toezicht en tegenbewijs. Duurt doorgaans enkele minuten, met live voortgang.</p>' +
+      '</div></div>';
+
+    var auditsCard = '';
+    if (state.cases.length){
+      var rows = state.cases.map(function(c){
+        var chip = '<span class="chip grey">Nieuw</span>';
+        if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
+        else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
+        else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
+        else if (c.status === 'klaar'){
+          var n = (c.report && c.report.rodeVlaggen && c.report.rodeVlaggen.length) || 0;
+          var es = c.engineResult && c.engineResult.evidenceScore;
+          if (n > 0){
+            chip = '<span class="chip danger">' + n + ' rode vlag' + (n===1?'':'gen') + '</span>';
+          } else if (es && es.published){
+            chip = '<span class="chip ok">Evidence Score ' + es.value + '</span>';
+          } else if (c.engineResult && c.engineResult.gate && (c.engineResult.gate.code === 'NO_COA_FOUND' || c.engineResult.gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED')){
+            chip = '<span class="chip grey">Geen bruikbare COA</span>';
+          } else {
+            chip = '<span class="chip ok">Geen rode vlaggen</span>';
+          }
+        }
+        return '<button type="button" class="audit-row" data-id="' + c.id + '">' +
+          '<span class="left"><span class="name">' + escapeHtml(c.naam) + '</span>' +
+          '<span class="domain">' + escapeHtml(domainOf(normalizeUrl(c.website))) + '</span>' + chip + '</span>' +
+          '<span class="textlink">Bekijk deze audit ' + ICON_CHEVRON + '</span>' +
+          '</button>';
+      }).join('');
+      auditsCard = '<div class="hero-card"><div class="hero-card-inner">' +
+        '<h2 class="hero-card-title c2">Eerder gedraaide audits</h2>' +
+        '<div class="audit-list">' + rows + '</div>' +
+        '</div></div>';
+    }
+
+    app.innerHTML =
+      '<section class="hero"><h1>Bedrijfchecker</h1><p class="hero-tag">Gratis basischeck voor peptide- en research-chemicalsleveranciers</p></section>' +
+      startCard + auditsCard;
+    wireDashboardEvents();
+  }
+
+  function wireDashboardEvents(){
+    var websiteInput = app.querySelector('#f-website');
+    if (websiteInput){
+      websiteInput.addEventListener('input', function(){
+        state.startDraft.website = websiteInput.value;
+        if (state.startUrlError){
+          state.startUrlError = null;
+          websiteInput.classList.remove('has-error');
+          var err = app.querySelector('.field-error');
+          if (err) err.remove();
+        }
+      });
+      websiteInput.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); startAudit(); } });
+    }
+
+    var toggle = app.querySelector('#doc-toggle');
+    if (toggle) toggle.addEventListener('click', function(){
+      state.startUploadOpen = !state.startUploadOpen;
+      renderDashboard();
+    });
+
+    var fileInput = app.querySelector('#f-files');
+    if (fileInput) fileInput.addEventListener('change', function(e){
+      Array.prototype.forEach.call(e.target.files, function(file){
+        state.startFiles.push({ file: file, kind: file.type.indexOf('image/') === 0 ? 'image' : 'other' });
+      });
+      renderDashboard();
+    });
+    Array.prototype.forEach.call(app.querySelectorAll('.wiz-remove-file'), function(btn){
+      btn.addEventListener('click', function(){
+        state.startFiles.splice(parseInt(btn.getAttribute('data-i'),10), 1);
+        renderDashboard();
+      });
+    });
+
+    var start = app.querySelector('#wiz-start');
+    if (start) start.addEventListener('click', startAudit);
+
+    Array.prototype.forEach.call(app.querySelectorAll('.audit-row'), function(btn){
+      btn.addEventListener('click', function(){ goDetail(btn.getAttribute('data-id')); });
+    });
+  }
+
+  async function startAudit(){
+    if (state.runningCaseIds['__new__']) return;
+    var raw = state.startDraft.website;
+    if (!isValidWebUrl(raw)){
+      state.startUrlError = 'Vul een geldige web URL in.';
+      renderDashboard();
+      var input = app.querySelector('#f-website');
+      if (input) input.focus();
+      return;
+    }
+    var website = normalizeUrl(raw);
+    var files = state.startFiles.map(function(f){ return f.file; });
+    state.runningCaseIds['__new__'] = true;
+    renderDashboard();
+    try {
+      var created = await apiCreateCase({ naam: domainOf(website), website: website }, files);
+      delete state.runningCaseIds['__new__'];
+      state.cases.unshift(created);
+      goDetail(created.id);
+    } catch(e){
+      delete state.runningCaseIds['__new__'];
+      if (e.code === 'invalid_url'){
+        state.startUrlError = e.message || 'Vul een geldige web URL in.';
+        renderDashboard();
+      } else {
+        renderDashboard();
+        alert('Aanmaken van de case is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+      }
+    }
+  }
+
+  // ---------- case detail ----------
+  function renderDetail(){
+    var c = state.currentCase;
+    if (!c){ app.innerHTML = '<p>Case laden…</p>'; stopCasePoller(); return; }
+    var chip = '<span class="chip grey">Nieuw</span>';
+    if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
+    else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
+    else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
+    else if (c.status === 'klaar') chip = '<span class="chip ok">Klaar</span>';
+
+    var html = '<button class="btn ghost" id="back-to-dash">&larr; Terug naar overzicht</button>';
+    html += '<div class="detail-head"><div><h2>' + escapeHtml(c.naam) + '</h2>' +
+      '<div class="site"><a href="' + escapeHtml(c.website) + '" target="_blank" rel="noopener">' + escapeHtml(c.website) + '</a></div>' +
+      '<div class="kv-row"><span>KvK-uittreksel: <span class="mono">' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span></span>' +
+      '<span>Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div></div>' +
+      '<div>' + chip + '</div></div>';
+
+    if (c.status === 'bezig'){
+      html += renderProgress(c);
+      html += '<div style="margin-top:12px;"><button class="btn secondary" id="stop-audit">Stop audit</button></div>';
+    }
+    if (c.status === 'fout'){
+      html += '<div class="banner danger">Audit mislukt: ' + escapeHtml(c.error || 'onbekende fout') + '</div>' +
+        '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
+      if (c.progress && c.progress.length) html += renderProgress(c);
+    }
+    if (c.status === 'gestopt'){
+      html += '<div class="banner">Deze audit is handmatig gestopt' + (c.currentStep ? ' tijdens de stap "' + escapeHtml(stepLabel(c.currentStep.key)) + '"' : '') + '.</div>' +
+        '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
+      if (c.progress && c.progress.length) html += renderProgress(c);
+    }
+    if (c.status === 'klaar' && c.report){
+      html += renderReport(c);
+      html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';
+      html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren (nieuwe audit)</button></div>';
+    }
+
+    app.innerHTML = html;
+    var backBtn = app.querySelector('#back-to-dash');
+    if (backBtn) backBtn.addEventListener('click', goDashboard);
+    var retryBtn = app.querySelector('#retry-audit');
+    // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
+    // draaien; dit start een nieuwe audit voor dezelfde leverancier.
+    if (retryBtn) retryBtn.addEventListener('click', function(){ retryAsNewAudit(c); });
+    var stopBtn = app.querySelector('#stop-audit');
+    if (stopBtn) stopBtn.addEventListener('click', function(){
+      stopBtn.disabled = true; stopBtn.textContent = 'Stoppen…';
+      apiStopCase(c.id).then(function(updated){
+        stopCasePoller();
+        if (state.currentCaseId === c.id){ state.currentCase = updated; render(); }
+      }).catch(function(e){
+        stopBtn.disabled = false; stopBtn.textContent = 'Stop audit';
+        alert('Stoppen is mislukt: ' + e.message);
+      });
+    });
+    var stuckBtn = app.querySelector('#retry-stuck');
+    if (stuckBtn) stuckBtn.addEventListener('click', function(){ runSingleStep(c.id, stuckBtn.getAttribute('data-key')); });
+    Array.prototype.forEach.call(app.querySelectorAll('.step-retry'), function(btn){
+      btn.addEventListener('click', function(){ runSingleStep(c.id, btn.getAttribute('data-key')); });
+    });
+  }
+
+  function renderProgress(c){
+    var progress = c.progress || [];
+    var doneMap = {};
+    progress.forEach(function(p){ doneMap[p.key] = p; });
+    var steps = STEP_DEFS;
+    var allowRetry = c.status !== 'bezig';
+    var running = !!state.runningCaseIds[c.id];
+
+    var items = steps.map(function(s){
+      var done = doneMap[s.key];
+      var isCurrent = c.status === 'bezig' && c.currentStep && c.currentStep.key === s.key;
+      var cls = done ? 'done' : (isCurrent ? 'active' : '');
+      var hint = '';
+      if (running && !isCurrent){
+        hint = '<span class="step-hint">bezig…</span>';
+      } else if (done){
+        hint = '<span class="step-hint">' + fmtDuration(done.durationMs) + '</span>';
+      } else if (isCurrent){
+        hint = '<span class="step-hint">bezig ' + fmtDuration(Date.now() - c.currentStep.startedAt) +
+          ' &middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span>';
+      } else if (stepStats && stepStats[s.key]){
+        hint = '<span class="step-hint">gemiddeld ' + fmtDuration(stepStats[s.key].avgMs) + '</span>';
+      }
+      var retryBtn = (done && allowRetry && !running) ? '<button type="button" class="step-retry btn ghost" data-key="' + s.key + '">opnieuw</button>' : '';
+      return '<div class="progress-item ' + cls + '"><span class="dot"></span><span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
+    }).join('');
+
+    var stuckBanner = '';
+    if (isStuck(c)){
+      stuckBanner = '<div class="banner">Deze stap ("' + escapeHtml(stepLabel(c.currentStep.key)) + '") duurt langer dan gemiddeld (' +
+        fmtDuration(Date.now() - c.currentStep.startedAt) + ' tegen normaal ' + fmtDuration(avgForStep(c.currentStep.key)) + ').<br>' +
+        '<button type="button" class="btn ghost" id="retry-stuck" data-key="' + c.currentStep.key + '" style="margin-top:8px;border:1px solid var(--border);border-radius:6px;">Opnieuw proberen vanaf deze stap</button></div>';
+    }
+
+    return '<div class="card"><div class="progress-list">' + items + '</div></div>' + stuckBanner;
+  }
+
+  // Exacte UI-state copy uit "Ruben - Webapp Audit Flow v1.0.md" §Concrete
+  // UI-states. Letterlijk overnemen, niet parafraseren.
+  var UI_STATES = {
+    missingCoa: { title:'Geen verifieerbare COA\'s gevonden', text:'Binnen de onderzochte bronnen vonden we geen bruikbare COA. Identity, Purity en Quantity kunnen we daardoor niet inhoudelijk vaststellen. Voeg originele COA-bestanden toe. Dit is ontbrekend bewijs, geen aangetoond productprobleem.' },
+    unreadableCoa: { title:'COA-analyse kan nog niet worden uitgevoerd', text:'We vonden COA-verwijzingen, maar konden de bestanden niet openen of voldoende uitlezen. Upload de originele bestanden om deze analyses voort te zetten.' },
+    independenceInsufficient: { title:'⚪ Niet onafhankelijk verifieerbaar', text:'De analytische claims steunen uitsluitend op onvoldoende onafhankelijk verifieerbare labs. Daarom tonen we geen onafhankelijk bevestigde Identity-, Purity- of Quantity-uitkomst voor de getroffen analyses.' },
+    sourceClaimDetail: { title:'Niet onafhankelijk bevestigd', text:'Het lab rapporteert de waarde hieronder. Dit is een gerapporteerde bronwaarde en telt niet als zelfstandig geverifieerd productbewijs.' },
+    noDeepNeeded: { title:'Geen betaalde verdieping noodzakelijk op dit moment', text:'De huidige open vragen geven geen concrete aanleiding voor bedrijfsverdieping.' }
+  };
+
+  function renderGateBanner(engine){
+    if (!engine || !engine.gate) return '';
+    var gate = engine.gate;
+    if (gate.code === 'NO_COA_FOUND'){
+      return '<div class="banner"><strong>' + escapeHtml(UI_STATES.missingCoa.title) + '</strong><br>' + escapeHtml(UI_STATES.missingCoa.text) + '</div>';
+    }
+    if (gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED'){
+      return '<div class="banner"><strong>' + escapeHtml(UI_STATES.unreadableCoa.title) + '</strong><br>' + escapeHtml(UI_STATES.unreadableCoa.text) + '</div>';
+    }
+    var chip = gate.status === 'PASS' ? 'ok' : 'warn';
+    var note = gate.status === 'PASS'
+      ? 'Identity, Purity en Quantity zijn elk door minstens één bruikbare COA gedekt.'
+      : 'Sommige kernvelden (Identity, Purity, Quantity) zijn nog niet allemaal door een bruikbare COA gedekt; wat wel bruikbaar is, wordt hieronder beoordeeld.';
+    return '<div class="card" style="margin-bottom:16px;"><span class="chip ' + chip + '">Evidence Gate: ' + escapeHtml(gate.status) + '</span>' +
+      '<p style="margin-top:8px;color:var(--text-muted);">' + escapeHtml(note) + ' (' + gate.foundCount + ' COA gevonden, ' + gate.usableCount + ' bruikbaar.)</p></div>';
+  }
+
+  function renderCategoryGrid(engine){
+    if (!engine || !engine.assessments) return '';
+    var pillarMeta = {
+      COA: 'COA & productbewijs', LAB: 'Laboratorium',
+      COMPANY: 'Bedrijf (grotendeels Deep-scope, buiten de gratis check)', REPUTATION: 'Reputatie & commerciële transparantie'
+    };
+    var out = '<section class="report-block"><h3>Bewijscategorieën</h3>';
+    PILLARS.forEach(function(pillar){
+      var ids = pillarCategoryIds(pillar);
+      var tiles = ids.map(function(id){
+        var def = categoryDef(id);
+        var a = engine.assessments[id] || {};
+        var note = a.dependencyApplied
+          ? '<div class="note" style="color:var(--text-muted);">' + escapeHtml(UI_STATES.independenceInsufficient.title) + ': ' + escapeHtml(UI_STATES.independenceInsufficient.text) + '</div>'
+          : '';
+        return '<div class="score-tile"><div class="label">' + escapeHtml(id + ' · ' + def.label) + '</div>' +
+          '<span class="chip ' + catColorClass(a.color) + '">' + catColorLabel(a.color) + '</span>' +
+          '<div class="note">' + escapeHtml(a.rationale||'') + '</div>' + note + '</div>';
+      }).join('');
+      out += '<h4 style="margin:14px 0 6px;color:var(--text-muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.03em;">' + escapeHtml(pillarMeta[pillar]) + '</h4>' +
+        '<div class="score-grid">' + tiles + '</div>';
+    });
+    out += '</section>';
+    return out;
+  }
+
+  function renderEvidenceScoreBlock(engine){
+    if (!engine || !engine.evidenceScore) return '';
+    var es = engine.evidenceScore;
+    var out = '<section class="report-block"><h3>Free Evidence Score</h3>';
+    if (es.published){
+      out += '<div class="score-tile" style="max-width:260px;"><div class="label">Evidence Score</div>' +
+        '<span class="chip ok" style="font-size:1.1rem;">' + es.value + ' / 100</span>' +
+        '<div class="note">Coverage: ' + Math.round(es.coverage) + '%. Samengesteld uit 60% COA-pijler (na eventuele cap) en 40% laboratoriumpijler.</div></div>';
+      if (es.cap && es.cap.applied){
+        out += '<p style="color:var(--text-muted);margin-top:8px;">De COA-deelscore is gemaximeerd op 33,33% omdat Identity/Purity/Quantity uitsluitend steunen op onvoldoende onafhankelijk verifieerbare labs (' + escapeHtml(es.cap.reason||'') + ').</p>';
+      }
+    } else {
+      out += '<p style="color:var(--text-muted);">Geen Evidence Score gepubliceerd: ' + escapeHtml(es.reason||'onvoldoende bewijsbasis') + '. Coverage tot nu toe: ' + Math.round(es.coverage||0) + '%.</p>';
+    }
+    out += '</section>';
+    return out;
+  }
+
+  function renderQuantityTable(coaRecords, engine){
+    var withQty = (coaRecords||[]).filter(function(r){ return r.quantity && r.quantity.deviationPct != null; });
+    if (!withQty.length) return '';
+    var quantityIndependent = engine && engine.assessments && engine.assessments.C04 && !engine.assessments.C04.dependencyApplied;
+    var rows = withQty.map(function(r){
+      var q = r.quantity;
+      var signal = q.signalGt20 ? '<span class="chip danger">&gt;20%</span>' : q.signalGt10 ? '<span class="chip warn">&gt;10%</span>' : '<span class="chip ok">binnen 10%</span>';
+      return '<tr><td>' + escapeHtml(r.product||'onbekend') + '</td><td>' + escapeHtml(r.batchnummer||'-') + '</td>' +
+        '<td>' + (r.claimedQuantity!=null?r.claimedQuantity+' '+escapeHtml(r.claimedUnit||''):'-') + '</td>' +
+        '<td>' + (r.measuredQuantity!=null?r.measuredQuantity+' '+escapeHtml(r.measuredUnit||''):'-') + '</td>' +
+        '<td>' + (q.deviationPct!=null ? (Math.round(q.deviationPct*100)/100)+'%' : '-') + '</td>' +
+        '<td>' + signal + '</td></tr>';
+    }).join('');
+    var note = quantityIndependent ? '' :
+      '<p style="color:var(--text-muted);margin-top:8px;">' + escapeHtml(UI_STATES.sourceClaimDetail.title) + ': ' + escapeHtml(UI_STATES.sourceClaimDetail.text) + '</p>';
+    return '<section class="report-block"><h3>Quantity-afwijking per record</h3>' +
+      '<div style="overflow-x:auto;"><table class="mono" style="width:100%;border-collapse:collapse;font-size:.85rem;">' +
+      '<thead><tr><th style="text-align:left;padding:4px 8px;">Product</th><th style="text-align:left;padding:4px 8px;">Batch</th><th style="text-align:left;padding:4px 8px;">Claim</th><th style="text-align:left;padding:4px 8px;">Gemeten</th><th style="text-align:left;padding:4px 8px;">Afwijking</th><th style="text-align:left;padding:4px 8px;">Signaal</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' + note + '</section>';
+  }
+
+  function renderReport(c){
+    var r = c.report || {};
+    var engine = c.engineResult;
+    var documents = c.documents || [];
+    var coaRecords = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.coaRecords) || [];
+
+    var out = '';
+    out += renderGateBanner(engine);
+    out += renderCategoryGrid(engine);
+    out += renderEvidenceScoreBlock(engine);
+    out += renderQuantityTable(coaRecords, engine);
+
+    out += '<section class="report-block"><h3>Executive summary</h3><p>' + escapeHtml(r.executiveSummary||'') + '</p></section>';
+
+    out += renderFindingList('Sterkste positieve bevindingen', r.sterkstePositieveBevindingen, 'ok');
+    out += renderFindingList('Belangrijkste aandachtspunten', r.belangrijksteAandachtspunten, '');
+    if (r.rodeVlaggen && r.rodeVlaggen.length){
+      var flags = r.rodeVlaggen.map(function(f){
+        return '<li class="danger">' + escapeHtml(f.omschrijving||f) + (f.bron ? '<span class="src">Bron: ' + escapeHtml(f.bron) + '</span>' : '') + '</li>';
+      }).join('');
+      out += '<section class="report-block"><h3>Rode vlaggen</h3><ul class="findings">' + flags + '</ul></section>';
+    } else {
+      out += '<section class="report-block"><h3>Rode vlaggen</h3><p style="color:var(--text-muted)">Geen concreet aantoonbare problemen gevonden binnen deze automatische pas.</p></section>';
+    }
+    out += renderFindingList('Niet (voldoende) verifieerbaar', r.nietVerifieerbaar, '');
+
+    if (documents && documents.length){
+      out += '<section class="report-block"><h3>Geüploade documenten</h3><ul class="findings">' +
+        documents.map(function(d){ return '<li>' + escapeHtml(d.filename) + '</li>'; }).join('') + '</ul></section>';
+    }
+    if (r.documentanalyse && r.documentanalyse.length){
+      out += '<section class="report-block"><h3>Documentanalyse (letterlijke uitlezing, niet geverifieerd)</h3><ul class="findings">' +
+        r.documentanalyse.map(function(d){
+          return '<li>' + escapeHtml(d.omschrijving||'') +
+            '<span class="src">Product: ' + escapeHtml(d.product||'onbekend') + ' &middot; Batch: ' + escapeHtml(d.batchnummer||'onbekend') +
+            ' &middot; Purity: ' + escapeHtml(d.purity||'onbekend') + ' &middot; Lab: ' + escapeHtml(d.laboratorium||'onbekend') + '</span></li>';
+        }).join('') + '</ul></section>';
+    }
+
+    if (r.top5Vragen && r.top5Vragen.length){
+      out += '<section class="report-block"><h3>Top vragen aan leverancier</h3><ol class="numbered">' +
+        r.top5Vragen.map(function(q){ return '<li>' + escapeHtml(q) + '</li>'; }).join('') + '</ol></section>';
+    }
+    out += '<section class="report-block"><h3>Eindconclusie</h3><p>' + escapeHtml(r.eindconclusie||'') + '</p></section>';
+
+    if (r.bronnenregister && r.bronnenregister.length){
+      out += '<section class="report-block"><h3>Bronnenregister</h3><div class="sources">' +
+        r.bronnenregister.map(function(b){ return '<a href="' + escapeHtml(b.url) + '" target="_blank" rel="noopener">' + escapeHtml(b.titel||b.url) + '</a>'; }).join('') +
+        '</div></section>';
+    }
+
+    out += '<section class="report-block"><h3>Vervolgonderzoek (binnenkort beschikbaar)</h3>' +
+      '<p style="color:var(--text-muted);">Dit is de gratis Evidence Check: alle bewijscategorieën hierboven, inclusief de volledige COA-dataset, laboratorium, reputatie en tegenbewijs. Een betaalde Deep Dive voegt alleen nog toe: officiële KvK/registerverificatie, eigenaren/bestuurders met rollen, bedrijfshistorie en zakelijke relaties. Dat vereist eerst een eigen koppeling met het Handelsregister en is nog niet actief.</p></section>';
+
+    out += '<p class="disclaimer">Dit rapport is de gratis basischeck, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik. Een ontbrekend KvK-uittreksel verlaagt geen enkele score automatisch.</p>';
+    return out;
+  }
+
+  function renderFindingList(title, items, cls){
+    if (!items || !items.length) return '';
+    return '<section class="report-block"><h3>' + escapeHtml(title) + '</h3><ul class="findings">' +
+      items.map(function(i){ return '<li' + (cls?' class="'+cls+'"':'') + '>' + escapeHtml(i) + '</li>'; }).join('') +
+      '</ul></section>';
+  }
+
+  // ---------- retry-acties ----------
+  // Eén stap (of "vanaf deze stap") opnieuw draaien: POST /api/audits/:id/retry-step.
+  // De backend draait daarbij ook automatisch categorize + de scoring-engine +
+  // een volledige hersynthese, zodat het rapport nooit verouderd blijft t.o.v.
+  // de net vernieuwde brondata van die ene stap.
+  async function runSingleStep(caseId, key){
+    if (state.runningCaseIds[caseId]) return;
+    state.runningCaseIds[caseId] = true;
+    if (state.currentCaseId === caseId) render();
+    try {
+      var updated = await apiRetryStep(caseId, key);
+      if (state.currentCaseId === caseId){ state.currentCase = updated; }
+    } catch(e){
+      if (state.currentCaseId === caseId){
+        try { state.currentCase = await apiGetCase(caseId); } catch(e2){}
+      }
+      alert('Opnieuw proberen is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+    } finally {
+      delete state.runningCaseIds[caseId];
+      if (state.currentCaseId === caseId) render();
+    }
+  }
+
+  // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
+  // draaien; dit start een nieuwe audit voor dezelfde leverancier (zelfde
+  // website/land/KvK-nummer/notities) en navigeert daar direct naartoe.
+  async function retryAsNewAudit(c){
+    var btn = app.querySelector('#retry-audit');
+    if (btn){ btn.disabled = true; btn.textContent = 'Starten…'; }
+    try {
+      var created = await apiCreateCase({ naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities }, []);
+      state.cases.unshift(created);
+      goDetail(created.id);
+    } catch(e){
+      if (btn){ btn.disabled = false; btn.textContent = 'Opnieuw proberen'; }
+      alert('Nieuwe audit starten is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+    }
+  }
+
+  // ---------- wire up ----------
+  document.getElementById('brand-home').addEventListener('click', goDashboard);
+  initApp();
+
+})();
+</script>
