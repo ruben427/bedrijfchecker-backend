@@ -15,6 +15,11 @@ const client = new Anthropic({
 });
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
+// Bij een JSON.parse-fout gaf de foutmelding tot nu toe alleen "Unterminated
+// string at position X" — nuttig voor een JS-developer, maar niet te zien
+// wat het model daadwerkelijk teruggaf. Vandaar: bij een parse-fout een
+// stuk van de ruwe modeloutput rond het probleem meesturen in de foutmelding
+// zelf, zodat die al zichtbaar is in de UI (case.error) zonder losse logs.
 function extractJson(text) {
   if (!text) throw new Error('empty_response');
   let s = text.trim();
@@ -23,7 +28,23 @@ function extractJson(text) {
   if (fence) s = fence[1].trim();
   const start = s.search(/[\[{]/);
   if (start > 0) s = s.slice(start);
-  return JSON.parse(s);
+  try {
+    return JSON.parse(s);
+  } catch (e) {
+    const posMatch = /position (\d+)/.exec(e.message);
+    let snippet;
+    if (posMatch) {
+      const pos = Number(posMatch[1]);
+      const from = Math.max(0, pos - 120);
+      const to = Math.min(s.length, pos + 80);
+      snippet = (from > 0 ? '…' : '') + s.slice(from, to).replace(/\s+/g, ' ') + (to < s.length ? '…' : '');
+    } else {
+      snippet = s.length > 300 ? s.slice(0, 200).replace(/\s+/g, ' ') + '…' : s.replace(/\s+/g, ' ');
+    }
+    const err = new Error(e.message + ' | ruwe modeloutput rond de fout: "' + snippet + '"');
+    err.rawText = s;
+    throw err;
+  }
 }
 
 /**
@@ -52,14 +73,24 @@ async function sampleJson(prompt, opts) {
   return extractJson(text);
 }
 
+// opts.label (optioneel): welke stap/call dit is (bv. 'identiteit',
+// 'categorize', 'reportA') — wordt vóór de foutmelding gezet zodat een
+// mislukte case meteen zegt WAAR het misging, niet alleen wat.
 async function sampleJsonSafe(prompt, opts) {
+  opts = opts || {};
   try {
     return await sampleJson(prompt, opts);
   } catch (e) {
-    // Eén herkansing met een stelliger prompt, net als in de Artifact-versie.
-    const retryPrompt = prompt +
-      '\n\nLET OP: je vorige antwoord was geen geldige of volledige JSON. Antwoord dit keer UITSLUITEND met compacte, geldige JSON, zonder uitleg ervoor of erna, zonder markdown-codeblok. Begin direct met { of [. Houd tekstvelden kort (maximaal 1-2 zinnen per veld).';
-    return await sampleJson(retryPrompt, opts);
+    try {
+      // Eén herkansing met een stelliger prompt, net als in de Artifact-versie.
+      const retryPrompt = prompt +
+        '\n\nLET OP: je vorige antwoord was geen geldige of volledige JSON. Antwoord dit keer UITSLUITEND met compacte, geldige JSON, zonder uitleg ervoor of erna, zonder markdown-codeblok. Begin direct met { of [. Houd tekstvelden kort (maximaal 1-2 zinnen per veld).';
+      return await sampleJson(retryPrompt, opts);
+    } catch (e2) {
+      const label = opts.label ? '[' + opts.label + '] ' : '';
+      const err = new Error(label + 'eerste poging: ' + e.message + ' || herkansing: ' + e2.message);
+      throw err;
+    }
   }
 }
 

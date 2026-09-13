@@ -94,7 +94,7 @@ async function runPhase(ctx, opts) {
   const prompt = EVIDENCE_RULES + '\n\nOnderzoeksfase: ' + opts.title + '\nLeverancier: ' + ctx.naam + '\nWebsite: ' + ctx.website + '\n\n' +
     'Ruwe brondata (JSON):\n' + JSON.stringify(raw) + '\n\n' + opts.schemaHint;
 
-  const data = await sampleJsonSafe(prompt, {});
+  const data = await sampleJsonSafe(prompt, { label: opts.key });
   return { key: opts.key, title: opts.title, data };
 }
 
@@ -183,7 +183,7 @@ async function runResearchStep(caseId, ctx, key) {
     let records = (phase.data && phase.data.coaRecords) || [];
     if (ctx.images && ctx.images.length) {
       const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
-      const docData = await sampleJsonSafe(docPrompt, { images: ctx.images });
+      const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
       const uploadedRecords = ((docData && docData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: null, uit: 'upload' }));
       records = records.concat(uploadedRecords);
     }
@@ -215,7 +215,7 @@ async function runResearchStep(caseId, ctx, key) {
     if (ctx.kvkDocument) {
       const kvkPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde, door de gebruiker geüploade KvK-uittreksel (PDF) voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Dit telt als direct geziene brondata (niet zelf op te zoeken, geen bronUrl).\n\n' +
         'Antwoord met JSON: {"leesbaar":boolean,"kvkGegevens":{"bedrijfsnaam":string,"handelsnamen":[string],"kvkNummer":string,"rechtsvorm":string,"adres":string,"vestigingsplaats":string,"oprichtingsdatum":string,"status":string,"bestuurders":[string]}}';
-      const kvkData = await sampleJsonSafe(kvkPrompt, { documents: [ctx.kvkDocument] });
+      const kvkData = await sampleJsonSafe(kvkPrompt, { documents: [ctx.kvkDocument], label: 'identiteit-kvkUpload' });
       const g = (kvkData && kvkData.kvkGegevens) || {};
       const bevindingen = (result.data && result.data.bevindingen) || [];
       if (kvkData && kvkData.leesbaar && (g.bedrijfsnaam || g.kvkNummer)) {
@@ -248,7 +248,7 @@ async function runCategorize(caseId, ctx) {
     'Samengevatte fasegegevens (JSON):\n' + JSON.stringify(slimPhases) + '\n\n' +
     'Ruwe COA-dataset (JSON, voor C01-C09):\n' + JSON.stringify(trimList(coaRecords, 12, 400)) + '\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"categories":{"C01":{"color":string,"rationale":string},"C02":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C03":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C04":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C05":{"color":string,"rationale":string},"C06":{"color":string,"rationale":string},"C07":{"color":string,"rationale":string},"C08":{"color":string,"rationale":string},"C09":{"color":string,"rationale":string},"L01":{"color":string,"rationale":string},"B01":{"color":string,"rationale":string},"B02":{"color":string,"rationale":string},"B03":{"color":string,"rationale":string},"B04":{"color":string,"rationale":string},"B05":{"color":string,"rationale":string},"R01":{"color":string,"rationale":string},"R02":{"color":string,"rationale":string}},"adequacy":{"coa":boolean|null,"lab":boolean|null,"rationale":string}}';
-  const data = await sampleJsonSafe(prompt, {});
+  const data = await sampleJsonSafe(prompt, { label: 'categorize' });
   await db.updateCase(caseId, { categoryAssessments: (data && data.categories) || {}, adequacy: (data && data.adequacy) || {} });
   await finishStep(caseId, 'categorize', startedAt);
 }
@@ -282,7 +282,7 @@ async function runSynthesis(caseId, ctx) {
   const promptA = contextHeader +
     'Stel op basis hiervan het EERSTE deel van het tussenrapport samen: een narratieve duiding van de al vastgestelde categoriebeoordelingen en gate/score, GEEN eigen scorekaart of cijfer. Noem geen percentage of score die niet letterlijk in de aangeleverde engine-uitkomst staat. Een ontbrekend KvK-uittreksel of B02 (eigenaren/bestuurders, dat is Deep-scope) is nooit op zichzelf reden voor een rode vlag of aandachtspunt in deze gratis check. Houd elk tekstveld kort (1-2 zinnen).\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"executiveSummary":string,"sterkstePositieveBevindingen":[string],"belangrijksteAandachtspunten":[string],"rodeVlaggen":[{"omschrijving":string,"bron":string}],"nietVerifieerbaar":[string],"documentanalyse":[{"omschrijving":string,"product":string,"batchnummer":string,"purity":string,"laboratorium":string}]}';
-  const reportA = await sampleJsonSafe(promptA, {});
+  const reportA = await sampleJsonSafe(promptA, { label: 'reportA' });
   await finishStep(caseId, 'reportA', startedA);
 
   const startedB = Date.now();
@@ -290,7 +290,7 @@ async function runSynthesis(caseId, ctx) {
   const promptB = contextHeader +
     'Stel op basis hiervan het TWEEDE deel van het tussenrapport samen: vervolgvragen aan de leverancier, eindconclusie en bronnenregister (verzamel de bronUrl-velden uit de fasegegevens). Houd elk tekstveld kort.\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"top5Vragen":[string],"eindconclusie":string,"bronnenregister":[{"url":string,"titel":string}]}';
-  const reportB = await sampleJsonSafe(promptB, {});
+  const reportB = await sampleJsonSafe(promptB, { label: 'reportB' });
   await finishStep(caseId, 'reportB', startedB);
 
   const report = Object.assign({}, reportA, reportB);
