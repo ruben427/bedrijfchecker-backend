@@ -38,6 +38,11 @@ async function sampleJson(prompt, opts) {
   (opts.images || []).forEach((img) => {
     content.push({ type: 'image', source: { type: 'base64', media_type: img.mediaType || 'image/jpeg', data: img.data } });
   });
+  // PDF's (bijv. een geüpload KvK-uittreksel) gaan als 'document'-content mee;
+  // Claude leest die native, geen conversie naar afbeeldingen nodig.
+  (opts.documents || []).forEach((doc) => {
+    content.push({ type: 'document', source: { type: 'base64', media_type: doc.mediaType || 'application/pdf', data: doc.data } });
+  });
   const resp = await client.messages.create({
     model: MODEL,
     max_tokens: opts.maxTokens || 4096,

@@ -210,6 +210,23 @@ async function runResearchStep(caseId, ctx, key) {
       };
     });
     result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake }) };
+  } else if (key === 'identiteit') {
+    result = await runPhase(ctx, stepOpts('identiteit', ctx));
+    if (ctx.kvkDocument) {
+      const kvkPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde, door de gebruiker geüploade KvK-uittreksel (PDF) voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Dit telt als direct geziene brondata (niet zelf op te zoeken, geen bronUrl).\n\n' +
+        'Antwoord met JSON: {"leesbaar":boolean,"kvkGegevens":{"bedrijfsnaam":string,"handelsnamen":[string],"kvkNummer":string,"rechtsvorm":string,"adres":string,"vestigingsplaats":string,"oprichtingsdatum":string,"status":string,"bestuurders":[string]}}';
+      const kvkData = await sampleJsonSafe(kvkPrompt, { documents: [ctx.kvkDocument] });
+      const g = (kvkData && kvkData.kvkGegevens) || {};
+      const bevindingen = (result.data && result.data.bevindingen) || [];
+      if (kvkData && kvkData.leesbaar && (g.bedrijfsnaam || g.kvkNummer)) {
+        const claim = 'KvK-uittreksel vermeldt: ' + [g.bedrijfsnaam, g.kvkNummer ? 'KvK-nummer ' + g.kvkNummer : null, g.rechtsvorm, g.status ? 'status ' + g.status : null].filter(Boolean).join(', ') + '.';
+        bevindingen.push({ claim, classificatie: 'FEIT', onderbouwing: 'Rechtstreeks gelezen uit het door de gebruiker geüploade KvK-uittreksel.', bronUrl: null });
+        result.data = Object.assign({}, result.data, { bevindingen, kvkUittrekselGegevens: g });
+        if (!result.data.vastgesteldeNaam && g.bedrijfsnaam) result.data.vastgesteldeNaam = g.bedrijfsnaam;
+      } else {
+        result.data = Object.assign({}, result.data, { kvkUittrekselOnleesbaar: true });
+      }
+    }
   } else {
     result = await runPhase(ctx, stepOpts(key, ctx));
   }

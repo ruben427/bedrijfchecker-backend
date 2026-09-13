@@ -9,7 +9,12 @@ const pipeline = require('./pipeline');
 const { isValidWebUrl, normalizeUrl } = require('./validate');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 10 } });
+// Twee velden: 'files' voor de bestaande generieke bijlagen (COA's, screenshots,
+// max 10) en een los 'kvkDocument'-veld (max 1) voor het KvK-uittreksel. Geen
+// mimetype-filter meer op multer-niveau — een PDF komt nu ook door; voorheen
+// werd elk niet-image-bestand verderop in de route stilletjes weggegooid.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 11 } });
+const uploadFields = upload.fields([{ name: 'files', maxCount: 10 }, { name: 'kvkDocument', maxCount: 1 }]);
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
 app.use(cors({ origin: allowedOrigins.includes('*') ? true : allowedOrigins }));
@@ -39,31 +44,65 @@ app.get('/api/audits/:id', async (req, res) => {
 
 // Start een nieuwe audit. multipart/form-data: velden website/naam/land/
 // kvkNummer/notities + optioneel bestand(en) onder "files" (COA's, screenshots).
-app.post('/api/audits', upload.array('files', 10), async (req, res) => {
+app.post('/api/audits', uploadFields, async (req, res) => {
   const website = normalizeUrl(req.body.website || '');
   if (!isValidWebUrl(website)) {
     return res.status(400).json({ error: 'invalid_url', message: 'Vul een geldige web URL in.' });
   }
   const naam = (req.body.naam || '').trim() || website;
+  const genericFiles = (req.files && req.files.files) || [];
+  const kvkFile = (req.files && req.files.kvkDocument && req.files.kvkDocument[0]) || null;
+
   const ctx = {
     naam,
     website,
     land: req.body.land || null,
     kvkNummer: req.body.kvkNummer || null,
     notities: req.body.notities || null,
-    images: (req.files || [])
+    images: genericFiles
       .filter((f) => f.mimetype && f.mimetype.startsWith('image/'))
-      .map((f) => ({ data: f.buffer.toString('base64'), mediaType: f.mimetype }))
+      .map((f) => ({ data: f.buffer.toString('base64'), mediaType: f.mimetype })),
+    kvkDocument: kvkFile ? { data: kvkFile.buffer.toString('base64'), mediaType: kvkFile.mimetype } : null
   };
 
   const id = uuidv4();
   const created = await db.createCase(id, ctx);
+
+  // Geüploade bestanden persistent bewaren (niet alleen transiet gebruiken
+  // tijdens deze run) zodat ze later terug te vinden zijn en, bij een
+  // toekomstige KvK-koppeling, hetzelfde opslagpad hergebruikt kan worden.
+  await Promise.all([
+    ...genericFiles.map((f) => db.addDocument(uuidv4(), id, { kind: 'overig', filename: f.originalname, mimetype: f.mimetype, buffer: f.buffer })),
+    ...(kvkFile ? [db.addDocument(uuidv4(), id, { kind: 'kvk', filename: kvkFile.originalname, mimetype: kvkFile.mimetype, buffer: kvkFile.buffer })] : [])
+  ]).catch(() => {});
 
   // Fire-and-forget: de audit draait op de achtergrond, de client volgt
   // voortgang via GET /api/audits/:id (polling), net als in de Artifact.
   pipeline.runAudit(id, ctx).catch(() => {});
 
   res.status(201).json({ case: created });
+});
+
+// Metadata van geüploade documenten bij een case (voor een bijlagenlijstje
+// in de UI) — de bytes zelf komen pas via de download-route hieronder.
+app.get('/api/audits/:id/documents', async (req, res) => {
+  try {
+    res.json({ documents: await db.listDocuments(req.params.id) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/audits/:id/documents/:docId', async (req, res) => {
+  try {
+    const doc = await db.getDocument(req.params.docId);
+    if (!doc || doc.caseId !== req.params.id) return res.status(404).json({ error: 'not_found' });
+    res.set('Content-Type', doc.mimetype || 'application/octet-stream');
+    res.set('Content-Disposition', 'inline; filename="' + (doc.filename || doc.id) + '"');
+    res.send(doc.data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post('/api/audits/:id/stop', async (req, res) => {
@@ -86,7 +125,14 @@ app.post('/api/audits/:id/retry-step', async (req, res) => {
   try {
     const c = await db.getCase(req.params.id);
     if (!c) return res.status(404).json({ error: 'not_found' });
-    const ctx = { naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities, images: [] };
+    // Bij een retry van de identiteitsstap willen we een eerder geüpload
+    // KvK-document opnieuw laten meewegen, ook al wordt er nu niets nieuws
+    // geüpload — vandaar de opzoek in de persistente documents-tabel.
+    const storedKvk = await db.getLatestDocumentByKind(req.params.id, 'kvk').catch(() => null);
+    const ctx = {
+      naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities,
+      images: [], kvkDocument: storedKvk ? { data: storedKvk.data, mediaType: storedKvk.mimetype } : null
+    };
     await db.updateCase(req.params.id, { status: 'bezig', error: null });
     if (key !== 'reportA' && key !== 'reportB') {
       if (key === 'categorize') {

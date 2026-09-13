@@ -34,6 +34,22 @@ async function initSchema() {
       value JSONB NOT NULL
     );
   `);
+  // Geüploade brondocumenten (bv. een KvK-uittreksel als PDF) blijven hier
+  // persistent bewaard — voorheen werden uploads alleen transiet gebruikt
+  // tijdens de audit-run en daarna nergens opgeslagen.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL DEFAULT 'overig',
+      filename TEXT,
+      mimetype TEXT,
+      size_bytes INTEGER,
+      data BYTEA NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS documents_case_id_idx ON documents (case_id);`);
 }
 
 function rowToCase(row) {
@@ -132,4 +148,42 @@ async function updateStepStats(key, durationMs) {
   } catch (e) { /* stats zijn best-effort, zoals in de Artifact */ }
 }
 
-module.exports = { pool, initSchema, createCase, getCase, listCases, updateCase, mergePhaseData, getStepStats, updateStepStats };
+// Documenten: metadata + bytes apart ophaalbaar, zodat een lijstje tonen
+// (GET .../documents) niet meteen alle bestandsbytes over de lijn hoeft te sturen.
+async function addDocument(id, caseId, fields) {
+  const now = Date.now();
+  await pool.query(
+    `INSERT INTO documents (id, case_id, kind, filename, mimetype, size_bytes, data, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [id, caseId, fields.kind || 'overig', fields.filename || null, fields.mimetype || null, fields.buffer ? fields.buffer.length : 0, fields.buffer, now]
+  );
+}
+async function listDocuments(caseId) {
+  const { rows } = await pool.query(
+    'SELECT id, kind, filename, mimetype, size_bytes, created_at FROM documents WHERE case_id = $1 ORDER BY created_at ASC',
+    [caseId]
+  );
+  return rows.map((r) => ({ id: r.id, kind: r.kind, filename: r.filename, mimetype: r.mimetype, sizeBytes: r.size_bytes, createdAt: Number(r.created_at) }));
+}
+async function getDocument(id) {
+  const { rows } = await pool.query('SELECT * FROM documents WHERE id = $1', [id]);
+  const r = rows[0];
+  if (!r) return null;
+  return { id: r.id, caseId: r.case_id, kind: r.kind, filename: r.filename, mimetype: r.mimetype, sizeBytes: r.size_bytes, data: r.data, createdAt: Number(r.created_at) };
+}
+// Handig voor de pipeline: het meest recente document van een bepaalde soort
+// (bv. 'kvk'), als base64 klaar om naar Claude te sturen.
+async function getLatestDocumentByKind(caseId, kind) {
+  const { rows } = await pool.query(
+    'SELECT * FROM documents WHERE case_id = $1 AND kind = $2 ORDER BY created_at DESC LIMIT 1',
+    [caseId, kind]
+  );
+  const r = rows[0];
+  if (!r) return null;
+  return { id: r.id, filename: r.filename, mimetype: r.mimetype, data: r.data.toString('base64') };
+}
+
+module.exports = {
+  pool, initSchema, createCase, getCase, listCases, updateCase, mergePhaseData, getStepStats, updateStepStats,
+  addDocument, listDocuments, getDocument, getLatestDocumentByKind
+};
