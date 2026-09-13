@@ -7,21 +7,45 @@
 
 const BASE = 'https://api.tavily.com';
 
+// Zonder eigen timeout kan een enkele vastgelopen Tavily-call de hele audit
+// voor onbepaalde tijd laten hangen: fetch() zonder AbortController wacht
+// oneindig door als het verzoek nooit een response (of netwerkfout) krijgt,
+// en de await in tavilySearch/tavilyExtract/tavilyResearch — en dus in
+// runAudit — blokkeert dan voor altijd zonder dat de catch in runAudit ooit
+// bereikt wordt (case blijft 'bezig' vastzitten op de stap die net loopt).
+// Vandaar: elk verzoek krijgt een harde deadline via AbortController, zodat
+// een stalled call altijd binnen TAVILY_TIMEOUT_MS als fout naar boven komt
+// en de bestaande per-query/per-stap foutafhandeling hieronder gewoon kan
+// doen waar die voor gebouwd is (record de fout, ga door).
+const TIMEOUT_MS = Number(process.env.TAVILY_TIMEOUT_MS) || 30000;
+
 async function tavilyFetch(path, body) {
-  const res = await fetch(BASE + path, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + process.env.TAVILY_API_KEY
-    },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const err = new Error('tavily_' + path.replace('/', '') + '_failed: HTTP ' + res.status);
-    err.status = res.status;
-    throw err;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(BASE + path, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + process.env.TAVILY_API_KEY
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      const err = new Error('tavily_' + path.replace('/', '') + '_failed: HTTP ' + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    return await res.json();
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error('tavily_' + path.replace('/', '') + '_timeout: geen antwoord binnen ' + TIMEOUT_MS + 'ms');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return res.json();
 }
 
 async function tavilySearch(queries) {

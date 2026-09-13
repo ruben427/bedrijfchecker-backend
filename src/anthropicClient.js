@@ -5,7 +5,14 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Expliciete timeout i.p.v. de SDK-default (10 minuten): dat is bounded dus
+// geen oneindige hang zoals bij tavilyClient, maar 10 minuten "vast" op een
+// stap voelt voor Ruben nog steeds als hangen. 2 minuten is ruim voor een
+// enkele JSON-samplecall; instelbaar via ANTHROPIC_TIMEOUT_MS.
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  timeout: Number(process.env.ANTHROPIC_TIMEOUT_MS) || 120000
+});
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
 function extractJson(text) {
