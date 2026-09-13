@@ -77,7 +77,10 @@ app.post('/api/audits/:id/stop', async (req, res) => {
 });
 
 // Herstart één specifieke stap (bijv. na een fout), zonder de hele audit
-// opnieuw te draaien.
+// opnieuw te draaien. Zelfde cascade als de oude Artifact-client (runFromStep):
+// een onderzoeksstap trekt altijd categorize + de engine + een volledige
+// hersynthese achter zich aan, anders raken categorybeoordeling en rapport
+// verouderd t.o.v. de net vernieuwde brondata.
 app.post('/api/audits/:id/retry-step', async (req, res) => {
   const { key } = req.body || {};
   try {
@@ -85,17 +88,20 @@ app.post('/api/audits/:id/retry-step', async (req, res) => {
     if (!c) return res.status(404).json({ error: 'not_found' });
     const ctx = { naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities, images: [] };
     await db.updateCase(req.params.id, { status: 'bezig', error: null });
-    if (pipeline.RESEARCH_STEP_KEYS.includes(key)) {
-      await pipeline.runResearchStep(req.params.id, ctx, key);
-    } else if (key === 'categorize') {
-      await pipeline.runCategorize(req.params.id, ctx);
-    } else if (key === 'reportA' || key === 'reportB') {
-      await pipeline.runSynthesis(req.params.id, ctx);
+    if (key !== 'reportA' && key !== 'reportB') {
+      if (key === 'categorize') {
+        await pipeline.runCategorize(req.params.id, ctx);
+      } else if (pipeline.RESEARCH_STEP_KEYS.includes(key)) {
+        await pipeline.runResearchStep(req.params.id, ctx, key);
+        await pipeline.runCategorize(req.params.id, ctx);
+      }
     }
     await pipeline.applyScoringEngine(req.params.id);
+    await pipeline.runSynthesis(req.params.id, ctx);
     await db.updateCase(req.params.id, { status: 'klaar' });
     res.json({ case: await db.getCase(req.params.id) });
   } catch (e) {
+    await db.updateCase(req.params.id, { status: 'fout', error: (e && e.message) || 'onbekende fout' }).catch(() => {});
     res.status(500).json({ error: e.message });
   }
 });
