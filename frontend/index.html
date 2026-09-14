@@ -373,7 +373,6 @@
       '<h1>Gratis basischeck<br>voor peptide- en research-chemicalsleveranciers</h1>' +
       '<div class="hero-tag">' +
         '<p>Geen account, geen upload. Je krijgt direct een eerlijk rapport over wat wél en niet te verifiëren is.</p>' +
-        '<p>Vul je e-mailadres in en je bent één van de eerste die van ons hoort.</p>' +
       '</div>' +
       '</section>';
 
@@ -390,14 +389,15 @@
     var consentErr = state.signupErrorField === 'consent';
     var emailErr = state.signupErrorField === 'email';
     return '<div class="signup-card">' +
-      '<label class="consent-row" for="f-consent">' +
-        '<input type="checkbox" id="f-consent" class="consent-checkbox' + (consentErr?' has-error':'') + '" ' + (state.signupConsent?'checked ':'') + (submitting?'disabled':'') + '>' +
-        '<span class="consent-label">Ik ga akkoord dat mijn e-mailadres eenmalig gebruikt wordt om mij te laten weten wanneer deze tool beschikbaar is.</span>' +
-      '</label>' +
-      '<div class="signup-form">' +
+      '<p class="signup-label">Vul je e-mailadres in en je bent één van de eerste die van ons hoort.</p>' +
+      '<div class="signup-fields">' +
         '<input type="email" id="f-email" class="signup-input' + (emailErr?' has-error':'') + '" value="' + escapeHtml(email) + '" placeholder="E-mail adres" autocomplete="email" ' + (submitting?'disabled':'') + '>' +
-        '<button type="button" class="signup-btn" id="signup-submit" ' + (submitting ? 'disabled' : '') + '><span>' + (submitting ? 'Versturen…' : 'Zet mij op de lijst') + '</span></button>' +
+        '<label class="consent-row" for="f-consent">' +
+          '<input type="checkbox" id="f-consent" class="consent-checkbox' + (consentErr?' has-error':'') + '" ' + (state.signupConsent?'checked ':'') + (submitting?'disabled':'') + '>' +
+          '<span class="consent-label">Ik ga akkoord dat mijn e-mailadres eenmalig gebruikt wordt om mij te laten weten wanneer deze tool beschikbaar is.</span>' +
+        '</label>' +
       '</div>' +
+      '<button type="button" class="signup-btn" id="signup-submit" ' + (submitting ? 'disabled' : '') + '><span>' + (submitting ? 'Versturen…' : 'Zet mij op de lijst') + '</span></button>' +
       (state.signupError ? '<div class="field-error">' + escapeHtml(state.signupError) + '</div>' : '') +
       '</div>';
   }
