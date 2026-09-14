@@ -13,6 +13,8 @@
 // Voor alles daarbuiten — een direct linkbare PDF of afbeelding — voegt dit
 // wel echte documentbytes toe in plaats van alleen een Tavily-snippet.
 
+const { isPublicHttpUrl } = require('./urlGuard');
+
 const TIMEOUT_MS = Number(process.env.DOC_FETCH_TIMEOUT_MS) || 20000;
 const MAX_BYTES = Number(process.env.DOC_FETCH_MAX_BYTES) || 15 * 1024 * 1024;
 
@@ -29,6 +31,7 @@ function guessMediaType(url, contentType) {
 
 async function fetchRemoteDocument(url) {
   if (!url || !/^https?:\/\//i.test(url)) return null;
+  if (!isPublicHttpUrl(url).ok) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {

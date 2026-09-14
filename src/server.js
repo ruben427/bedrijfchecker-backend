@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const db = require('./db');
 const coaStore = require('./coaStore');
+const coaCrawler = require('./coaCrawler');
 const pipeline = require('./pipeline');
 const auth = require('./auth');
 const rl = require('./rateLimit');
@@ -64,6 +65,37 @@ app.get('/api/audits/:id', rl.read, auth.requireOwnerToken, caseAccess, (req, re
 // deze route een eigen, per-case deeltoken.
 app.get('/api/audits/:id/public', rl.read, auth.requireOwnerToken, caseAccess, (req, res) => {
   res.json({ case: publicCase(req.case) });
+});
+
+// Alleen de crawlstap tegen een lijst leverancierssites, zonder AI, zonder
+// case en zonder kosten. Bedoeld om te meten hoe vaak een shop een
+// server-side fetch blokkeert - dat bepaalt of de browserextensie nodig is.
+//
+// Geeft bewust geen pagina-inhoud terug, alleen of het lukte en waarom niet.
+// De SSRF-guard in src/urlGuard.js weigert interne adressen.
+app.post('/api/diagnostics/crawl', rl.caseAction, auth.requireOwnerToken, async (req, res) => {
+  try {
+    const sites = Array.isArray(req.body && req.body.websites) ? req.body.websites.slice(0, 15) : [];
+    if (!sites.length) return res.status(400).json({ error: 'geen_websites', message: 'Geef een lijst websites mee (max 15).' });
+    const resultaten = [];
+    for (const site of sites) {
+      const t0 = Date.now();
+      const r = await coaCrawler.crawlCoaIndex(String(site)).catch((e) => ({ documents: [], indexPages: [], notes: ['crawl mislukte: ' + ((e && e.message) || 'onbekend')], diagnose: [] }));
+      const redenen = {};
+      (r.diagnose || []).forEach((d) => { redenen[d.resultaat] = (redenen[d.resultaat] || 0) + 1; });
+      resultaten.push({
+        site: String(site),
+        documenten: (r.documents || []).length,
+        indexPaginas: r.indexPages || [],
+        redenen,
+        notities: r.notes || [],
+        duurMs: Date.now() - t0
+      });
+    }
+    res.json({ resultaten });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
 });
 
 // Start een nieuwe audit. multipart/form-data: velden website/naam/land/

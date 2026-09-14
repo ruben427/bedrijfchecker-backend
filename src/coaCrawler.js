@@ -12,6 +12,8 @@
 // of een blokkade levert een lege lijst met een reden op — nooit een fout die
 // de audit stopt.
 
+const { isPublicHttpUrl } = require('./urlGuard');
+
 const TIMEOUT_MS = Number(process.env.COA_CRAWL_TIMEOUT_MS) || 15000;
 const MAX_HTML_BYTES = Number(process.env.COA_CRAWL_MAX_HTML) || 3 * 1024 * 1024;
 const MAX_INDEX_PAGES = Number(process.env.COA_CRAWL_MAX_PAGES) || 4;
@@ -49,6 +51,8 @@ function withTimeout() {
 }
 
 async function fetchHtml(url) {
+  const veilig = isPublicHttpUrl(url);
+  if (!veilig.ok) return { fout: 'geweigerd: ' + veilig.reden };
   const t = withTimeout();
   try {
     const res = await fetch(url, {
