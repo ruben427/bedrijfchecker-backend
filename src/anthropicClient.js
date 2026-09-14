@@ -20,8 +20,14 @@ const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 // wat het model daadwerkelijk teruggaf. Vandaar: bij een parse-fout een
 // stuk van de ruwe modeloutput rond het probleem meesturen in de foutmelding
 // zelf, zodat die al zichtbaar is in de UI (case.error) zonder losse logs.
-function extractJson(text) {
-  if (!text) throw new Error('empty_response');
+//
+// "empty_response" gaf tot nu toe geen enkel aanknopingspunt (bv. de
+// categorize-fout die Ruben zag: "eerste poging: empty_response ||
+// herkansing: empty_response") — geen idee of het een lege modelreactie was,
+// een stop_reason als 'refusal', of iets anders. detail (optioneel, gezet
+// door sampleJson hieronder) geeft dat alsnog mee in de foutmelding zelf.
+function extractJson(text, detail) {
+  if (!text) throw new Error('empty_response' + (detail ? ' (' + detail + ')' : ''));
   let s = text.trim();
   // Strip een eventueel markdown-codeblok (```json ... ``` of ``` ... ```).
   const fence = s.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -70,7 +76,12 @@ async function sampleJson(prompt, opts) {
     messages: [{ role: 'user', content }]
   });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
-  return extractJson(text);
+  let detail;
+  if (!text) {
+    const blocks = (resp.content || []).map((b) => b.type + (typeof b.text === 'string' ? ':' + b.text.length + 'tekens' : '')).join(', ') || 'geen content-blocks';
+    detail = 'stop_reason: ' + (resp.stop_reason || 'onbekend') + ', content: [' + blocks + ']';
+  }
+  return extractJson(text, detail);
 }
 
 // opts.label (optioneel): welke stap/call dit is (bv. 'identiteit',
