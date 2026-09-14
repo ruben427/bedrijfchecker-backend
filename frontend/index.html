@@ -50,12 +50,13 @@
   var app = document.getElementById('app');
   var banner = document.getElementById('capability-banner');
 
-  // Free Supplier Evidence Check v1.1: gratis dekt vrijwel alles — publieke
-  // bedrijfsbasis, domein/website, elk lab, de volledige COA-dataset/audit,
-  // testscope, reputatie, toezicht, affiliates, tegenbewijs en tijdlijn.
-  // Alleen personen/netwerken/volledige registerhistorie (onderdeel 2) is
-  // Deep, en Deep zelf staat nog uit tot de KvK-koppeling er is: voorlopig
-  // dus geen betaalmuur, gewoon de volledige gratis check.
+  // Scherpgestelde FREE/DEEP-knip (14 sep): gratis draait alleen laboratorium
+  // + de volledige COA-dataset/-authenticiteit (precies wat de Free Evidence
+  // Score ook gebruikt: 60% COA + 40% LAB). Alle overige stappen hieronder
+  // (identiteit, domein, social/affiliates, reputatie, regelgeving,
+  // tegenbewijs) zijn Deep-scope en draaien pas na een bewuste "ga door"-klik
+  // op de betaalde Deep Dive — nog zonder betaalstraat ervoor.
+  var FREE_STEP_KEYS = ['laboratorium', 'coaDataset'];
   var STEP_DEFS = [
     { key:'identiteit', label:'Juridische identiteit' },
     { key:'domein', label:'Domein- en websitegeschiedenis' },
@@ -227,6 +228,12 @@
     if (!res.ok) throw new Error(data.error || 'Opnieuw proberen is mislukt (' + res.status + ')');
     return data.case;
   }
+  async function apiContinueDeep(id){
+    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id) + '/continue-deep', { method:'POST' });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(data.message || data.error || 'Starten van de Deep Dive is mislukt (' + res.status + ')');
+    return data.case;
+  }
 
   function renderBanner(){
     if (!state.apiError){ banner.innerHTML=''; return; }
@@ -348,7 +355,7 @@
           '<div class="file-list"><div class="file-item"><span>' + escapeHtml(state.startKvkFile.name) + ' <span class="hint mono">(' + Math.round(state.startKvkFile.size/1024) + ' kB)</span></span>' +
           '<button type="button" id="wiz-remove-kvk">Verwijderen</button></div></div>' : '') +
       '</div>' +
-      '<p class="hero-card-note">Dit is de gratis Evidence Check: juridische basisidentiteit, domein- en websitegeschiedenis, laboratorium, de volledige COA-dataset en -authenticiteit, social media/affiliates, reputatie, regelgeving/toezicht en tegenbewijs. Duurt doorgaans enkele minuten, met live voortgang.</p>' +
+      '<p class="hero-card-note">Dit is de gratis Evidence Check: laboratorium en de volledige COA-dataset en -authenticiteit van deze leverancier. Duurt doorgaans enkele minuten, met live voortgang. Een betaalde Deep Dive (leverancier zelf: bedrijfsidentiteit, eigenaren/bestuurders, regelgeving) kun je daarna starten.</p>' +
       '</div></div>';
 
     var auditsCard = '';
@@ -358,7 +365,7 @@
         if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
         else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
         else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
-        else if (c.status === 'klaar'){
+        else if (c.status === 'klaar' || c.status === 'gratis_klaar'){
           var n = (c.report && c.report.rodeVlaggen && c.report.rodeVlaggen.length) || 0;
           var es = c.engineResult && c.engineResult.evidenceScore;
           if (n > 0){
@@ -370,6 +377,8 @@
           } else {
             chip = '<span class="chip ok">Geen rode vlaggen</span>';
           }
+          if (c.status === 'gratis_klaar') chip += ' <span class="chip grey">Gratis</span>';
+          else if (c.tier === 'deep') chip += ' <span class="chip grey">Deep Dive</span>';
         }
         return '<button type="button" class="audit-row" data-id="' + c.id + '">' +
           '<span class="left"><span class="name">' + escapeHtml(c.naam) + '</span>' +
@@ -482,7 +491,8 @@
     if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
     else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
     else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
-    else if (c.status === 'klaar') chip = '<span class="chip ok">Klaar</span>';
+    else if (c.status === 'gratis_klaar') chip = '<span class="chip ok">Gratis check klaar</span>';
+    else if (c.status === 'klaar') chip = '<span class="chip ok">' + (c.tier === 'deep' ? 'Deep Dive klaar' : 'Klaar') + '</span>';
 
     var html = '<button class="btn ghost" id="back-to-dash">&larr; Terug naar overzicht</button>';
     html += '<div class="detail-head"><div><h2>' + escapeHtml(c.naam) + '</h2>' +
@@ -505,8 +515,13 @@
         '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
       if (c.progress && c.progress.length) html += renderProgress(c);
     }
-    if (c.status === 'klaar' && c.report){
+    if ((c.status === 'klaar' || c.status === 'gratis_klaar') && c.report){
       html += renderReport(c);
+      if (c.status === 'gratis_klaar'){
+        html += '<section class="report-block"><h3>Meer weten over deze leverancier?</h3>' +
+          '<p style="color:var(--text-muted);">De gratis Evidence Check is klaar. Een betaalde Deep Dive (&euro;1,95) onderzoekt ook de leverancier zelf: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p>' +
+          '<button type="button" class="btn-cta" id="continue-deep">Start Deep Dive (nog zonder betaalstraat)</button></section>';
+      }
       html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';
       html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren (nieuwe audit)</button></div>';
     }
@@ -518,6 +533,19 @@
     // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
     // draaien; dit start een nieuwe audit voor dezelfde leverancier.
     if (retryBtn) retryBtn.addEventListener('click', function(){ retryAsNewAudit(c); });
+    var continueBtn = app.querySelector('#continue-deep');
+    if (continueBtn) continueBtn.addEventListener('click', function(){
+      continueBtn.disabled = true; continueBtn.textContent = 'Starten…';
+      apiContinueDeep(c.id).then(function(updated){
+        if (state.currentCaseId !== c.id) return;
+        state.currentCase = updated;
+        render();
+        if (updated.status === 'bezig') ensureCasePoller(c.id);
+      }).catch(function(e){
+        continueBtn.disabled = false; continueBtn.textContent = 'Start Deep Dive (nog zonder betaalstraat)';
+        alert('Starten van de Deep Dive is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+      });
+    });
     var stopBtn = app.querySelector('#stop-audit');
     if (stopBtn) stopBtn.addEventListener('click', function(){
       stopBtn.disabled = true; stopBtn.textContent = 'Stoppen…';
@@ -563,6 +591,8 @@
           ' &middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span>';
       } else if (stepStats && stepStats[s.key]){
         hint = '<span class="step-hint">gemiddeld ' + fmtDuration(stepStats[s.key].avgMs) + '</span>';
+      } else if (!done && FREE_STEP_KEYS.indexOf(s.key) === -1 && s.key !== 'categorize' && s.key !== 'reportA' && s.key !== 'reportB' && c.status !== 'bezig'){
+        hint = '<span class="step-hint">onderdeel van Deep Dive</span>';
       }
       var retryBtn = (done && allowRetry && !running) ? '<button type="button" class="step-retry btn ghost" data-key="' + s.key + '">opnieuw</button>' : '';
       return '<div class="progress-item ' + cls + '"><span class="dot"></span><span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
@@ -605,11 +635,12 @@
       '<p style="margin-top:8px;color:var(--text-muted);">' + escapeHtml(note) + ' (' + gate.foundCount + ' COA gevonden, ' + gate.usableCount + ' bruikbaar.)</p></div>';
   }
 
-  function renderCategoryGrid(engine){
+  function renderCategoryGrid(engine, tier){
     if (!engine || !engine.assessments) return '';
     var pillarMeta = {
       COA: 'COA & productbewijs', LAB: 'Laboratorium',
-      COMPANY: 'Bedrijf (grotendeels Deep-scope, buiten de gratis check)', REPUTATION: 'Reputatie & commerciële transparantie'
+      COMPANY: tier === 'deep' ? 'Bedrijf' : 'Bedrijf (Deep-scope, buiten de gratis check)',
+      REPUTATION: 'Reputatie & commerciële transparantie'
     };
     var out = '<section class="report-block"><h3>Bewijscategorieën</h3>';
     PILLARS.forEach(function(pillar){
@@ -649,6 +680,16 @@
     return out;
   }
 
+  function renderSupplierScoreBlock(engine, tier){
+    if (tier !== 'deep' || !engine || !engine.deep || engine.deep.value == null) return '';
+    var d = engine.deep;
+    return '<section class="report-block"><h3>Supplier Score (Deep Dive)</h3>' +
+      '<div class="score-tile" style="max-width:260px;"><div class="label">Supplier Score</div>' +
+      '<span class="chip ok" style="font-size:1.1rem;">' + d.value + ' / 100</span>' +
+      '<div class="note">Coverage: ' + Math.round(d.coverage) + '%. Samengesteld uit 45% COA, 30% laboratorium, 15% bedrijf/regelgeving, 10% reputatie/transparantie.</div></div>' +
+      '</section>';
+  }
+
   function renderQuantityTable(coaRecords, engine){
     var withQty = (coaRecords||[]).filter(function(r){ return r.quantity && r.quantity.deviationPct != null; });
     if (!withQty.length) return '';
@@ -678,8 +719,9 @@
 
     var out = '';
     out += renderGateBanner(engine);
-    out += renderCategoryGrid(engine);
+    out += renderCategoryGrid(engine, c.tier);
     out += renderEvidenceScoreBlock(engine);
+    out += renderSupplierScoreBlock(engine, c.tier);
     out += renderQuantityTable(coaRecords, engine);
 
     out += '<section class="report-block"><h3>Executive summary</h3><p>' + escapeHtml(r.executiveSummary||'') + '</p></section>';
@@ -721,10 +763,15 @@
         '</div></section>';
     }
 
-    out += '<section class="report-block"><h3>Vervolgonderzoek (binnenkort beschikbaar)</h3>' +
-      '<p style="color:var(--text-muted);">Dit is de gratis Evidence Check: alle bewijscategorieën hierboven, inclusief de volledige COA-dataset, laboratorium, reputatie en tegenbewijs. Een betaalde Deep Dive voegt alleen nog toe: officiële KvK/registerverificatie, eigenaren/bestuurders met rollen, bedrijfshistorie en zakelijke relaties. Dat vereist eerst een eigen koppeling met het Handelsregister en is nog niet actief.</p></section>';
+    if (c.tier !== 'deep'){
+      out += '<section class="report-block"><h3>Vervolgonderzoek</h3>' +
+        '<p style="color:var(--text-muted);">Dit is de gratis Evidence Check: laboratorium en de volledige COA-dataset en -authenticiteit. Een betaalde Deep Dive voegt de leverancier zelf toe: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p></section>';
+    }
 
-    out += '<p class="disclaimer">Dit rapport is de gratis basischeck, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik. Een ontbrekend KvK-uittreksel verlaagt geen enkele score automatisch.</p>';
+    out += '<p class="disclaimer">' + (c.tier === 'deep'
+      ? 'Dit rapport is de betaalde Deep Dive, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik.'
+      : 'Dit rapport is de gratis Evidence Check, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik. Een ontbrekend KvK-uittreksel verlaagt geen enkele score automatisch.') +
+      '</p>';
     return out;
   }
 

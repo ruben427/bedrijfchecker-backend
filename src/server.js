@@ -93,7 +93,9 @@ app.post('/api/audits', uploadFields, async (req, res) => {
 
   // Fire-and-forget: de audit draait op de achtergrond, de client volgt
   // voortgang via GET /api/audits/:id (polling), net als in de Artifact.
-  pipeline.runAudit(id, ctx).catch(() => {});
+  // Draait alleen de gratis stappen (laboratorium + coaDataset) — de knip
+  // tussen gratis en betaald, zie POST /api/audits/:id/continue-deep hieronder.
+  pipeline.runFreeTier(id, ctx).catch(() => {});
 
   res.status(201).json({ case: created });
 });
@@ -130,6 +132,32 @@ app.post('/api/audits/:id/stop', async (req, res) => {
   }
 });
 
+// Ga door naar de betaalde Deep Dive voor een case waarvan de gratis check
+// klaar is. Nog GEEN betaalstraat hier (Ruben: "zonder betaalstraat nog, maar
+// dus wel de knip") — dit is puur het vervolgtraject zelf, klaar om er later
+// een betaalmoment vóór te zetten. Draait de resterende DEEP_STEP_KEYS boven
+// op dezelfde case (zelfde fasegegevens blijven staan) en herberekent daarna
+// categorize/engine/rapport in "deep"-stand.
+app.post('/api/audits/:id/continue-deep', async (req, res) => {
+  try {
+    const c = await db.getCase(req.params.id);
+    if (!c) return res.status(404).json({ error: 'not_found' });
+    if (c.status !== 'gratis_klaar') {
+      return res.status(409).json({ error: 'invalid_state', message: 'Deze audit staat niet klaar om verdiept te worden.' });
+    }
+    const storedKvk = await db.getLatestDocumentByKind(req.params.id, 'kvk').catch(() => null);
+    const ctx = {
+      naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities,
+      images: [], kvkDocument: storedKvk ? { data: storedKvk.data, mediaType: storedKvk.mimetype } : null
+    };
+    await db.updateCase(req.params.id, { status: 'bezig', tier: 'deep', error: null });
+    pipeline.runDeepTier(req.params.id, ctx).catch(() => {});
+    res.json({ case: await db.getCase(req.params.id) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Herstart één specifieke stap (bijv. na een fout), zonder de hele audit
 // opnieuw te draaien. Zelfde cascade als de oude Artifact-client (runFromStep):
 // een onderzoeksstap trekt altijd categorize + de engine + een volledige
@@ -148,18 +176,25 @@ app.post('/api/audits/:id/retry-step', async (req, res) => {
       naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities,
       images: [], kvkDocument: storedKvk ? { data: storedKvk.data, mediaType: storedKvk.mimetype } : null
     };
+    // Welke tier deze case al bereikt heeft bepaalt welke categorize/rapport-
+    // prompt hoort te draaien (gratis blijft "buiten scope"-taal gebruiken
+    // voor B02 e.d., deep beoordeelt alles volledig) en welke status hierna
+    // weer moet gelden — nooit zomaar 'klaar', anders lijkt een gratis case
+    // ineens de Deep Dive gehad te hebben.
+    const tier = c.tier === 'deep' ? 'deep' : 'gratis';
+    const doneStatus = tier === 'deep' ? 'klaar' : 'gratis_klaar';
     await db.updateCase(req.params.id, { status: 'bezig', error: null });
     if (key !== 'reportA' && key !== 'reportB') {
       if (key === 'categorize') {
-        await pipeline.runCategorize(req.params.id, ctx);
+        await pipeline.runCategorize(req.params.id, ctx, tier);
       } else if (pipeline.RESEARCH_STEP_KEYS.includes(key)) {
         await pipeline.runResearchStep(req.params.id, ctx, key);
-        await pipeline.runCategorize(req.params.id, ctx);
+        await pipeline.runCategorize(req.params.id, ctx, tier);
       }
     }
     await pipeline.applyScoringEngine(req.params.id);
-    await pipeline.runSynthesis(req.params.id, ctx);
-    await db.updateCase(req.params.id, { status: 'klaar' });
+    await pipeline.runSynthesis(req.params.id, ctx, tier);
+    await db.updateCase(req.params.id, { status: doneStatus });
     res.json({ case: await db.getCase(req.params.id) });
   } catch (e) {
     await db.updateCase(req.params.id, { status: 'fout', error: (e && e.message) || 'onbekende fout' }).catch(() => {});

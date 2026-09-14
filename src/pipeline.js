@@ -43,6 +43,15 @@ const STEP_DEFS = [
 ];
 const RESEARCH_STEP_KEYS = ['identiteit', 'domein', 'laboratorium', 'coaDataset', 'socialAffiliates', 'reputatie', 'regelgeving', 'tegenbewijs'];
 
+// De knip tussen gratis en betaald (14 sep): FREE draait alleen de stappen
+// die freeEvidenceScore ook daadwerkelijk gebruikt (60% COA + 40% LAB, zie
+// scoringEngine.js) — precies wat in het projectdocument als "FREE ≈
+// coaDataset + laboratorium" is vastgelegd. Alle overige onderzoeksstappen
+// (incl. identiteit/KvK, nog niet gesplitst in een lichte/zware variant)
+// draaien pas als de gebruiker bewust doorgaat naar de Deep Dive.
+const FREE_STEP_KEYS = ['laboratorium', 'coaDataset'];
+const DEEP_STEP_KEYS = RESEARCH_STEP_KEYS.filter((k) => FREE_STEP_KEYS.indexOf(k) === -1);
+
 function stepLabel(key) {
   const d = STEP_DEFS.find((s) => s.key === key);
   return d ? d.label : key;
@@ -277,14 +286,17 @@ async function runResearchStep(caseId, ctx, key) {
   await finishStep(caseId, key, startedAt);
 }
 
-async function runCategorize(caseId, ctx) {
+async function runCategorize(caseId, ctx, tier) {
   const startedAt = Date.now();
   await beginStep(caseId, 'categorize');
   const c = await db.getCase(caseId);
   const phaseData = c.phaseData || {};
   const slimPhases = trimPhasesForPrompt(phaseData);
   const coaRecords = (phaseData.coaDataset && phaseData.coaDataset.data && phaseData.coaDataset.data.coaRecords) || [];
-  const prompt = EVIDENCE_RULES + '\n\nWijs voor leverancier ' + ctx.naam + ' (' + ctx.website + ') een kleur en onderbouwing toe aan elk van de 17 vaste categorieën, uitsluitend gegrond op de aangeleverde fasegegevens. Gebruik exact: "green" (sterk/goed verifieerbaar), "orange" (beoordeelbaar met aandachtspunten), "red" (concreet aantoonbaar probleem, nooit alleen wegens ontbrekende informatie), "white" (onvoldoende informatie). Voor C02 (Identity), C03 (Purity), C04 (Quantity): zet independentlyAssessable op false als de ENIGE analytische onderbouwing van onvoldoende onafhankelijk verifieerbare labs komt (bijv. alleen het lab zelf, geen externe verificatie) — de score-engine zet die dan automatisch op wit. B02 (Eigenaren/bestuurders) hoort bij Deep en blijft in deze gratis check "white" met reden "buiten scope van de gratis check", tenzij een van de fasegegevens toevallig al een bestuurder/eigenaar noemt. Beoordeel ook adequacy: kunnen authenticiteit, identiteit en monster-naar-rapport-naar-verkochte-batch inhoudelijk beoordeeld worden (adequacy.coa), en zijn de relevante labs/rapporten onafhankelijk voldoende verifieerbaar (adequacy.lab)? Geef bij elke categorie een korte (1-2 zinnen) onderbouwing.\n\n' +
+  const b02Note = tier === 'deep'
+    ? 'Beoordeel B02 (Eigenaren/bestuurders) net als de andere categorieën inhoudelijk, op basis van de aangeleverde fasegegevens (identiteitsstap, eventueel KvK-uittreksel).'
+    : 'B02 (Eigenaren/bestuurders) hoort bij Deep en blijft in deze gratis check "white" met reden "buiten scope van de gratis check", tenzij een van de fasegegevens toevallig al een bestuurder/eigenaar noemt.';
+  const prompt = EVIDENCE_RULES + '\n\nWijs voor leverancier ' + ctx.naam + ' (' + ctx.website + ') een kleur en onderbouwing toe aan elk van de 17 vaste categorieën, uitsluitend gegrond op de aangeleverde fasegegevens. Gebruik exact: "green" (sterk/goed verifieerbaar), "orange" (beoordeelbaar met aandachtspunten), "red" (concreet aantoonbaar probleem, nooit alleen wegens ontbrekende informatie), "white" (onvoldoende informatie). Voor C02 (Identity), C03 (Purity), C04 (Quantity): zet independentlyAssessable op false als de ENIGE analytische onderbouwing van onvoldoende onafhankelijk verifieerbare labs komt (bijv. alleen het lab zelf, geen externe verificatie) — de score-engine zet die dan automatisch op wit. ' + b02Note + ' Beoordeel ook adequacy: kunnen authenticiteit, identiteit en monster-naar-rapport-naar-verkochte-batch inhoudelijk beoordeeld worden (adequacy.coa), en zijn de relevante labs/rapporten onafhankelijk voldoende verifieerbaar (adequacy.lab)? Geef bij elke categorie een korte (1-2 zinnen) onderbouwing.\n\n' +
     'Samengevatte fasegegevens (JSON):\n' + JSON.stringify(slimPhases) + '\n\n' +
     'Ruwe COA-dataset (JSON, voor C01-C09):\n' + JSON.stringify(trimList(coaRecords, 12, 400)) + '\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"categories":{"C01":{"color":string,"rationale":string},"C02":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C03":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C04":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C05":{"color":string,"rationale":string},"C06":{"color":string,"rationale":string},"C07":{"color":string,"rationale":string},"C08":{"color":string,"rationale":string},"C09":{"color":string,"rationale":string},"L01":{"color":string,"rationale":string},"B01":{"color":string,"rationale":string},"B02":{"color":string,"rationale":string},"B03":{"color":string,"rationale":string},"B04":{"color":string,"rationale":string},"B05":{"color":string,"rationale":string},"R01":{"color":string,"rationale":string},"R02":{"color":string,"rationale":string}},"adequacy":{"coa":boolean|null,"lab":boolean|null,"rationale":string}}';
@@ -301,26 +313,37 @@ async function applyScoringEngine(caseId) {
   return engineResult;
 }
 
-async function runSynthesis(caseId, ctx) {
+async function runSynthesis(caseId, ctx, tier) {
   const c = await db.getCase(caseId);
   const phaseData = c.phaseData || {};
   const slimJson = JSON.stringify(trimPhasesForPrompt(phaseData));
   const categorySummary = JSON.stringify(c.categoryAssessments || {});
-  const engineSummary = JSON.stringify({
-    gate: c.engineResult && c.engineResult.gate,
-    evidenceScore: c.engineResult && c.engineResult.evidenceScore && {
-      published: c.engineResult.evidenceScore.published, value: c.engineResult.evidenceScore.value,
-      coverage: c.engineResult.evidenceScore.coverage, reason: c.engineResult.evidenceScore.reason
-    }
-  });
+  const engineSummary = JSON.stringify(Object.assign(
+    {
+      gate: c.engineResult && c.engineResult.gate,
+      evidenceScore: c.engineResult && c.engineResult.evidenceScore && {
+        published: c.engineResult.evidenceScore.published, value: c.engineResult.evidenceScore.value,
+        coverage: c.engineResult.evidenceScore.coverage, reason: c.engineResult.evidenceScore.reason
+      }
+    },
+    tier === 'deep' ? {
+      supplierScore: c.engineResult && c.engineResult.deep && {
+        value: c.engineResult.deep.value, coverage: c.engineResult.deep.coverage
+      }
+    } : {}
+  ));
   const contextHeader = EVIDENCE_RULES + '\n\nSamengevatte per-fase bevindingen voor leverancier ' + ctx.naam + ' (' + ctx.website + '), JSON:\n' + slimJson + '\n\n' +
     'Reeds vastgestelde categoriebeoordelingen (kleur/onderbouwing per categorie, door een eerdere stap bepaald, JSON):\n' + categorySummary + '\n\n' +
     'Reeds berekende gate/score (deterministisch, niet herinterpreteren of een eigen score noemen, JSON):\n' + engineSummary + '\n\n';
 
+  const scopeNote = tier === 'deep'
+    ? 'Dit is de betaalde Deep Dive: naast het productbewijs is nu ook de leverancier zelf onderzocht (bedrijfsidentiteit, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn, regelgeving/toezicht). Beoordeel dit volledig mee, inclusief eventuele rode vlaggen die daaruit blijken.'
+    : 'Een ontbrekend KvK-uittreksel of B02 (eigenaren/bestuurders, dat is Deep-scope) is nooit op zichzelf reden voor een rode vlag of aandachtspunt in deze gratis check.';
+
   const startedA = Date.now();
   await beginStep(caseId, 'reportA');
   const promptA = contextHeader +
-    'Stel op basis hiervan het EERSTE deel van het tussenrapport samen: een narratieve duiding van de al vastgestelde categoriebeoordelingen en gate/score, GEEN eigen scorekaart of cijfer. Noem geen percentage of score die niet letterlijk in de aangeleverde engine-uitkomst staat. Een ontbrekend KvK-uittreksel of B02 (eigenaren/bestuurders, dat is Deep-scope) is nooit op zichzelf reden voor een rode vlag of aandachtspunt in deze gratis check. Houd elk tekstveld kort (1-2 zinnen).\n\n' +
+    'Stel op basis hiervan het EERSTE deel van het tussenrapport samen: een narratieve duiding van de al vastgestelde categoriebeoordelingen en gate/score, GEEN eigen scorekaart of cijfer. Noem geen percentage of score die niet letterlijk in de aangeleverde engine-uitkomst staat. ' + scopeNote + ' Houd elk tekstveld kort (1-2 zinnen).\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"executiveSummary":string,"sterkstePositieveBevindingen":[string],"belangrijksteAandachtspunten":[string],"rodeVlaggen":[{"omschrijving":string,"bron":string}],"nietVerifieerbaar":[string],"documentanalyse":[{"omschrijving":string,"product":string,"batchnummer":string,"purity":string,"laboratorium":string}]}';
   const reportA = await sampleJsonSafe(promptA, { label: 'reportA' });
   await finishStep(caseId, 'reportA', startedA);
@@ -337,22 +360,25 @@ async function runSynthesis(caseId, ctx) {
   await db.updateCase(caseId, { report });
 }
 
-// Volledige pipeline vanaf nul: elke research-stap, dan categorize, dan de
-// engine, dan de narratieve synthese. Draait async (fire-and-forget vanuit
-// de route); de client volgt voortgang via GET /api/audits/:id.
-async function runAudit(caseId, ctx) {
+// Gratis tier: alleen FREE_STEP_KEYS (laboratorium + coaDataset), dan
+// categorize/engine/synthese in "gratis"-stand. Eindigt op status
+// 'gratis_klaar' (niet 'klaar') zodat de UI een bewuste "ga door naar Deep
+// Dive"-stap kan tonen in plaats van de audit als volledig afgerond te laten
+// lijken. Draait async (fire-and-forget vanuit de route); de client volgt
+// voortgang via GET /api/audits/:id.
+async function runFreeTier(caseId, ctx) {
   try {
-    for (const key of RESEARCH_STEP_KEYS) {
+    for (const key of FREE_STEP_KEYS) {
       await ensureNotStopped(caseId);
       await runResearchStep(caseId, ctx, key);
     }
     await ensureNotStopped(caseId);
-    await runCategorize(caseId, ctx);
+    await runCategorize(caseId, ctx, 'gratis');
     await ensureNotStopped(caseId);
     await applyScoringEngine(caseId);
     await ensureNotStopped(caseId);
-    await runSynthesis(caseId, ctx);
-    await db.updateCase(caseId, { status: 'klaar', currentStep: null });
+    await runSynthesis(caseId, ctx, 'gratis');
+    await db.updateCase(caseId, { status: 'gratis_klaar', tier: 'gratis', currentStep: null });
   } catch (e) {
     if (!e || !e.stopped) {
       await db.updateCase(caseId, { status: 'fout', error: (e && e.message) || 'onbekende fout', currentStep: null });
@@ -360,4 +386,32 @@ async function runAudit(caseId, ctx) {
   }
 }
 
-module.exports = { runAudit, runResearchStep, runCategorize, applyScoringEngine, runSynthesis, ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, STEP_DEFS };
+// Betaalde vervolgstap (nog zonder betaalstraat, zie server.js
+// /continue-deep): draait de resterende DEEP_STEP_KEYS boven op de al
+// aanwezige gratis fasegegevens van dezelfde case, en herberekent daarna
+// categorize/engine/synthese in "deep"-stand over de volledige, gecombineerde
+// dataset — dus geen apart "deep-rapport", hetzelfde rapport wordt verrijkt.
+async function runDeepTier(caseId, ctx) {
+  try {
+    for (const key of DEEP_STEP_KEYS) {
+      await ensureNotStopped(caseId);
+      await runResearchStep(caseId, ctx, key);
+    }
+    await ensureNotStopped(caseId);
+    await runCategorize(caseId, ctx, 'deep');
+    await ensureNotStopped(caseId);
+    await applyScoringEngine(caseId);
+    await ensureNotStopped(caseId);
+    await runSynthesis(caseId, ctx, 'deep');
+    await db.updateCase(caseId, { status: 'klaar', tier: 'deep', currentStep: null });
+  } catch (e) {
+    if (!e || !e.stopped) {
+      await db.updateCase(caseId, { status: 'fout', error: (e && e.message) || 'onbekende fout', currentStep: null });
+    }
+  }
+}
+
+module.exports = {
+  runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
+  ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS
+};

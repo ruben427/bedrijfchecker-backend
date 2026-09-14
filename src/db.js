@@ -16,6 +16,7 @@ async function initSchema() {
       kvk_nummer TEXT,
       notities TEXT,
       status TEXT NOT NULL DEFAULT 'bezig',
+      tier TEXT NOT NULL DEFAULT 'gratis',
       error TEXT,
       current_step JSONB,
       progress JSONB NOT NULL DEFAULT '[]',
@@ -28,6 +29,10 @@ async function initSchema() {
       updated_at BIGINT NOT NULL
     );
   `);
+  // CREATE TABLE IF NOT EXISTS voegt geen kolom toe aan een tabel die al
+  // bestaat (zoals in productie) — vandaar deze losse, idempotente migratie
+  // voor de nieuwe 'tier'-kolom (gratis/deep-knip, 14 sep).
+  await pool.query(`ALTER TABLE cases ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'gratis';`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS stats (
       key TEXT PRIMARY KEY,
@@ -62,6 +67,7 @@ function rowToCase(row) {
     kvkNummer: row.kvk_nummer,
     notities: row.notities,
     status: row.status,
+    tier: row.tier,
     error: row.error,
     currentStep: row.current_step,
     progress: row.progress || [],
@@ -99,7 +105,7 @@ async function listCases() {
 // net als de .update() van de Artifact's db-capability.
 const FIELD_COLUMN = {
   naam: 'naam', website: 'website', land: 'land', kvkNummer: 'kvk_nummer', notities: 'notities',
-  status: 'status', error: 'error', currentStep: 'current_step', progress: 'progress',
+  status: 'status', tier: 'tier', error: 'error', currentStep: 'current_step', progress: 'progress',
   categoryAssessments: 'category_assessments', adequacy: 'adequacy', engineResult: 'engine_result', report: 'report'
 };
 async function updateCase(id, patch) {
