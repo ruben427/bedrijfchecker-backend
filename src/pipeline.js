@@ -5,8 +5,15 @@
 
 const { sampleJsonSafe } = require('./anthropicClient');
 const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient');
+const { fetchRemoteDocument } = require('./docFetcher');
 const { runScoringEngine, computeQuantity } = require('./scoringEngine');
 const db = require('./db');
+
+// Hoeveel kandidaat-COA-URL's we per case maximaal automatisch proberen te
+// downloaden en te laten uitlezen. Elke poging is een extra fetch + een
+// Claude-call, dus bewust begrensd zodat één leverancier met veel
+// COA-vermeldingen de stap niet onnodig lang maakt.
+const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 4;
 
 const EVIDENCE_RULES = [
   'Je bent een kritische, neutrale onderzoeksassistent voor leveranciers-due-diligence van peptiden en research chemicals.',
@@ -186,6 +193,39 @@ async function runResearchStep(caseId, ctx, key) {
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
       const uploadedRecords = ((docData && docData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: null, uit: 'upload' }));
       records = records.concat(uploadedRecords);
+    }
+    // Automatisch ophalen: voor COA's die de AI zelf al aanwees met een
+    // bronUrl maar (nog) niet als 'readable' kon classificeren — vaak omdat
+    // Tavily alleen een tekst-snippet van de pagina teruggaf, niet de
+    // achterliggende PDF zelf — proberen we die PDF/afbeelding hier direct
+    // te downloaden en als echte documentbytes aan Claude voor te leggen.
+    // Zelfde mechanisme als het KvK-uittreksel-upload hierboven, alleen is
+    // de bron nu een automatisch gevonden URL i.p.v. een handmatige upload.
+    // Nooit fataal: een mislukte download of onleesbaar document laat de
+    // oorspronkelijke AI-inschatting gewoon staan.
+    const seenAutofetchUrls = new Set();
+    const autofetchCandidates = [];
+    records.forEach((r, idx) => {
+      if (!r || !r.bronUrl || r.accessStatus === 'readable') return;
+      if (seenAutofetchUrls.has(r.bronUrl)) return;
+      seenAutofetchUrls.add(r.bronUrl);
+      autofetchCandidates.push({ url: r.bronUrl, idx });
+    });
+    for (const { url, idx } of autofetchCandidates.slice(0, COA_AUTOFETCH_MAX)) {
+      const doc = await fetchRemoteDocument(url);
+      if (!doc) continue;
+      try {
+        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
+        const autofetchData = await sampleJsonSafe(autofetchPrompt, { documents: [doc], label: 'coaDataset-autofetch' });
+        const autofetchRecords = ((autofetchData && autofetchData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'auto-fetch' }));
+        if (autofetchRecords.length) {
+          records[idx] = autofetchRecords[0];
+          if (autofetchRecords.length > 1) records = records.concat(autofetchRecords.slice(1));
+        }
+      } catch (e) {
+        // Document kon niet gelezen worden (bv. kapotte/gescande PDF) — laat
+        // de oorspronkelijke AI-inschatting voor deze COA ongewijzigd staan.
+      }
     }
     records = records.map((r) => {
       const q = computeQuantity(
