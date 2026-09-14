@@ -27,6 +27,14 @@
   // werkt voor iedere bezoeker, ook zonder Claude-account.
   var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
 
+  // "Binnenkort"-wachtlijst (15 sep): Rubens Google Apps Script Web App
+  // (doPost schrijft naar een Google Sheet) — deployment-ID
+  // AKfycbzrDvGifU64lIE8lsCB3TtkiMKa5Az-spqPo8ZQ88EHVoadBLfaWfL4vL7y1qsGTsYn,
+  // versie 1, 14 sep 2026. Bij een nieuwe deployment-versie verandert deze
+  // URL niet vanzelf mee — pas 'm hier aan als Ruben opnieuw deployt met een
+  // andere Web-app-URL.
+  var SIGNUP_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzrDvGifU64lIE8lsCB3TtkiMKa5Az-spqPo8ZQ88EHVoadBLfaWfL4vL7y1qsGTsYn/exec';
+
   // ---------- app state ----------
   var state = {
     view: 'dashboard',      // dashboard | detail
@@ -40,7 +48,12 @@
     startUploadOpen: false,  // documenten-uploadvak: standaard ingeklapt, caret naar links
     startKvkFile: null,      // apart, want gaat naar de identiteitsstap i.p.v. de COA-stap
     startUrlError: null,
-    runningCaseIds: {},      // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
+    signupEmail: '',         // "binnenkort"-wachtlijst: ingevulde e-mail
+    signupConsent: false,    // akkoord-checkbox (verplicht vóór versturen)
+    signupError: null,
+    signupErrorField: null,  // 'consent' | 'email' | null — welk veld rood markeren
+    signupDone: false,
+    runningCaseIds: {},      // caseId (of '__new__'/'__signup__') -> true terwijl een call onderweg is
     runningStepKeys: {}      // caseId -> key van de stap die nu via "opnieuw" wordt herdraaid (voor renderProgress)
   };
 
@@ -273,7 +286,12 @@
   }
 
   // ---------- init ----------
+  // De "binnenkort"-wachtlijst (15 sep) heeft geen casedata nodig — meteen
+  // renderen i.p.v. eerst op apiListCases() te wachten, zodat bezoekers de
+  // pagina niet pas zien zodra de backend heeft geantwoord. De case-fetch
+  // blijft op de achtergrond lopen voor renderDashboardLive() (zie daar).
   async function initApp(){
+    render();
     try {
       state.cases = await apiListCases();
       state.apiError = null;
@@ -282,7 +300,6 @@
     }
     state.casesLoaded = true;
     renderBanner();
-    render();
   }
 
   // ---------- routing / render ----------
@@ -340,11 +357,151 @@
   var ICON_CHEVRON_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>';
   var ICON_STEP_DONE = '<svg viewBox="0 0 21 21" width="21" height="21"><circle cx="10.5" cy="10.5" r="10.5" fill="var(--ok)"/><path d="M6 10.7l3 3 6-6.8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-  // ---------- dashboard (landingspagina: direct starten + eerder gedraaide audits) ----------
-  // Naar het ontwerp van Anne's designsysteem in Figma: geen aparte wizard-stap
-  // meer, alles staat direct op de landingspagina. Het documenten-uploadvak
-  // staat standaard ingeklapt (caret naar links) en opent pas na een klik.
+  // ---------- dashboard (landingspagina) ----------
+  // "Binnenkort"-wachtlijst (Figma "UNDER CONSTRUCTION", 15 sep) — vervangt
+  // tijdelijk de homepage: geen live-tool meer zichtbaar, alleen een
+  // e-mailaanmelding. renderDashboardLive() hieronder is de vorige,
+  // volledig werkende hero+ladder-pagina — nog intact, alleen niet meer
+  // aangeroepen, zodat we in één regel kunnen terugschakelen zodra de tool
+  // weer open gaat.
+  var SIGNUP_FOOTER = '“Peptide Leverancier Checker” is een project van De Anne Methode. © 2026 De Anne Methode — alle rechten voorbehouden.';
+  var THANKS_LINK_URL = 'https://deannemethode.nl';
+
   function renderDashboard(){
+    var hero = '<section class="hero centered">' +
+      '<span class="eyebrow">Binnenkort</span>' +
+      '<h1>Gratis basischeck<br>voor peptide- en research-chemicalsleveranciers</h1>' +
+      '<div class="hero-tag">' +
+        '<p>Geen account, geen upload. Je krijgt direct een eerlijk rapport over wat wél en niet te verifiëren is.</p>' +
+        '<p>Vul je e-mailadres in en je bent één van de eerste die van ons hoort.</p>' +
+      '</div>' +
+      '</section>';
+
+    var card = state.signupDone ? renderThanksCard() : renderSignupCard();
+    var footer = '<p class="signup-footer">' + escapeHtml(SIGNUP_FOOTER) + '</p>';
+
+    app.innerHTML = hero + card + footer;
+    if (!state.signupDone) wireSignupEvents();
+  }
+
+  function renderSignupCard(){
+    var submitting = !!state.runningCaseIds['__signup__'];
+    var email = state.signupEmail || '';
+    var consentErr = state.signupErrorField === 'consent';
+    var emailErr = state.signupErrorField === 'email';
+    return '<div class="signup-card">' +
+      '<label class="consent-row" for="f-consent">' +
+        '<input type="checkbox" id="f-consent" class="consent-checkbox' + (consentErr?' has-error':'') + '" ' + (state.signupConsent?'checked ':'') + (submitting?'disabled':'') + '>' +
+        '<span class="consent-label">Ik ga akkoord dat mijn e-mailadres eenmalig gebruikt wordt om mij te laten weten wanneer deze tool beschikbaar is.</span>' +
+      '</label>' +
+      '<div class="signup-form">' +
+        '<input type="email" id="f-email" class="signup-input' + (emailErr?' has-error':'') + '" value="' + escapeHtml(email) + '" placeholder="E-mail adres" autocomplete="email" ' + (submitting?'disabled':'') + '>' +
+        '<button type="button" class="signup-btn" id="signup-submit" ' + (submitting ? 'disabled' : '') + '><span>' + (submitting ? 'Versturen…' : 'Zet mij op de lijst') + '</span></button>' +
+      '</div>' +
+      (state.signupError ? '<div class="field-error">' + escapeHtml(state.signupError) + '</div>' : '') +
+      '</div>';
+  }
+
+  function renderThanksCard(){
+    return '<div class="signup-card thanks-card">' +
+      '<h2 class="thanks-title">Bedankt voor je inschrijving.</h2>' +
+      '<p class="thanks-body">Zodra we live zijn ontvang je direct een mailtje met wat we hebben gebouwd.<br><br>Groeten<br>Annemarie</p>' +
+      '<a class="textlink" href="' + THANKS_LINK_URL + '" target="_blank" rel="noopener">Naar DeAnneMethode ' + ICON_CHEVRON + '</a>' +
+      '</div>';
+  }
+
+  function wireSignupEvents(){
+    var consentInput = app.querySelector('#f-consent');
+    if (consentInput){
+      consentInput.addEventListener('change', function(){
+        state.signupConsent = consentInput.checked;
+        if (state.signupErrorField === 'consent'){
+          state.signupError = null;
+          state.signupErrorField = null;
+          consentInput.classList.remove('has-error');
+          var err = app.querySelector('.field-error');
+          if (err) err.remove();
+        }
+      });
+    }
+    var input = app.querySelector('#f-email');
+    if (input){
+      input.addEventListener('input', function(){
+        state.signupEmail = input.value;
+        if (state.signupErrorField === 'email'){
+          state.signupError = null;
+          state.signupErrorField = null;
+          input.classList.remove('has-error');
+          var err = app.querySelector('.field-error');
+          if (err) err.remove();
+        }
+      });
+      input.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); submitSignup(); } });
+    }
+    var submitBtn = app.querySelector('#signup-submit');
+    if (submitBtn) submitBtn.addEventListener('click', submitSignup);
+  }
+
+  function isValidEmail(v){
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v||'').trim());
+  }
+
+  async function submitSignup(){
+    if (state.runningCaseIds['__signup__']) return;
+    var raw = state.signupEmail || '';
+    if (!state.signupConsent){
+      state.signupError = 'Vink het vakje aan om verder te gaan.';
+      state.signupErrorField = 'consent';
+      renderDashboard();
+      return;
+    }
+    if (!isValidEmail(raw)){
+      state.signupError = 'Vul een geldig e-mailadres in.';
+      state.signupErrorField = 'email';
+      renderDashboard();
+      var input = app.querySelector('#f-email');
+      if (input) input.focus();
+      return;
+    }
+    if (!SIGNUP_ENDPOINT){
+      state.signupError = 'De aanmeldlijst is nog niet gekoppeld. Probeer het later nog eens.';
+      state.signupErrorField = null;
+      renderDashboard();
+      return;
+    }
+    state.runningCaseIds['__signup__'] = true;
+    renderDashboard();
+    try {
+      // Form-encoded, niet JSON: Rubens doPost(e) leest e.parameter.email,
+      // en dat wordt alleen gevuld bij een application/x-www-form-urlencoded
+      // (of multipart/form-data) body — een JSON-body in een text/plain
+      // request laat e.parameter leeg. Apps Script Web Apps geven zonder
+      // extra CORS-configuratie ook geen leesbare response terug vanaf een
+      // ander domein — mode:'no-cors' voorkomt dat fetch daarop stukloopt.
+      // We gaan er daardoor van uit dat het gelukt is zodra fetch niet
+      // gooit; een fout aan Rubens kant (verkeerde URL, script niet
+      // gedeployed) zien we hier dus niet terug als foutmelding.
+      await fetch(SIGNUP_ENDPOINT, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'email=' + encodeURIComponent(raw.trim())
+      });
+      state.signupEmail = '';
+      state.signupConsent = false;
+      state.signupError = null;
+      state.signupErrorField = null;
+      state.signupDone = true;
+    } catch (e){
+      state.signupError = 'Versturen is niet gelukt. Probeer het straks nog eens.';
+      state.signupErrorField = null;
+    } finally {
+      delete state.runningCaseIds['__signup__'];
+      renderDashboard();
+    }
+  }
+
+  function renderDashboardLive(){
     if (!state.casesLoaded){
       app.innerHTML = '<p style="color:var(--text-muted)">Cases laden…</p>';
       return;
