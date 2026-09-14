@@ -161,3 +161,40 @@ Zichtbaar in `phaseData.coaDataset.data.archief`:
 
 Deze zijn alleen zichtbaar mét geschiedenis, en geschiedenis bouwt niet met
 terugwerkende kracht op — daarom staat dit vóór de leeslaag en de resolver.
+
+## COA-crawler (fase 1b)
+
+`src/coaCrawler.js` — vind de COA-bibliotheek van een leverancier
+deterministisch, in plaats van hem te laten raden.
+
+**Waarom.** Een testrun op `retaeu.nl` (14 sep) leverde via de AI-zoekstap
+**2** COA's op. Eén daarvan kwam van Scribd en had batchnummer `RET48901`,
+terwijl alle batches op retaeu's eigen pagina vijf cijfers hebben — bewijs van
+een andere leverancier dus, toegeschreven aan deze. Op
+`retaeu.nl/nl/certificate-of-analysis/` staan er **26**, netjes in een tabel.
+
+Zoekmachine-snippets zijn de verkeerde bron voor iets wat gewoon op de site
+staat. De crawler:
+
+1. haalt de homepage op en zoekt links die over certificaten gaan;
+2. probeert daarnaast een vaste lijst gebruikelijke paden
+   (`/certificate-of-analysis/`, `/coa/`, `/lab-results/`, …);
+3. pakt op elke gevonden pagina álle links naar PDF/PNG/JPG;
+4. neemt de tekst van de tabelrij mee als context — product, batch, purity en
+   labnaam zoals de leverancier ze zélf opgeeft.
+
+Die rijtekst is **geen bewijs**. Het is vergelijkingsmateriaal: wijkt de purity
+in de tabel af van die in het rapport, dan is dat een bevinding.
+
+**Twee valkuilen die zijn afgevangen.** COA-tabellen bevatten per rij ook een
+productfoto, en die is eveneens `.png` — verkleinde varianten (`-300x300`)
+vallen af, en afbeeldingen tellen alleen mee als de pagina helemaal geen
+aangelinkte documenten heeft. En een document dat gevonden maar niet
+opgehaald kan worden krijgt `accessStatus: 'inaccessible'`, niet `readable`:
+het bestaat wél, maar het is geen bruikbaar bewijs.
+
+`COA_AUTOFETCH_MAX` stond op **4** en staat nu op **30**. Met 4 zag je een
+willekeurige greep uit de bibliotheek en trok je er conclusies over de rest uit.
+
+De crawler gooit nooit. Geen COA-pagina, een blokkade of een time-out levert
+een lege lijst met een reden op in `phaseData.coaDataset.data.crawl`.

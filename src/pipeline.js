@@ -7,6 +7,7 @@ const { sampleJsonSafe } = require('./anthropicClient');
 const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient');
 const { fetchRemoteDocument } = require('./docFetcher');
 const coaStore = require('./coaStore');
+const coaCrawler = require('./coaCrawler');
 
 // Versie van de COA-leeslaag. Analyseresultaten worden gecachet op
 // (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
@@ -19,7 +20,7 @@ const db = require('./db');
 // downloaden en te laten uitlezen. Elke poging is een extra fetch + een
 // Claude-call, dus bewust begrensd zodat één leverancier met veel
 // COA-vermeldingen de stap niet onnodig lang maakt.
-const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 4;
+const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 30;
 
 const EVIDENCE_RULES = [
   'Je bent een kritische, neutrale onderzoeksassistent voor leveranciers-due-diligence van peptiden en research chemicals.',
@@ -203,6 +204,29 @@ async function runResearchStep(caseId, ctx, key) {
   if (key === 'coaDataset') {
     const phase = await runPhase(ctx, stepOpts('coaDataset', ctx));
     let records = (phase.data && phase.data.coaRecords) || [];
+
+    // Deterministische crawl van de eigen COA-bibliotheek van de leverancier.
+    // De AI-zoekstap hierboven leunt op zoekmachine-snippets en vindt daardoor
+    // een willekeurige greep - bij een testrun 2 documenten waarvan 1 van een
+    // andere leverancier, terwijl er 26 op de eigen site stonden. Deze stap
+    // haalt de site zelf op en pakt alles wat er werkelijk staat.
+    const crawl = await coaCrawler.crawlCoaIndex(ctx.website).catch(() => null);
+    const bestaandeBronnen = new Set(records.map((r) => r && r.bronUrl).filter(Boolean));
+    const crawlRecords = ((crawl && crawl.documents) || [])
+      .filter((d) => !bestaandeBronnen.has(d.url))
+      .map((d) => ({
+        product: null, batchnummer: null, purityPercent: null, laboratorium: null,
+        reportId: null, verificationKey: null, authenticiteitsklasse: null,
+        bronUrl: d.url,
+        accessStatus: 'pending',
+        uit: 'crawl',
+        // Rijtekst van de COA-tabel: product, batch, purity en labnaam zoals de
+        // leverancier ze zelf opgeeft. Nuttig als vergelijkingsmateriaal met wat
+        // er straks in het rapport zelf blijkt te staan - niet als bewijs.
+        geclaimdeContext: d.context || null,
+        gevondenOp: d.gevondenOp || null
+      }));
+    records = records.concat(crawlRecords);
     if (ctx.images && ctx.images.length) {
       const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
@@ -244,7 +268,12 @@ async function runResearchStep(caseId, ctx, key) {
       let observation = null;
       if (!cached) {
         doc = await fetchRemoteDocument(url);
-        if (!doc) continue;
+        if (!doc) {
+          if (records[idx] && records[idx].uit === 'crawl') {
+            records[idx] = Object.assign({}, records[idx], { accessStatus: 'inaccessible' });
+          }
+          continue;
+        }
         observation = await coaStore.recordObservation({
           url, supplierKey, buffer: doc.buffer, mimetype: doc.mediaType,
           etag: doc.etag, lastModified: doc.lastModified
@@ -289,6 +318,8 @@ async function runResearchStep(caseId, ctx, key) {
         if (autofetchRecords.length) {
           records[idx] = autofetchRecords[0];
           if (autofetchRecords.length > 1) records = records.concat(autofetchRecords.slice(1));
+        } else if (records[idx] && records[idx].uit === 'crawl') {
+          records[idx] = Object.assign({}, records[idx], { accessStatus: 'unreadable' });
         }
       } catch (e) {
         // Document kon niet gelezen worden (bv. kapotte/gescande PDF) — laat
@@ -324,7 +355,16 @@ async function runResearchStep(caseId, ctx, key) {
     const reconciled = await coaStore.reconcileSupplierIndex(supplierKey, seenUrls).catch(() => ({ gone: [], reappeared: [] }));
     (reconciled.gone || []).forEach((u) => archiveNotes.push({ url: u, status: 'verdwenen', reden: 'stond bij een eerdere controle wel op de site, nu niet meer' }));
     (reconciled.reappeared || []).forEach((u) => archiveNotes.push({ url: u, status: 'terug', reden: 'was eerder verdwenen, staat er nu weer' }));
-    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes }) };
+    const nietGeprobeerd = records.filter((r) => r && r.uit === 'crawl' && r.accessStatus === 'pending').length;
+    const crawlInfo = {
+      indexPaginas: (crawl && crawl.indexPages) || [],
+      documentenGevonden: ((crawl && crawl.documents) || []).length,
+      nieuwTenOpzichteVanZoekstap: crawlRecords.length,
+      maximaalOpgehaald: COA_AUTOFETCH_MAX,
+      nietGeprobeerdWegensLimiet: nietGeprobeerd,
+      beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd']
+    };
+    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo }) };
   } else if (key === 'identiteit') {
     result = await runPhase(ctx, stepOpts('identiteit', ctx));
     if (ctx.kvkDocument) {
