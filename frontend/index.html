@@ -350,19 +350,15 @@
       return;
     }
     var d = state.startDraft;
-    var items = state.startFiles.map(function(f, i){
-      return '<div class="file-item"><span>' + escapeHtml(f.file.name) + ' <span class="hint mono">(' + Math.round(f.file.size/1024) + ' kB)</span></span>' +
-        '<button type="button" data-i="' + i + '" class="wiz-remove-file">Verwijderen</button></div>';
-    }).join('');
-
     var starting = !!state.runningCaseIds['__new__'];
 
     // Hero: naar Anne's designsysteem in Figma ("Checker design", 14 sep) —
     // geen kaartwrapper meer, eyebrow + grote kop + subtekst + formulier
-    // direct op de paginaondergrond. Documenten/KvK blijven als ingeklapte
-    // disclosures eronder staan (functioneel nog nodig voor de testronde,
-    // zie het projectdocument) — zichtbaar identiek aan "rust" in Figma,
-    // dat toont geen open uploadvakken.
+    // direct op de paginaondergrond. De documenten/KvK-uploads onder het
+    // formulier zijn eruit (15 sep, op Ruben's verzoek na livecheck) — de
+    // gratis check gebruikt toch geen uploads ("Geen account, geen upload"
+    // in de tagline klopte tot dan niet helemaal met wat er nog stond); COA-
+    // upload blijft exclusief voor de betaalde Deep Dive.
     var hero = '<section class="hero">' +
       '<span class="eyebrow">Gratis Check</span>' +
       '<h1>Weet binnen twee minuten of het bewijs klopt.</h1>' +
@@ -380,28 +376,6 @@
         '</div>' +
       '</div>' +
       '<p class="hero-form-note">Werkt op elke peptide leveranciers-website en duurt enkele minuten om te draaien.</p>' +
-      '<div style="width:100%;">' +
-        '<button type="button" class="disclosure-toggle" id="doc-toggle" aria-expanded="' + (state.startUploadOpen?'true':'false') + '">' +
-          '<span class="disclosure-caret">' + ICON_CARET + '</span>' +
-          '<span>Documenten toevoegen (optioneel: COA\'s, screenshots, productfoto\'s)</span>' +
-        '</button>' +
-        '<div class="disclosure-body"' + (state.startUploadOpen ? '' : ' hidden') + '>' +
-          '<label class="dropzone" for="f-files">' + ICON_UPLOAD +
-            '<span class="dz-text">Documenten toevoegen<br>(optioneel: COA\'s, screenshots, productfoto\'s)</span>' +
-          '</label>' +
-          '<input type="file" id="f-files" multiple accept="image/*,application/pdf" style="display:none">' +
-          '<div class="file-list">' + items + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div style="width:100%;">' +
-        '<label class="disclosure-toggle" for="f-kvk" style="cursor:pointer;">' +
-          '<span>KvK-uittreksel toevoegen (optioneel, PDF) — telt mee bij de identiteitsstap</span>' +
-        '</label>' +
-        '<input type="file" id="f-kvk" accept="application/pdf,image/*" style="display:none">' +
-        (state.startKvkFile ?
-          '<div class="file-list"><div class="file-item"><span>' + escapeHtml(state.startKvkFile.name) + ' <span class="hint mono">(' + Math.round(state.startKvkFile.size/1024) + ' kB)</span></span>' +
-          '<button type="button" id="wiz-remove-kvk">Verwijderen</button></div></div>' : '') +
-      '</div>' +
       '</div>';
 
     // 3-staps-ladder: exact de tekst uit Anne's Figma-ontwerp. "Details"-links
@@ -475,36 +449,10 @@
       websiteInput.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); startAudit(); } });
     }
 
-    var toggle = app.querySelector('#doc-toggle');
-    if (toggle) toggle.addEventListener('click', function(){
-      state.startUploadOpen = !state.startUploadOpen;
-      renderDashboard();
-    });
-
-    var fileInput = app.querySelector('#f-files');
-    if (fileInput) fileInput.addEventListener('change', function(e){
-      Array.prototype.forEach.call(e.target.files, function(file){
-        state.startFiles.push({ file: file, kind: file.type.indexOf('image/') === 0 ? 'image' : 'other' });
-      });
-      renderDashboard();
-    });
-    Array.prototype.forEach.call(app.querySelectorAll('.wiz-remove-file'), function(btn){
-      btn.addEventListener('click', function(){
-        state.startFiles.splice(parseInt(btn.getAttribute('data-i'),10), 1);
-        renderDashboard();
-      });
-    });
-
-    var kvkInput = app.querySelector('#f-kvk');
-    if (kvkInput) kvkInput.addEventListener('change', function(e){
-      state.startKvkFile = e.target.files[0] || null;
-      renderDashboard();
-    });
-    var removeKvk = app.querySelector('#wiz-remove-kvk');
-    if (removeKvk) removeKvk.addEventListener('click', function(){
-      state.startKvkFile = null;
-      renderDashboard();
-    });
+    // Documenten-/KvK-upload uit de gratis hero verwijderd (15 sep) — zie
+    // renderDashboard(). apiCreateCase() krijgt hierdoor altijd een lege
+    // files-lijst en geen kvkFile mee; dat is prima, want beide waren toch
+    // al COA/Deep-Dive-scope.
 
     var start = app.querySelector('#wiz-start');
     if (start) start.addEventListener('click', startAudit);
