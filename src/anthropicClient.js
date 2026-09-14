@@ -70,9 +70,21 @@ async function sampleJson(prompt, opts) {
   (opts.documents || []).forEach((doc) => {
     content.push({ type: 'document', source: { type: 'base64', media_type: doc.mediaType || 'application/pdf', data: doc.data } });
   });
+  // ROOT CAUSE van de "empty_response"/afgekapte-JSON-fouten (bv. de
+  // categorize-fout die Ruben zag, met detail "stop_reason: max_tokens,
+  // content: [thinking]"): claude-sonnet-5 gebruikt kennelijk standaard
+  // extended thinking, en die 'thinking'-tokens komen uit HETZELFDE
+  // max_tokens-budget als de uiteindelijke tekst. Bij een omvangrijke
+  // prompt (zoals categorize, met de hele COA-dataset erin) at het denken
+  // het budget van 4096 soms volledig op — nul tokens over voor de JSON
+  // zelf. We willen hier sowieso geen chain-of-thought (EVIDENCE_RULES eist
+  // toch al kaal JSON, geen toelichting erbuiten), dus schakel het uit i.p.v.
+  // te gokken hoeveel budget denken nodig heeft. max_tokens ook iets ruimer
+  // gezet als marge voor stappen met veel velden (categorize, reportA/B).
   const resp = await client.messages.create({
     model: MODEL,
-    max_tokens: opts.maxTokens || 4096,
+    max_tokens: opts.maxTokens || 8192,
+    thinking: { type: 'disabled' },
     messages: [{ role: 'user', content }]
   });
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
