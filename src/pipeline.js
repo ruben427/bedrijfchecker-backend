@@ -8,6 +8,7 @@ const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient'
 const { fetchRemoteDocument } = require('./docFetcher');
 const coaStore = require('./coaStore');
 const coaCrawler = require('./coaCrawler');
+const janoshik = require('./janoshik');
 
 // Versie van de COA-leeslaag. Analyseresultaten worden gecachet op
 // (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
@@ -21,6 +22,7 @@ const db = require('./db');
 // Claude-call, dus bewust begrensd zodat één leverancier met veel
 // COA-vermeldingen de stap niet onnodig lang maakt.
 const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 30;
+const LAB_VERIFY_MAX = Number(process.env.LAB_VERIFY_MAX) || 30;
 
 const EVIDENCE_RULES = [
   'Je bent een kritische, neutrale onderzoeksassistent voor leveranciers-due-diligence van peptiden en research chemicals.',
@@ -334,6 +336,79 @@ async function runResearchStep(caseId, ctx, key) {
         // de oorspronkelijke AI-inschatting voor deze COA ongewijzigd staan.
       }
     }
+    // ---- Labverificatie ----
+    // Een task-ID is pas bewijs als het oplost naar een record op de server
+    // van het lab. Klasse D (verzonnen of ingetrokken ID) kost niets om vast
+    // te stellen: je hoeft alleen te zien of er een rapport terugkomt. Alleen
+    // het onderscheid A (kopie klopt) tegen B (kopie is bewerkt) vraagt om het
+    // lezen van de rapportafbeelding die het lab teruggeeft.
+    const verificaties = [];
+    let verificatieTeller = 0;
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      if (!r || (!r.reportId && !r.verificationKey)) continue;
+      if (verificatieTeller >= LAB_VERIFY_MAX) break;
+      verificatieTeller++;
+      const res = await janoshik.resolveer(r).catch(() => null);
+      if (!res) continue;
+
+      let vergelijking = null;
+      if (res.resolved === true && res.rapportAfbeelding) {
+        const labDoc = await fetchRemoteDocument(res.rapportAfbeelding);
+        if (labDoc) {
+          // De labkant gaat door hetzelfde archief: de verificatieafbeelding
+          // is ook maar een document, en hoeft dus maar een keer gelezen.
+          const obs = await coaStore.recordObservation({
+            url: res.rapportAfbeelding, supplierKey: 'lab:janoshik',
+            buffer: labDoc.buffer, mimetype: labDoc.mediaType, etag: labDoc.etag, lastModified: labDoc.lastModified
+          });
+          let labData = obs ? await coaStore.getExtraction(obs.sha256, COA_EXTRACTOR_VERSION) : null;
+          if (!labData) {
+            const labPrompt = EVIDENCE_RULES + '\n\nDit is het originele testrapport zoals het laboratorium het zelf teruggeeft op zijn verificatiepagina (' + res.url + '). Lees uitsluitend letterlijk wat er staat; gebruik null waar een veld niet vermeld of onleesbaar is. Neem het veld Client over zoals het er staat, ook als dat een andere partij is dan de onderzochte leverancier.\n\n' +
+              'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,"client":string,"manufacturer":string,"laboratorium":string,"purityPercent":number|null,"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string}]}]}';
+            labData = await sampleJsonSafe(labPrompt, { documents: [labDoc], label: 'labverificatie' });
+            if (obs && labData) {
+              const eerste = (labData.coaRecords || [])[0] || {};
+              await coaStore.saveExtraction(obs.sha256, COA_EXTRACTOR_VERSION, labData, {
+                lab: 'Janoshik', taskNumber: res.taskNumber || eerste.reportId || null
+              });
+            }
+          }
+          const labRec = (labData && labData.coaRecords && labData.coaRecords[0]) || null;
+          if (labRec) {
+            vergelijking = janoshik.vergelijkVelden(r, labRec);
+            res.labRecord = labRec;
+          }
+        }
+      }
+
+      const klasse = janoshik.bepaalKlasse(res, vergelijking);
+      const extern = res.resolved === true
+        ? (klasse === 'B' ? 'contradicted' : (klasse === 'A' ? 'verified' : 'pending'))
+        : (res.resolved === false ? 'failed' : 'unavailable');
+
+      records[i] = Object.assign({}, r, {
+        // Een eerder door het model geraden klasse wordt hier overschreven:
+        // resolutie bij het lab weegt zwaarder dan een inschatting.
+        authenticiteitsklasse: klasse || r.authenticiteitsklasse || null,
+        externalVerification: extern,
+        verificatie: {
+          url: res.url || null,
+          taskNumber: res.taskNumber || null,
+          status: res.status,
+          opgelost: res.resolved,
+          vergelekenVelden: (vergelijking && vergelijking.gelijk) || [],
+          verschillen: (vergelijking && vergelijking.verschillen) || [],
+          labResultaten: (res.labRecord && res.labRecord.resultaten) || null
+        }
+      });
+      verificaties.push({
+        product: r.product || null, taskNumber: res.taskNumber || null,
+        klasse: klasse || null, status: res.status,
+        verschillen: (vergelijking && vergelijking.verschillen.length) || 0
+      });
+    }
+
     records = records.map((r) => {
       const q = computeQuantity(
         typeof r.claimedQuantity === 'number' ? r.claimedQuantity : null,
@@ -373,7 +448,7 @@ async function runResearchStep(caseId, ctx, key) {
       beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
       diagnose: (crawl && crawl.diagnose) || []
     };
-    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo }) };
+    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties }) };
   } else if (key === 'identiteit') {
     result = await runPhase(ctx, stepOpts('identiteit', ctx));
     if (ctx.kvkDocument) {

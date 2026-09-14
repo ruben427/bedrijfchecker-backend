@@ -198,3 +198,41 @@ willekeurige greep uit de bibliotheek en trok je er conclusies over de rest uit.
 
 De crawler gooit nooit. Geen COA-pagina, een blokkade of een time-out levert
 een lege lijst met een reden op in `phaseData.coaDataset.data.crawl`.
+
+## Labverificatie (fase 3)
+
+`src/janoshik.js` — lost een rapportverwijzing op bij het lab zelf.
+
+Een task-ID is pas bewijs als het oplost naar een record op de server van het
+lab. Alles daarvoor is een leveranciersclaim.
+
+**De referentie parsen.** De verificatie-URL ziet eruit als
+`164849-selank_10mg_E7US5H3NA1RL` — task, sample, sleutel. Het sampledeel is
+een vrij tekstveld en mag zélf underscores bevatten. De sleutel is dus wat na
+de **laatste** underscore staat. Een parser die op de eerste splitst breekt op
+een echt bestaand geval.
+
+**Kostenverdeling.** Klasse D (verzonnen of ingetrokken ID) is gratis vast te
+stellen: je kijkt alleen of er een rapport terugkomt. Alleen het onderscheid
+A (kopie klopt) tegen B (kopie is bewerkt) kost een leesopdracht op de
+rapportafbeelding die het lab teruggeeft — en die gaat door hetzelfde archief,
+dus ook maar één keer per uniek document.
+
+**Host-allowlist.** Exacte hostnamen, geen string-match op "janoshik". Er
+bestaan lookalikes (`janoshilk.com`, `jano-shik.com`), en een rapport dat in
+zijn eigen voettekst naar zo'n domein verwijst is een rode vlag, geen storing.
+De subdomeintruc `verify.janoshik.com.evil.net` valt hier ook op af.
+
+**Veldvergelijking.** Client, Manufacturer, Batch, Sample, Purity en de drie
+datums. Alleen velden die aan béíde kanten ingevuld zijn tellen mee; een
+ontbrekend veld is geen conflict.
+
+### Regressietest
+
+`verify.janoshik.com/tests/164849-selank_10mg_E7US5H3NA1RL` — MyPept.eu,
+"Selank 10mg", batch MYP90106. Het lab rapporteert: **Selank not detected,
+Semax 10.21 mg, purity 99.133%.**
+
+Authentiek rapport (C01 groen), identiteit tegengesproken (C02 rood), purity
+betekenisloos. Elke versie van de leeslaag moet hier op die uitkomst blijven
+staan. Zie `Veldobservaties leveranciers - validatieset.md`.
