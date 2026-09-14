@@ -248,10 +248,18 @@ async function runResearchStep(caseId, ctx, key) {
       if (!r || !r.bronUrl || r.accessStatus === 'readable') return;
       if (seenAutofetchUrls.has(r.bronUrl)) return;
       seenAutofetchUrls.add(r.bronUrl);
-      autofetchCandidates.push({ url: r.bronUrl, idx });
+      autofetchCandidates.push({ url: r.bronUrl, idx, prioriteit: r.uit === 'crawl' ? 0 : 1 });
     });
     const supplierKey = coaStore.supplierKeyFromUrl(ctx.website || ctx.naam);
     const archiveNotes = [];
+    // Volgorde bepaalt welke documenten binnen de limiet vallen, en dat is
+    // geen detail. Documenten van de eigen site van de leverancier gaan voor
+    // op zoekmachinevondsten: dat volgt de bronhierarchie uit het protocol
+    // (officiele bedrijfssite en originele labrapporten boven zoekresultaten).
+    // Binnen de crawl blijft de paginavolgorde staan - COA-pagina's zetten de
+    // nieuwste bovenaan, dus een limiet levert dan 'de N nieuwste' op. Dat is
+    // een uitlegbare steekproef; 'de eerste N die toevallig langskwamen' niet.
+    autofetchCandidates.sort((a, b) => (a.prioriteit - b.prioriteit));
     for (const { url, idx } of autofetchCandidates.slice(0, COA_AUTOFETCH_MAX)) {
       // Stap 1: kennen we dit document al? Zo ja, hergebruik de analyse en
       // sla zowel de download als de (dure) vision-call over. Dit is het hele
