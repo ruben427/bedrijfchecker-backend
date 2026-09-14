@@ -57,6 +57,7 @@
   // tegenbewijs) zijn Deep-scope en draaien pas na een bewuste "ga door"-klik
   // op de betaalde Deep Dive — nog zonder betaalstraat ervoor.
   var FREE_STEP_KEYS = ['laboratorium', 'coaDataset'];
+  var DEEP_STEP_KEYS = ['identiteit', 'domein', 'socialAffiliates', 'reputatie', 'regelgeving', 'tegenbewijs'];
   var STEP_DEFS = [
     { key:'identiteit', label:'Juridische identiteit' },
     { key:'domein', label:'Domein- en websitegeschiedenis' },
@@ -78,6 +79,13 @@
   function avgForStep(key){
     var s = stepStats && stepStats[key];
     return (s && s.avgMs) || DEFAULT_STEP_MS;
+  }
+  // Welke STEP_DEFS-entries relevant zijn voor de lopende tier van een case —
+  // zodat de live-stappenlijst nooit stappen toont die deze pas niet gaat
+  // draaien (bv. "Juridische identiteit" tijdens een gratis-only run).
+  function stepsForTier(tier){
+    var keys = (tier === 'deep' ? DEEP_STEP_KEYS : FREE_STEP_KEYS).concat(['categorize', 'reportA', 'reportB']);
+    return STEP_DEFS.filter(function(s){ return keys.indexOf(s.key) !== -1; });
   }
   function isStuck(c){
     if (c.status !== 'bezig' || !c.currentStep) return false;
@@ -329,6 +337,8 @@
   var ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   var ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="12" y2="19"/><line x1="9" y1="16" x2="15" y2="16"/></svg>';
   var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>';
+  var ICON_CHEVRON_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>';
+  var ICON_STEP_DONE = '<svg viewBox="0 0 21 21" width="21" height="21"><circle cx="10.5" cy="10.5" r="10.5" fill="var(--ok)"/><path d="M6 10.7l3 3 6-6.8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   // ---------- dashboard (landingspagina: direct starten + eerder gedraaide audits) ----------
   // Naar het ontwerp van Anne's designsysteem in Figma: geen aparte wizard-stap
@@ -346,17 +356,30 @@
     }).join('');
 
     var starting = !!state.runningCaseIds['__new__'];
-    var startCard = '<div class="hero-card"><div class="hero-card-inner">' +
-      '<h2 class="hero-card-title c1">Start hier je Gratis Audit</h2>' +
+
+    // Hero: naar Anne's designsysteem in Figma ("Checker design", 14 sep) —
+    // geen kaartwrapper meer, eyebrow + grote kop + subtekst + formulier
+    // direct op de paginaondergrond. Documenten/KvK blijven als ingeklapte
+    // disclosures eronder staan (functioneel nog nodig voor de testronde,
+    // zie het projectdocument) — zichtbaar identiek aan "rust" in Figma,
+    // dat toont geen open uploadvakken.
+    var hero = '<section class="hero">' +
+      '<span class="eyebrow">Gratis Check</span>' +
+      '<h1>Weet binnen twee minuten of het bewijs klopt.</h1>' +
+      '<p class="hero-tag">Geen account, geen upload. Je krijgt direct een eerlijk rapport over wat wél en niet te verifiëren is.</p>' +
+      '</section>';
+
+    var heroForm = '<div class="hero-form">' +
       '<div class="audit-form">' +
         '<div style="display:flex;flex-direction:column;gap:8px;width:100%;">' +
           '<div class="audit-form-row">' +
-            '<input type="text" id="f-website" class="' + (state.startUrlError?'has-error':'') + '" value="' + escapeHtml(d.website) + '" placeholder="Website-URL van de leverancier *" autofocus>' +
+            '<input type="text" id="f-website" class="' + (state.startUrlError?'has-error':'') + '" value="' + escapeHtml(d.website) + '" placeholder="Website URL" autofocus>' +
             '<button type="button" class="btn-cta" id="wiz-start" ' + (starting ? 'disabled' : '') + '>' + ICON_SEARCH + '<span>' + (starting ? 'Starten…' : 'Start gratis check') + '</span></button>' +
           '</div>' +
           (state.startUrlError ? '<div class="field-error">' + escapeHtml(state.startUrlError) + '</div>' : '') +
         '</div>' +
       '</div>' +
+      '<p class="hero-form-note">Werkt op elke peptide leveranciers-website en duurt enkele minuten om te draaien.</p>' +
       '<div style="width:100%;">' +
         '<button type="button" class="disclosure-toggle" id="doc-toggle" aria-expanded="' + (state.startUploadOpen?'true':'false') + '">' +
           '<span class="disclosure-caret">' + ICON_CARET + '</span>' +
@@ -379,46 +402,61 @@
           '<div class="file-list"><div class="file-item"><span>' + escapeHtml(state.startKvkFile.name) + ' <span class="hint mono">(' + Math.round(state.startKvkFile.size/1024) + ' kB)</span></span>' +
           '<button type="button" id="wiz-remove-kvk">Verwijderen</button></div></div>' : '') +
       '</div>' +
-      '<p class="hero-card-note">Dit is de gratis Evidence Check: laboratorium en de volledige COA-dataset en -authenticiteit van deze leverancier. Duurt doorgaans enkele minuten, met live voortgang. Een betaalde Deep Dive (leverancier zelf: bedrijfsidentiteit, eigenaren/bestuurders, regelgeving) kun je daarna starten.</p>' +
-      '</div></div>';
+      '</div>';
 
-    var auditsCard = '';
-    if (state.cases.length){
-      var rows = state.cases.map(function(c){
-        var chip = '<span class="chip grey">Nieuw</span>';
-        if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
-        else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
-        else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
-        else if (c.status === 'klaar' || c.status === 'gratis_klaar'){
-          var n = (c.report && c.report.rodeVlaggen && c.report.rodeVlaggen.length) || 0;
-          var es = c.engineResult && c.engineResult.evidenceScore;
-          if (n > 0){
-            chip = '<span class="chip danger">' + n + ' rode vlag' + (n===1?'':'gen') + '</span>';
-          } else if (es && es.published){
-            chip = '<span class="chip ok">Evidence Score ' + es.value + '</span>';
-          } else if (c.engineResult && c.engineResult.gate && (c.engineResult.gate.code === 'NO_COA_FOUND' || c.engineResult.gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED')){
-            chip = '<span class="chip grey">Geen bruikbare COA</span>';
-          } else {
-            chip = '<span class="chip ok">Geen rode vlaggen</span>';
-          }
-          if (c.status === 'gratis_klaar') chip += ' <span class="chip grey">Gratis</span>';
-          else if (c.tier === 'deep') chip += ' <span class="chip grey">Deep Dive</span>';
-        }
-        return '<button type="button" class="audit-row" data-id="' + c.id + '">' +
-          '<span class="left"><span class="name">' + escapeHtml(c.naam) + '</span>' +
-          '<span class="domain">' + escapeHtml(domainOf(normalizeUrl(c.website))) + '</span>' + chip + '</span>' +
-          '<span class="textlink">Bekijk deze audit ' + ICON_CHEVRON + '</span>' +
-          '</button>';
-      }).join('');
-      auditsCard = '<div class="hero-card"><div class="hero-card-inner">' +
-        '<h2 class="hero-card-title c2">Eerder gedraaide audits</h2>' +
-        '<div class="audit-list">' + rows + '</div>' +
-        '</div></div>';
-    }
+    // 3-staps-ladder: exact de tekst uit Anne's Figma-ontwerp. "Details"-links
+    // zijn nu decoratief (inert) — er is nog geen aparte uitlegpagina per stap.
+    var ladder = '<div class="ladder-intro"><h2>Van eerste indruk naar zekerheid</h2>' +
+      '<p>Elke stap voegt bewijs toe dat de vorige stap niet kon leveren. Je betaalt pas zodra je zelf wilt weten wat er nog niet zichtbaar was.</p></div>' +
+      '<div class="ladder">' +
+        '<div class="ladder-card">' +
+          '<div class="ladder-top">' +
+            '<div class="ladder-badges"><span class="ladder-badge">Stap 1</span><span class="ladder-tier-label">Gratis</span></div>' +
+            '<div class="ladder-body">' +
+              '<div class="ladder-title">Evidence Check</div>' +
+              '<ul class="ladder-list">' +
+                '<li>COA- en lab-verificatie beoordeeld op wat publiek te checken is</li>' +
+                '<li>Kleurcodering per categorie: groen, oranje, rood of nog wit</li>' +
+                '<li>Geen upload, geen account, direct resultaat</li>' +
+              '</ul>' +
+              '<p class="ladder-punch">Laat zien óf het productbewijs standhoudt — niet wie erachter zit.</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="ladder-footer"><span class="textlink">Details ' + ICON_CHEVRON + '</span></div>' +
+        '</div>' +
+        '<div class="ladder-card featured">' +
+          '<div class="ladder-top">' +
+            '<div class="ladder-badges"><span class="ladder-badge tier2">Stap 2 &middot; &euro; 2,95</span><span class="ladder-tier-label">Deep Dive</span></div>' +
+            '<div class="ladder-body">' +
+              '<div class="ladder-title">Wie zit erachter?</div>' +
+              '<ul class="ladder-list">' +
+                '<li>KvK-koppeling: eigenaren, bestuurders, bedrijfshistorie</li>' +
+                '<li>Regelgeving, toezicht en reputatie-onderzoek erbij</li>' +
+                '<li>Upload een foto van jóuw peptide + batchnummer, geverifieerd tegen de COA-data</li>' +
+              '</ul>' +
+              '<p class="ladder-punch">Bevestigt of ontkracht precies de vlaggen uit stap 1.</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="ladder-footer"><span class="textlink">Details ' + ICON_CHEVRON + '</span></div>' +
+        '</div>' +
+        '<div class="ladder-card">' +
+          '<div class="ladder-top">' +
+            '<div class="ladder-badges"><span class="ladder-badge tier3">In ontwikkeling</span><span class="ladder-tier-label">Expert-laag</span></div>' +
+            '<div class="ladder-body">' +
+              '<div class="ladder-title">Het oog van Anne</div>' +
+              '<ul class="ladder-list">' +
+                '<li>Jarenlange kennis van deze markt naast de harde feiten</li>' +
+                '<li>Signaleert patronen die geen AI-regel mag beweren</li>' +
+                '<li>Duidelijk gescheiden van FEIT: dit is ervaring, geen bewijs</li>' +
+              '</ul>' +
+              '<p class="ladder-punch">De feiten plus het gevoel van iemand die dit al jaren doet.</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="ladder-footer"><span class="textlink">Details ' + ICON_CHEVRON + '</span></div>' +
+        '</div>' +
+      '</div>';
 
-    app.innerHTML =
-      '<section class="hero"><h1>Bedrijfchecker</h1><p class="hero-tag">Gratis basischeck voor peptide- en research-chemicalsleveranciers</p></section>' +
-      startCard + auditsCard;
+    app.innerHTML = hero + heroForm + ladder;
     wireDashboardEvents();
   }
 
@@ -511,9 +549,20 @@
   function renderDetail(){
     var c = state.currentCase;
     if (!c){ app.innerHTML = '<p>Case laden…</p>'; stopCasePoller(); return; }
+
+    if (c.status === 'bezig'){
+      // Live-weergave (Figma "URL check", 14 sep): eigen kaart i.p.v. de
+      // detail-head/chip + retry-bare renderProgress()-lijst + losse terug-
+      // en stop-knoppen hieronder; die blijven ongewijzigd voor fout/
+      // gestopt/klaar.
+      app.innerHTML = '<button type="button" class="stop-link" id="stop-audit"><span class="chev">' + ICON_CHEVRON_LEFT + '</span><span class="lbl">Stop de check</span></button>' +
+        renderRunningCard(c);
+      wireDetailStopButton(c);
+      return;
+    }
+
     var chip = '<span class="chip grey">Nieuw</span>';
-    if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
-    else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
+    if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
     else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
     else if (c.status === 'gratis_klaar') chip = '<span class="chip ok">Gratis check klaar</span>';
     else if (c.status === 'klaar') chip = '<span class="chip ok">' + (c.tier === 'deep' ? 'Deep Dive klaar' : 'Klaar') + '</span>';
@@ -525,10 +574,6 @@
       '<span>Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div></div>' +
       '<div>' + chip + '</div></div>';
 
-    if (c.status === 'bezig'){
-      html += renderProgress(c);
-      html += '<div style="margin-top:12px;"><button class="btn secondary" id="stop-audit">Stop audit</button></div>';
-    }
     if (c.status === 'fout'){
       html += '<div class="banner danger">Audit mislukt: ' + escapeHtml(c.error || 'onbekende fout') + '</div>' +
         '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
@@ -543,7 +588,7 @@
       html += renderReport(c);
       if (c.status === 'gratis_klaar'){
         html += '<section class="report-block"><h3>Meer weten over deze leverancier?</h3>' +
-          '<p style="color:var(--text-muted);">De gratis Evidence Check is klaar. Een betaalde Deep Dive (&euro;1,95) onderzoekt ook de leverancier zelf: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p>' +
+          '<p style="color:var(--text-muted);">De gratis Evidence Check is klaar. Een betaalde Deep Dive (&euro;2,95) onderzoekt ook de leverancier zelf: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p>' +
           '<button type="button" class="btn-cta" id="continue-deep">Start Deep Dive (nog zonder betaalstraat)</button></section>';
       }
       html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';
@@ -570,21 +615,77 @@
         alert('Starten van de Deep Dive is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
       });
     });
-    var stopBtn = app.querySelector('#stop-audit');
-    if (stopBtn) stopBtn.addEventListener('click', function(){
-      stopBtn.disabled = true; stopBtn.textContent = 'Stoppen…';
-      apiStopCase(c.id).then(function(updated){
-        stopCasePoller();
-        if (state.currentCaseId === c.id){ state.currentCase = updated; render(); }
-      }).catch(function(e){
-        stopBtn.disabled = false; stopBtn.textContent = 'Stop audit';
-        alert('Stoppen is mislukt: ' + e.message);
-      });
-    });
+    // (De 'bezig'-status heeft een eigen #stop-audit-link + wiring hierboven
+    // via wireDetailStopButton() en return()t vóór dit punt.)
     var stuckBtn = app.querySelector('#retry-stuck');
     if (stuckBtn) stuckBtn.addEventListener('click', function(){ runSingleStep(c.id, stuckBtn.getAttribute('data-key')); });
     Array.prototype.forEach.call(app.querySelectorAll('.step-retry'), function(btn){
       btn.addEventListener('click', function(){ runSingleStep(c.id, btn.getAttribute('data-key')); });
+    });
+  }
+
+  // Live-lopende kaart voor status 'bezig' (Figma "URL check", 14 sep) —
+  // toont alleen de stappen die voor déze tier relevant zijn (stepsForTier),
+  // zonder retry-knoppen; renderProgress() hieronder blijft de bron voor
+  // fout/gestopt/klaar, waar retry wél zinvol is.
+  function renderRunningCard(c){
+    var progress = c.progress || [];
+    var doneMap = {};
+    progress.forEach(function(p){ doneMap[p.key] = p; });
+    var steps = stepsForTier(c.tier);
+
+    var stepsHtml = steps.map(function(s){
+      var done = doneMap[s.key];
+      var isCurrent = c.currentStep && c.currentStep.key === s.key;
+      if (done){
+        return '<div class="run-step done"><span class="step-icon">' + ICON_STEP_DONE + '</span>' +
+          '<span class="run-step-label">' + escapeHtml(s.label) + '</span>' +
+          '<span class="run-step-dur">' + fmtDuration(done.durationMs) + '</span></div>';
+      }
+      if (isCurrent){
+        return '<div class="run-step active"><span class="step-icon active"></span>' +
+          '<span class="run-step-label">' + escapeHtml(s.label) + '</span>' +
+          '<span class="run-step-meta">bezig ' + fmtDuration(Date.now() - c.currentStep.startedAt) +
+          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span></span></div>';
+      }
+      return '<div class="run-step pending"><span class="step-icon pending"></span>' +
+        '<span class="run-step-label">' + escapeHtml(s.label) + '</span></div>';
+    }).join('');
+
+    var stuckBanner = '';
+    if (isStuck(c)){
+      stuckBanner = '<div class="banner" style="margin-top:16px;">Deze stap ("' + escapeHtml(stepLabel(c.currentStep.key)) + '") duurt langer dan gemiddeld (' +
+        fmtDuration(Date.now() - c.currentStep.startedAt) + ' tegen normaal ' + fmtDuration(avgForStep(c.currentStep.key)) + ').</div>';
+    }
+
+    return '<div class="run-card"><div class="run-slot">' +
+      '<div><div class="run-url">' + escapeHtml(c.website) + '</div>' +
+      '<div class="run-meta"><span class="kvk">KvK-uittreksel: ' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span>' +
+      '<span class="created">Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div>' +
+      (c.naam && c.naam !== c.website ? '<div class="run-name">' + escapeHtml(c.naam) + '</div>' : '') +
+      '</div>' +
+      '<div class="run-steps">' + stepsHtml + '</div>' +
+      '</div></div>' + stuckBanner;
+  }
+
+  // Wiring voor de "Stop de check"-link boven de live-kaart — vervangt de
+  // oude losse "Stop audit"-knop; label/chevron blijven staan tijdens het
+  // stoppen, alleen de tekst in .lbl wisselt.
+  function wireDetailStopButton(c){
+    var stopBtn = app.querySelector('#stop-audit');
+    if (!stopBtn) return;
+    stopBtn.addEventListener('click', function(){
+      var lbl = stopBtn.querySelector('.lbl');
+      stopBtn.disabled = true;
+      if (lbl) lbl.textContent = 'Stoppen…';
+      apiStopCase(c.id).then(function(updated){
+        stopCasePoller();
+        if (state.currentCaseId === c.id){ state.currentCase = updated; render(); }
+      }).catch(function(e){
+        stopBtn.disabled = false;
+        if (lbl) lbl.textContent = 'Stop de check';
+        alert('Stoppen is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+      });
     });
   }
 
