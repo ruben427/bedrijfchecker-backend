@@ -6,6 +6,12 @@
 const { sampleJsonSafe } = require('./anthropicClient');
 const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient');
 const { fetchRemoteDocument } = require('./docFetcher');
+const coaStore = require('./coaStore');
+
+// Versie van de COA-leeslaag. Analyseresultaten worden gecachet op
+// (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
+// betekent dat alle eerder gelezen COA's opnieuw door vision gaan.
+const COA_EXTRACTOR_VERSION = 'coa-read-1';
 const { runScoringEngine, computeQuantity } = require('./scoringEngine');
 const db = require('./db');
 
@@ -220,13 +226,66 @@ async function runResearchStep(caseId, ctx, key) {
       seenAutofetchUrls.add(r.bronUrl);
       autofetchCandidates.push({ url: r.bronUrl, idx });
     });
+    const supplierKey = coaStore.supplierKeyFromUrl(ctx.website || ctx.naam);
+    const archiveNotes = [];
     for (const { url, idx } of autofetchCandidates.slice(0, COA_AUTOFETCH_MAX)) {
-      const doc = await fetchRemoteDocument(url);
-      if (!doc) continue;
+      // Stap 1: kennen we dit document al? Zo ja, hergebruik de analyse en
+      // sla zowel de download als de (dure) vision-call over. Dit is het hele
+      // punt van het archief — elk uniek COA-document gaat exact één keer
+      // door vision, ooit, voor alle gebruikers en leveranciers samen.
+      let cached = null;
+      const head = await coaStore.checkUnchanged(url).catch(() => null);
+      if (head && head.unchanged && head.sha256) {
+        cached = await coaStore.getExtraction(head.sha256, COA_EXTRACTOR_VERSION);
+        if (cached) archiveNotes.push({ url, status: 'hergebruikt', reden: 'ongewijzigd (' + (head.reason || 'fingerprint') + ')' });
+      }
+
+      let doc = null;
+      let observation = null;
+      if (!cached) {
+        doc = await fetchRemoteDocument(url);
+        if (!doc) continue;
+        observation = await coaStore.recordObservation({
+          url, supplierKey, buffer: doc.buffer, mimetype: doc.mediaType,
+          etag: doc.etag, lastModified: doc.lastModified
+        });
+        if (observation) {
+          if (observation.change === 'replaced') {
+            // Ander bestand op dezelfde URL. Dit is een bevinding, geen
+            // technisch detail: een stil vervangen rapport.
+            archiveNotes.push({ url, status: 'vervangen', reden: 'zelfde URL, andere inhoud dan bij de vorige controle' });
+          } else if (observation.change === 'moved') {
+            archiveNotes.push({ url, status: 'gedeeld rapport', reden: 'zelfde document stond eerder op ' + observation.alsoSeenAt });
+          }
+          // Ook bij een nieuwe URL kan de analyse er al zijn: hetzelfde
+          // fabrikantsrapport wordt vaak door meerdere shops gehost.
+          cached = await coaStore.getExtraction(observation.sha256, COA_EXTRACTOR_VERSION);
+          if (cached && observation.change !== 'replaced') {
+            archiveNotes.push({ url, status: 'hergebruikt', reden: 'dit document was al eerder gelezen' });
+          }
+        }
+      }
+
+      if (cached) {
+        const cachedRecords = ((cached && cached.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'archief' }));
+        if (cachedRecords.length) {
+          records[idx] = cachedRecords[0];
+          if (cachedRecords.length > 1) records = records.concat(cachedRecords.slice(1));
+        }
+        continue;
+      }
       try {
         const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
         const autofetchData = await sampleJsonSafe(autofetchPrompt, { documents: [doc], label: 'coaDataset-autofetch' });
         const autofetchRecords = ((autofetchData && autofetchData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'auto-fetch' }));
+        if (observation && observation.sha256) {
+          const first = autofetchRecords[0] || {};
+          await coaStore.saveExtraction(observation.sha256, COA_EXTRACTOR_VERSION, autofetchData || { coaRecords: [] }, {
+            lab: first.laboratorium || null,
+            taskNumber: first.reportId || null,
+            keyHash: first.verificationKey ? coaStore.sha256Of(Buffer.from(String(first.verificationKey))) : null
+          });
+        }
         if (autofetchRecords.length) {
           records[idx] = autofetchRecords[0];
           if (autofetchRecords.length > 1) records = records.concat(autofetchRecords.slice(1));
@@ -258,7 +317,14 @@ async function runResearchStep(caseId, ctx, key) {
         analytical_fields_usable: fields
       };
     });
-    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake }) };
+    // Welke COA-URLs zagen we deze keer? Wat er eerder was en nu niet meer,
+    // wordt op 'gone' gezet — niet verwijderd. Een leverancier die stil een
+    // rapport weghaalt is een bevinding.
+    const seenUrls = records.map((r) => r && r.bronUrl).filter(Boolean);
+    const reconciled = await coaStore.reconcileSupplierIndex(supplierKey, seenUrls).catch(() => ({ gone: [], reappeared: [] }));
+    (reconciled.gone || []).forEach((u) => archiveNotes.push({ url: u, status: 'verdwenen', reden: 'stond bij een eerdere controle wel op de site, nu niet meer' }));
+    (reconciled.reappeared || []).forEach((u) => archiveNotes.push({ url: u, status: 'terug', reden: 'was eerder verdwenen, staat er nu weer' }));
+    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes }) };
   } else if (key === 'identiteit') {
     result = await runPhase(ctx, stepOpts('identiteit', ctx));
     if (ctx.kvkDocument) {

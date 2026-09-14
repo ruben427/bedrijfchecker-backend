@@ -50,7 +50,17 @@ async function fetchRemoteDocument(url) {
     if (contentLength && contentLength > MAX_BYTES) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length || buf.length > MAX_BYTES) return null;
-    return { data: buf.toString('base64'), mediaType };
+    // buffer/etag/lastModified erbij voor het documentarchief (src/coaStore.js):
+    // de hash bepaalt of dit bestand al geanalyseerd is, de headers of het
+    // sinds de vorige keer veranderd is. data/mediaType blijven wat ze waren,
+    // zodat bestaande aanroepers ongewijzigd blijven werken.
+    return {
+      data: buf.toString('base64'),
+      mediaType,
+      buffer: buf,
+      etag: res.headers.get('etag') || null,
+      lastModified: res.headers.get('last-modified') || null
+    };
   } catch (e) {
     return null;
   } finally {

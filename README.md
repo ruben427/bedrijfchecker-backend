@@ -109,3 +109,55 @@ console, en draai eenmalig:
 UPDATE cases SET owner_token_hash = encode(sha256('<jouw token>'::bytea), 'hex')
 WHERE owner_token_hash IS NULL;
 ```
+
+## COA-documentarchief (fase 1)
+
+`src/coaStore.js` — analyseer elk uniek COA-document precies één keer, ooit,
+voor alle gebruikers en leveranciers samen.
+
+Drie tabellen, **geen bestandsopslag**. Van elk document bewaren we alleen de
+SHA-256 van de bytes en het analyseresultaat:
+
+- `coa_documents` — wat het is. Gesleuteld op de hash. Bevat de extractie
+  (OCR/vision), de extractorversie, en later de labverificatie.
+- `coa_sources` — waar we het zagen. Eén rij per URL per leverancier, met de
+  HTTP-vingerafdruk (`ETag`/`Last-Modified`/lengte).
+- `coa_source_events` — de geschiedenis. Hier komen de signalen uit.
+
+**Waarom niet op URL cachen.** Dan zie je nooit dat het bestand áchter die URL
+is vervangen — en dat is precies het geval dat we willen vangen. De URL is de
+opzoeksleutel, de hash is de geldigheidscontrole.
+
+De lus in de `coaDataset`-stap:
+
+1. `HEAD` op de URL. Vingerafdruk ongewijzigd en analyse aanwezig → hergebruiken,
+   geen download en geen vision-call.
+2. Anders downloaden en hashen. Hash al bekend (ook van een ándere shop) →
+   analyse hergebruiken.
+3. Alleen bij onbekende bytes draait de vision-call, en het resultaat wordt
+   opgeslagen op `(sha256, COA_EXTRACTOR_VERSION)`.
+4. URLs die eerder wél en nu niet in de index staan, krijgen `status = 'gone'` —
+   ze worden niet verwijderd.
+
+De dure stap hangt dus aan de **hash**, niet aan de download. Opnieuw
+downloaden kost niets; opnieuw analyseren wel, en dat gebeurt nooit twee keer
+voor dezelfde bytes.
+
+`COA_EXTRACTOR_VERSION` staat boven in `src/pipeline.js`. Verhoog die alleen
+bewust: elke wijziging betekent dat álle eerder gelezen COA's opnieuw door
+vision gaan.
+
+### Signalen die hieruit komen
+
+Zichtbaar in `phaseData.coaDataset.data.archief`:
+
+| Signaal | Betekenis |
+|---|---|
+| `vervangen` | zelfde URL, andere inhoud dan bij de vorige controle |
+| `verdwenen` | stond er eerder wel, nu niet meer |
+| `terug` | was verdwenen, staat er weer |
+| `gedeeld rapport` | ditzelfde document staat ook bij een andere leverancier |
+| `hergebruikt` | analyse kwam uit het archief, niet opnieuw gedraaid |
+
+Deze zijn alleen zichtbaar mét geschiedenis, en geschiedenis bouwt niet met
+terugwerkende kracht op — daarom staat dit vóór de leeslaag en de resolver.

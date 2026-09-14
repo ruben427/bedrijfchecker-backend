@@ -5,6 +5,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 
 const db = require('./db');
+const coaStore = require('./coaStore');
 const pipeline = require('./pipeline');
 const auth = require('./auth');
 const rl = require('./rateLimit');
@@ -13,6 +14,9 @@ const { isValidWebUrl, normalizeUrl } = require('./validate');
 const { checkPeptideSupplierRelevance } = require('./relevanceCheck');
 
 const app = express();
+
+// Verraadt anders gratis welke stack eronder zit.
+app.disable('x-powered-by');
 
 // Railway zet een proxy voor de app; zonder dit is req.ip het IP van de proxy
 // en begrenst de rate limiter effectief iedereen als één bezoeker.
@@ -241,6 +245,7 @@ app.use((err, req, res, next) => {
 const port = process.env.PORT || 3000;
 
 db.initSchema()
+  .then(() => coaStore.initCoaSchema())
   .then(() => {
     if (!process.env.ADMIN_TOKEN) console.warn('LET OP: ADMIN_TOKEN is niet gezet — bestaande cases van vóór de eigenaarsmigratie zijn niet meer opvraagbaar.');
     app.listen(port, () => console.log('bedrijfchecker-backend luistert op poort ' + port));
