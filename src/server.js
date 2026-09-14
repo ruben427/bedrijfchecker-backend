@@ -245,7 +245,12 @@ app.use((err, req, res, next) => {
 const port = process.env.PORT || 3000;
 
 db.initSchema()
-  .then(() => coaStore.initCoaSchema())
+  // Het COA-archief mag de server niet kunnen tegenhouden. Elke coaStore-
+  // functie vangt zijn eigen fouten af, dus zonder deze tabellen draait de
+  // audit gewoon door - alleen zonder hergebruik en zonder geschiedenis.
+  .then(() => coaStore.initCoaSchema().catch((e) => {
+    console.error('LET OP: COA-archieftabellen konden niet worden aangemaakt; archief staat uit. Reden:', (e && e.message) || e);
+  }))
   .then(() => {
     if (!process.env.ADMIN_TOKEN) console.warn('LET OP: ADMIN_TOKEN is niet gezet — bestaande cases van vóór de eigenaarsmigratie zijn niet meer opvraagbaar.');
     app.listen(port, () => console.log('bedrijfchecker-backend luistert op poort ' + port));
