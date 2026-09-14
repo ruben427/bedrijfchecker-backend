@@ -310,6 +310,10 @@ async function runResearchStep(caseId, ctx, key) {
         if (cachedRecords.length) {
           records[idx] = cachedRecords[0];
           if (cachedRecords.length > 1) records = records.concat(cachedRecords.slice(1));
+        } else if (records[idx] && records[idx].uit === 'crawl') {
+          // Eerder gelezen en toen bleek het geen COA. Niet opnieuw lezen,
+          // maar ook niet op 'pending' laten staan alsof er nog werk is.
+          records[idx] = Object.assign({}, records[idx], { accessStatus: 'unreadable' });
         }
         continue;
       }

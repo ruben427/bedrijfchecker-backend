@@ -44,6 +44,17 @@ const DOC_EXT = /\.(pdf|png|jpe?g|webp)(\?|#|$)/i;
 // alleen als plaatje getoond.
 const THUMBNAIL = /-\d{2,4}x\d{2,4}\.(png|jpe?g|webp)(\?|#|$)/i;
 
+// Site-inrichting: logo's, iconen, themabestanden. Bij een testrun op
+// lumopeptides.com leverde de afbeeldingsterugval 9 'documenten' op die
+// in werkelijkheid het logo en wat iconen waren - en die gingen daarna
+// alle negen door een leesopdracht. Duur en waardeloos.
+const SITE_INRICHTING = /\/(icons?|logos?|brand|branding|themes?|assets|sprites?|flags?|badges?|ui)\//i;
+const INRICHTING_NAAM = /(logo|icon|sprite|favicon|placeholder|banner|avatar|thumb|shield|truck|cart|star|arrow|check)[-_.]?/i;
+
+// Omgekeerd: een bestandsnaam die zelf zegt dat het een rapport is.
+// Test-Report-199613.png, COA_BPC157.pdf, lab-result-2026.jpg.
+const RAPPORT_NAAM = /(coa|certificate|certificaat|analysis|analyse|test[-_]?report|testrapport|lab[-_]?(result|report)|labresultaat|hplc|purity)/i;
+
 function withTimeout() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -194,11 +205,16 @@ async function crawlCoaIndex(website) {
 
     const rows = rowContextFor(page.html);
     const links = extractLinks(page.html, page.finalUrl);
-    const bruikbaar = links.filter((l) => DOC_EXT.test(l.url) && !THUMBNAIL.test(l.url));
+    const bruikbaar = links.filter((l) => DOC_EXT.test(l.url) && !THUMBNAIL.test(l.url) &&
+      !SITE_INRICHTING.test(l.url) && !INRICHTING_NAAM.test(l.url.split('/').pop() || ''));
     const aangelinkt = bruikbaar.filter((l) => !l.uitAfbeelding);
-    // Aangeklikte documenten hebben voorrang; alleen als die er niet zijn
-    // vallen we terug op ingesloten afbeeldingen.
-    const docs = aangelinkt.length ? aangelinkt : bruikbaar.filter((l) => l.uitAfbeelding);
+    // Aangeklikte documenten hebben voorrang. PDF's zijn altijd goed: niemand
+    // zet zijn siteframework in een PDF. Losse afbeeldingen zijn alleen
+    // bruikbaar als de bestandsnaam zelf zegt dat het een rapport is - anders
+    // haal je het logo op en stuur je dat door een leesopdracht.
+    const losseAfbeeldingen = bruikbaar.filter((l) => l.uitAfbeelding &&
+      (/\.pdf(\?|#|$)/i.test(l.url) || RAPPORT_NAAM.test(l.url)));
+    const docs = aangelinkt.length ? aangelinkt : losseAfbeeldingen;
     if (!docs.length) { if (diagnose.length < 20) diagnose.push({ url, resultaat: 'pagina bestaat, maar bevat geen documentlinks' }); continue; }
 
     indexPages.push(page.finalUrl);
@@ -226,4 +242,4 @@ async function crawlCoaIndex(website) {
   return { indexPages, documents: Array.from(documents.values()), notes, diagnose };
 }
 
-module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, DOC_EXT, THUMBNAIL, INDEX_HINT };
+module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, INDEX_HINT };
