@@ -464,7 +464,7 @@
       goDetail(created.id);
     } catch(e){
       delete state.runningCaseIds['__new__'];
-      if (e.code === 'invalid_url'){
+      if (e.code === 'invalid_url' || e.code === 'not_peptide_supplier'){
         state.startUrlError = e.message || 'Vul een geldige web URL in.';
         renderDashboard();
       } else {

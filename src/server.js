@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const pipeline = require('./pipeline');
 const { isValidWebUrl, normalizeUrl } = require('./validate');
+const { checkPeptideSupplierRelevance } = require('./relevanceCheck');
 
 const app = express();
 // Twee velden: 'files' voor de bestaande generieke bijlagen (COA's, screenshots,
@@ -50,6 +51,20 @@ app.post('/api/audits', uploadFields, async (req, res) => {
     return res.status(400).json({ error: 'invalid_url', message: 'Vul een geldige web URL in.' });
   }
   const naam = (req.body.naam || '').trim() || website;
+
+  // Voorcheck: is dit überhaupt een peptide-/research-chemicals-leverancier?
+  // Zo niet, dan slaan we het aanmaken van een case en de volledige (dure)
+  // pipeline over — precies het idee van Ruben: URL geldig? -> relevant? ->
+  // pas dan starten. Fail-open (zie relevanceCheck.js): bij twijfel of een
+  // technische hobbel gaat de audit gewoon door.
+  const relevance = await checkPeptideSupplierRelevance({ naam, website });
+  if (!relevance.relevant) {
+    return res.status(422).json({
+      error: 'not_peptide_supplier',
+      message: 'Deze website lijkt geen leverancier van peptiden of research chemicals te zijn, dus we starten geen audit.' + (relevance.reasoning ? ' ' + relevance.reasoning : '')
+    });
+  }
+
   const genericFiles = (req.files && req.files.files) || [];
   const kvkFile = (req.files && req.files.kvkDocument && req.files.kvkDocument[0]) || null;
 
