@@ -212,9 +212,13 @@ async function crawlCoaIndex(website) {
     // zet zijn siteframework in een PDF. Losse afbeeldingen zijn alleen
     // bruikbaar als de bestandsnaam zelf zegt dat het een rapport is - anders
     // haal je het logo op en stuur je dat door een leesopdracht.
-    const losseAfbeeldingen = bruikbaar.filter((l) => l.uitAfbeelding &&
-      (/\.pdf(\?|#|$)/i.test(l.url) || RAPPORT_NAAM.test(l.url)));
-    const docs = aangelinkt.length ? aangelinkt : losseAfbeeldingen;
+    // LET OP: eisen dat de bestandsnaam zelf 'coa' of 'report' bevat werkt
+    // niet. Bij nextgenpeptides.nl viel daarmee de hele bibliotheek weg (21
+    // documenten naar 0) omdat hun rapporten gewoon een uploadnaam hebben.
+    // De inrichtingsfilters hierboven doen het werk al: logo's en iconen
+    // staan in /brand/ en /icons/ of heten ernaar. Een rapportnaam is een
+    // bonus, geen eis.
+    const docs = aangelinkt.length ? aangelinkt : bruikbaar.filter((l) => l.uitAfbeelding);
     if (!docs.length) { if (diagnose.length < 20) diagnose.push({ url, resultaat: 'pagina bestaat, maar bevat geen documentlinks' }); continue; }
 
     indexPages.push(page.finalUrl);
