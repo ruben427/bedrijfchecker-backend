@@ -6,10 +6,18 @@ const { v4: uuidv4 } = require('uuid');
 
 const db = require('./db');
 const pipeline = require('./pipeline');
+const auth = require('./auth');
+const rl = require('./rateLimit');
+const { caseSummary, ownerCase, publicCase, sanitizeError } = require('./serialize');
 const { isValidWebUrl, normalizeUrl } = require('./validate');
 const { checkPeptideSupplierRelevance } = require('./relevanceCheck');
 
 const app = express();
+
+// Railway zet een proxy voor de app; zonder dit is req.ip het IP van de proxy
+// en begrenst de rate limiter effectief iedereen als één bezoeker.
+app.set('trust proxy', 1);
+
 // Twee velden: 'files' voor de bestaande generieke bijlagen (COA's, screenshots,
 // max 10) en een los 'kvkDocument'-veld (max 1) voor het KvK-uittreksel. Geen
 // mimetype-filter meer op multer-niveau — een PDF komt nu ook door; voorheen
@@ -17,100 +25,122 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 11 } });
 const uploadFields = upload.fields([{ name: 'files', maxCount: 10 }, { name: 'kvkDocument', maxCount: 1 }]);
 
+// CORS is hier geen autorisatiegrens (dat is het owner token), maar beperkt wel
+// welke pagina's namens een bezoeker mogen aanroepen. Zet ALLOWED_ORIGINS zodra
+// de frontend een vaste origin heeft.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '*').split(',').map((s) => s.trim());
-app.use(cors({ origin: allowedOrigins.includes('*') ? true : allowedOrigins }));
+app.use(cors({
+  origin: allowedOrigins.includes('*') ? true : allowedOrigins,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Owner-Token'],
+  exposedHeaders: ['Retry-After']
+}));
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Lijst eerder gedraaide audits (voor het dashboard/landingspagina-lijstje).
-app.get('/api/audits', async (req, res) => {
+const caseAccess = auth.requireCaseAccess(db);
+
+// Lijst eerder gedraaide audits — uitsluitend die van de aanvragende browser.
+// Voorheen gaf deze route iedereen de cases van iedereen terug.
+app.get('/api/audits', rl.read, auth.requireOwnerToken, async (req, res) => {
   try {
-    const cases = await db.listCases();
-    res.json({ cases });
+    const cases = req.isAdmin ? await db.listCases() : await db.listCasesByOwner(req.ownerTokenHash);
+    res.json({ cases: cases.map(caseSummary) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json(sanitizeError(e, req));
   }
 });
 
-app.get('/api/audits/:id', async (req, res) => {
-  try {
-    const c = await db.getCase(req.params.id);
-    if (!c) return res.status(404).json({ error: 'not_found' });
-    res.json({ case: c });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.get('/api/audits/:id', rl.read, auth.requireOwnerToken, caseAccess, (req, res) => {
+  res.json({ case: ownerCase(req.case) });
+});
+
+// Uitslag zonder methode — bedoeld voor een gedeelde weergave. Bewust dezelfde
+// eigenaarscontrole als hierboven; pas als er echte deellinks komen, krijgt
+// deze route een eigen, per-case deeltoken.
+app.get('/api/audits/:id/public', rl.read, auth.requireOwnerToken, caseAccess, (req, res) => {
+  res.json({ case: publicCase(req.case) });
 });
 
 // Start een nieuwe audit. multipart/form-data: velden website/naam/land/
 // kvkNummer/notities + optioneel bestand(en) onder "files" (COA's, screenshots).
-app.post('/api/audits', uploadFields, async (req, res) => {
-  const website = normalizeUrl(req.body.website || '');
-  if (!isValidWebUrl(website)) {
-    return res.status(400).json({ error: 'invalid_url', message: 'Vul een geldige web URL in.' });
+//
+// Volgorde van de middleware is hier niet vrijblijvend: de relevantiecheck
+// hieronder is een betaalde AI-call die draait VOORDAT er een case bestaat.
+// Rate limiting en tokencontrole moeten daar dus vóór staan, niet erin.
+app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, async (req, res) => {
+  try {
+    const website = normalizeUrl(req.body.website || '');
+    if (!isValidWebUrl(website)) {
+      return res.status(400).json({ error: 'invalid_url', message: 'Vul een geldige web URL in.' });
+    }
+    const naam = (req.body.naam || '').trim() || website;
+
+    // Voorcheck: is dit überhaupt een peptide-/research-chemicals-leverancier?
+    // Zo niet, dan slaan we het aanmaken van een case en de volledige (dure)
+    // pipeline over — precies het idee van Ruben: URL geldig? -> relevant? ->
+    // pas dan starten. Fail-open (zie relevanceCheck.js): bij twijfel of een
+    // technische hobbel gaat de audit gewoon door.
+    const relevance = await checkPeptideSupplierRelevance({ naam, website });
+    if (!relevance.relevant) {
+      return res.status(422).json({
+        error: 'not_peptide_supplier',
+        message: 'Deze website lijkt geen leverancier van peptiden of research chemicals te zijn, dus we starten geen audit.' + (relevance.reasoning ? ' ' + relevance.reasoning : '')
+      });
+    }
+
+    const genericFiles = (req.files && req.files.files) || [];
+    const kvkFile = (req.files && req.files.kvkDocument && req.files.kvkDocument[0]) || null;
+
+    const ctx = {
+      naam,
+      website,
+      land: req.body.land || null,
+      kvkNummer: req.body.kvkNummer || null,
+      notities: req.body.notities || null,
+      images: genericFiles
+        .filter((f) => f.mimetype && f.mimetype.startsWith('image/'))
+        .map((f) => ({ data: f.buffer.toString('base64'), mediaType: f.mimetype })),
+      kvkDocument: kvkFile ? { data: kvkFile.buffer.toString('base64'), mediaType: kvkFile.mimetype } : null
+    };
+
+    const id = uuidv4();
+    const created = await db.createCase(id, Object.assign({}, ctx, { ownerTokenHash: req.ownerTokenHash }));
+
+    // Geüploade bestanden persistent bewaren (niet alleen transiet gebruiken
+    // tijdens deze run) zodat ze later terug te vinden zijn en, bij een
+    // toekomstige KvK-koppeling, hetzelfde opslagpad hergebruikt kan worden.
+    await Promise.all([
+      ...genericFiles.map((f) => db.addDocument(uuidv4(), id, { kind: 'overig', filename: f.originalname, mimetype: f.mimetype, buffer: f.buffer })),
+      ...(kvkFile ? [db.addDocument(uuidv4(), id, { kind: 'kvk', filename: kvkFile.originalname, mimetype: kvkFile.mimetype, buffer: kvkFile.buffer })] : [])
+    ]).catch(() => {});
+
+    // Fire-and-forget: de audit draait op de achtergrond, de client volgt
+    // voortgang via GET /api/audits/:id (polling), net als in de Artifact.
+    // Draait alleen de gratis stappen (laboratorium + coaDataset) — de knip
+    // tussen gratis en betaald, zie POST /api/audits/:id/continue-deep hieronder.
+    pipeline.runFreeTier(id, ctx).catch(() => {});
+
+    res.status(201).json({ case: ownerCase(created) });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
   }
-  const naam = (req.body.naam || '').trim() || website;
-
-  // Voorcheck: is dit überhaupt een peptide-/research-chemicals-leverancier?
-  // Zo niet, dan slaan we het aanmaken van een case en de volledige (dure)
-  // pipeline over — precies het idee van Ruben: URL geldig? -> relevant? ->
-  // pas dan starten. Fail-open (zie relevanceCheck.js): bij twijfel of een
-  // technische hobbel gaat de audit gewoon door.
-  const relevance = await checkPeptideSupplierRelevance({ naam, website });
-  if (!relevance.relevant) {
-    return res.status(422).json({
-      error: 'not_peptide_supplier',
-      message: 'Deze website lijkt geen leverancier van peptiden of research chemicals te zijn, dus we starten geen audit.' + (relevance.reasoning ? ' ' + relevance.reasoning : '')
-    });
-  }
-
-  const genericFiles = (req.files && req.files.files) || [];
-  const kvkFile = (req.files && req.files.kvkDocument && req.files.kvkDocument[0]) || null;
-
-  const ctx = {
-    naam,
-    website,
-    land: req.body.land || null,
-    kvkNummer: req.body.kvkNummer || null,
-    notities: req.body.notities || null,
-    images: genericFiles
-      .filter((f) => f.mimetype && f.mimetype.startsWith('image/'))
-      .map((f) => ({ data: f.buffer.toString('base64'), mediaType: f.mimetype })),
-    kvkDocument: kvkFile ? { data: kvkFile.buffer.toString('base64'), mediaType: kvkFile.mimetype } : null
-  };
-
-  const id = uuidv4();
-  const created = await db.createCase(id, ctx);
-
-  // Geüploade bestanden persistent bewaren (niet alleen transiet gebruiken
-  // tijdens deze run) zodat ze later terug te vinden zijn en, bij een
-  // toekomstige KvK-koppeling, hetzelfde opslagpad hergebruikt kan worden.
-  await Promise.all([
-    ...genericFiles.map((f) => db.addDocument(uuidv4(), id, { kind: 'overig', filename: f.originalname, mimetype: f.mimetype, buffer: f.buffer })),
-    ...(kvkFile ? [db.addDocument(uuidv4(), id, { kind: 'kvk', filename: kvkFile.originalname, mimetype: kvkFile.mimetype, buffer: kvkFile.buffer })] : [])
-  ]).catch(() => {});
-
-  // Fire-and-forget: de audit draait op de achtergrond, de client volgt
-  // voortgang via GET /api/audits/:id (polling), net als in de Artifact.
-  // Draait alleen de gratis stappen (laboratorium + coaDataset) — de knip
-  // tussen gratis en betaald, zie POST /api/audits/:id/continue-deep hieronder.
-  pipeline.runFreeTier(id, ctx).catch(() => {});
-
-  res.status(201).json({ case: created });
 });
 
 // Metadata van geüploade documenten bij een case (voor een bijlagenlijstje
 // in de UI) — de bytes zelf komen pas via de download-route hieronder.
-app.get('/api/audits/:id/documents', async (req, res) => {
+app.get('/api/audits/:id/documents', rl.read, auth.requireOwnerToken, caseAccess, async (req, res) => {
   try {
     res.json({ documents: await db.listDocuments(req.params.id) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json(sanitizeError(e, req));
   }
 });
 
-app.get('/api/audits/:id/documents/:docId', async (req, res) => {
+// Deze route geeft de ruwe bytes van een geüpload bestand terug — bijvoorbeeld
+// een KvK-uittreksel met persoonsgegevens. Voorheen volstond het kennen van
+// case-id + doc-id; nu moet je ook eigenaar van de case zijn.
+app.get('/api/audits/:id/documents/:docId', rl.read, auth.requireOwnerToken, caseAccess, async (req, res) => {
   try {
     const doc = await db.getDocument(req.params.docId);
     if (!doc || doc.caseId !== req.params.id) return res.status(404).json({ error: 'not_found' });
@@ -118,17 +148,16 @@ app.get('/api/audits/:id/documents/:docId', async (req, res) => {
     res.set('Content-Disposition', 'inline; filename="' + (doc.filename || doc.id) + '"');
     res.send(doc.data);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json(sanitizeError(e, req));
   }
 });
 
-app.post('/api/audits/:id/stop', async (req, res) => {
+app.post('/api/audits/:id/stop', rl.caseAction, auth.requireOwnerToken, caseAccess, async (req, res) => {
   try {
     await pipeline.stopAudit(req.params.id);
-    const c = await db.getCase(req.params.id);
-    res.json({ case: c });
+    res.json({ case: ownerCase(await db.getCase(req.params.id)) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json(sanitizeError(e, req));
   }
 });
 
@@ -138,10 +167,9 @@ app.post('/api/audits/:id/stop', async (req, res) => {
 // een betaalmoment vóór te zetten. Draait de resterende DEEP_STEP_KEYS boven
 // op dezelfde case (zelfde fasegegevens blijven staan) en herberekent daarna
 // categorize/engine/rapport in "deep"-stand.
-app.post('/api/audits/:id/continue-deep', async (req, res) => {
+app.post('/api/audits/:id/continue-deep', rl.caseAction, auth.requireOwnerToken, caseAccess, async (req, res) => {
   try {
-    const c = await db.getCase(req.params.id);
-    if (!c) return res.status(404).json({ error: 'not_found' });
+    const c = req.case;
     if (c.status !== 'gratis_klaar') {
       return res.status(409).json({ error: 'invalid_state', message: 'Deze audit staat niet klaar om verdiept te worden.' });
     }
@@ -152,9 +180,9 @@ app.post('/api/audits/:id/continue-deep', async (req, res) => {
     };
     await db.updateCase(req.params.id, { status: 'bezig', tier: 'deep', error: null });
     pipeline.runDeepTier(req.params.id, ctx).catch(() => {});
-    res.json({ case: await db.getCase(req.params.id) });
+    res.json({ case: ownerCase(await db.getCase(req.params.id)) });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json(sanitizeError(e, req));
   }
 });
 
@@ -163,11 +191,10 @@ app.post('/api/audits/:id/continue-deep', async (req, res) => {
 // een onderzoeksstap trekt altijd categorize + de engine + een volledige
 // hersynthese achter zich aan, anders raken categorybeoordeling en rapport
 // verouderd t.o.v. de net vernieuwde brondata.
-app.post('/api/audits/:id/retry-step', async (req, res) => {
+app.post('/api/audits/:id/retry-step', rl.caseAction, auth.requireOwnerToken, caseAccess, async (req, res) => {
   const { key } = req.body || {};
   try {
-    const c = await db.getCase(req.params.id);
-    if (!c) return res.status(404).json({ error: 'not_found' });
+    const c = req.case;
     // Bij een retry van de identiteitsstap willen we een eerder geüpload
     // KvK-document opnieuw laten meewegen, ook al wordt er nu niets nieuws
     // geüpload — vandaar de opzoek in de persistente documents-tabel.
@@ -195,17 +222,27 @@ app.post('/api/audits/:id/retry-step', async (req, res) => {
     await pipeline.applyScoringEngine(req.params.id);
     await pipeline.runSynthesis(req.params.id, ctx, tier);
     await db.updateCase(req.params.id, { status: doneStatus });
-    res.json({ case: await db.getCase(req.params.id) });
+    res.json({ case: ownerCase(await db.getCase(req.params.id)) });
   } catch (e) {
-    await db.updateCase(req.params.id, { status: 'fout', error: (e && e.message) || 'onbekende fout' }).catch(() => {});
-    res.status(500).json({ error: e.message });
+    await db.updateCase(req.params.id, { status: 'fout', error: 'Er ging iets mis tijdens deze stap.' }).catch(() => {});
+    res.status(500).json(sanitizeError(e, req));
   }
+});
+
+// Vangnet: elke fout die nog los komt (bijv. multer-limieten) gaat via dezelfde
+// sanitizer, zodat er nooit een stacktrace of pad in een response belandt.
+app.use((err, req, res, next) => {
+  if (err && err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'file_too_large', message: 'Een bestand is groter dan 15 MB.' });
+  }
+  res.status(500).json(sanitizeError(err, req));
 });
 
 const port = process.env.PORT || 3000;
 
 db.initSchema()
   .then(() => {
+    if (!process.env.ADMIN_TOKEN) console.warn('LET OP: ADMIN_TOKEN is niet gezet — bestaande cases van vóór de eigenaarsmigratie zijn niet meer opvraagbaar.');
     app.listen(port, () => console.log('bedrijfchecker-backend luistert op poort ' + port));
   })
   .catch((e) => {

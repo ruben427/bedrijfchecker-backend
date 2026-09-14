@@ -69,3 +69,43 @@ npm start
   i.p.v. `window.claude`-capabilities).
 - KvK-integratie en de betaalde Deep Dive-tier (bewust uitgesteld, zie
   het project-document "Publieke Backend (Path B)").
+
+## Toegang en misbruikbestendiging (fase 0)
+
+De API was publiek zonder enige toegangscontrole. Drie dingen zijn dichtgezet:
+
+**1. Eigenaarskoppeling zonder login.** Elke browser houdt één willekeurig
+`ownerToken` in localStorage en stuurt dat mee als `X-Owner-Token`. De server
+bewaart alleen de SHA-256 ervan in `cases.owner_token_hash`. Gevolg:
+
+- `GET /api/audits` geeft alleen de cases van die browser terug (was: alle
+  cases van iedereen);
+- `GET /api/audits/:id` en alle acties erop vereisen eigenaarschap;
+- `GET /api/audits/:id/documents/:docId` gaf eerder de ruwe bytes van een
+  geüpload KvK-uittreksel aan iedereen die het case-id en doc-id kende.
+
+Een case die niet van jou is geeft `404`, niet `403` — anders verklapt het
+statusverschil zelf welke case-ids bestaan.
+
+**2. Rate limiting** (`src/rateLimit.js`), met het startlimiet vóór de
+relevantiecheck. Die check is een betaalde AI-call die draait voordat er een
+case bestaat, dus een geweigerde aanvraag kostte al geld.
+
+**3. Methodescheiding** (`src/serialize.js`). Drie vormen: `caseSummary` voor
+het overzicht, `ownerCase` voor de eigenaar, en `publicCase` — de uitslag
+zonder rekentrace, pijlerinterne waarden of ruwe fasedata, klaar voor een
+toekomstige deellink. `publicCase` is een whitelist; een blacklist lekt bij het
+eerste nieuwe veld. Foutmeldingen geven een code plus een referentienummer
+terug, nooit `e.message`.
+
+### Na deployen
+
+Zet `ADMIN_TOKEN` in Railway. Bestaande cases hebben nog geen eigenaar en zijn
+daarmee alleen via dat token bereikbaar. Om ze aan je eigen browser te koppelen:
+open de app, lees `localStorage.getItem('bedrijfchecker.ownerToken')` uit de
+console, en draai eenmalig:
+
+```sql
+UPDATE cases SET owner_token_hash = encode(sha256('<jouw token>'::bytea), 'hex')
+WHERE owner_token_hash IS NULL;
+```

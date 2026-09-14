@@ -183,14 +183,38 @@
 
   // ---------- API-client (vervangt de Artifact's window.claude db/mcp/sample-
   // capabilities) ----------
+  // ---------- Owner token ----------
+  // De backend koppelt elke case aan de browser die hem aanmaakte. Deze browser
+  // houdt daarvoor één willekeurig token in localStorage; de server bewaart
+  // alleen de hash ervan. Zonder dit token geeft de API niets terug.
+  //
+  // LET OP: wie dit token kwijtraakt (andere browser, localStorage gewist),
+  // ziet zijn eerdere audits niet meer. Dat is de prijs van geen login.
+  var OWNER_TOKEN_KEY = "bedrijfchecker.ownerToken";
+  function ownerToken(){
+    var t = null;
+    try { t = localStorage.getItem(OWNER_TOKEN_KEY); } catch(e){}
+    if (t && t.length >= 32) return t;
+    var bytes = new Uint8Array(32);
+    (window.crypto || window.msCrypto).getRandomValues(bytes);
+    t = btoa(String.fromCharCode.apply(null, bytes)).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+    try { localStorage.setItem(OWNER_TOKEN_KEY, t); } catch(e){}
+    return t;
+  }
+  function apiFetch(path, opts){
+    opts = opts || {};
+    var headers = Object.assign({}, opts.headers || {}, { "X-Owner-Token": ownerToken() });
+    return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
+  }
+
   async function apiListCases(){
-    var res = await fetch(API_BASE + '/api/audits');
+    var res = await apiFetch('/api/audits');
     if (!res.ok) throw new Error('Kon eerdere audits niet laden (' + res.status + ')');
     var data = await res.json();
     return data.cases || [];
   }
   async function apiGetCase(id){
-    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id));
+    var res = await apiFetch('/api/audits/' + encodeURIComponent(id));
     if (res.status === 404) return null;
     if (!res.ok) throw new Error('Kon deze audit niet laden (' + res.status + ')');
     var data = await res.json();
@@ -205,7 +229,7 @@
     if (fields.notities) fd.append('notities', fields.notities);
     (files||[]).forEach(function(f){ fd.append('files', f); });
     if (kvkFile) fd.append('kvkDocument', kvkFile);
-    var res = await fetch(API_BASE + '/api/audits', { method:'POST', body: fd });
+    var res = await apiFetch('/api/audits', { method:'POST', body: fd });
     var data = await res.json().catch(function(){ return {}; });
     if (!res.ok){
       var err = new Error(data.message || data.error || 'Aanmaken van de audit is mislukt (' + res.status + ')');
@@ -215,13 +239,13 @@
     return data.case;
   }
   async function apiStopCase(id){
-    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id) + '/stop', { method:'POST' });
+    var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/stop', { method:'POST' });
     var data = await res.json().catch(function(){ return {}; });
     if (!res.ok) throw new Error(data.error || 'Stoppen is mislukt (' + res.status + ')');
     return data.case;
   }
   async function apiRetryStep(id, key){
-    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id) + '/retry-step', {
+    var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/retry-step', {
       method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key: key })
     });
     var data = await res.json().catch(function(){ return {}; });
@@ -229,7 +253,7 @@
     return data.case;
   }
   async function apiContinueDeep(id){
-    var res = await fetch(API_BASE + '/api/audits/' + encodeURIComponent(id) + '/continue-deep', { method:'POST' });
+    var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/continue-deep', { method:'POST' });
     var data = await res.json().catch(function(){ return {}; });
     if (!res.ok) throw new Error(data.message || data.error || 'Starten van de Deep Dive is mislukt (' + res.status + ')');
     return data.case;

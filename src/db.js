@@ -33,6 +33,11 @@ async function initSchema() {
   // bestaat (zoals in productie) — vandaar deze losse, idempotente migratie
   // voor de nieuwe 'tier'-kolom (gratis/deep-knip, 14 sep).
   await pool.query(`ALTER TABLE cases ADD COLUMN IF NOT EXISTS tier TEXT NOT NULL DEFAULT 'gratis';`);
+  // Eigenaarskoppeling (14 sep): de SHA-256 van het owner token van de browser
+  // die deze case heeft aangemaakt. NULL = oude case van vóór deze migratie;
+  // die is alleen nog via ADMIN_TOKEN bereikbaar. Zie src/auth.js.
+  await pool.query(`ALTER TABLE cases ADD COLUMN IF NOT EXISTS owner_token_hash TEXT;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS cases_owner_token_hash_idx ON cases (owner_token_hash);`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS stats (
       key TEXT PRIMARY KEY,
@@ -61,6 +66,7 @@ function rowToCase(row) {
   if (!row) return null;
   return {
     id: row.id,
+    ownerTokenHash: row.owner_token_hash || null,
     naam: row.naam,
     website: row.website,
     land: row.land,
@@ -84,9 +90,9 @@ function rowToCase(row) {
 async function createCase(id, fields) {
   const now = Date.now();
   await pool.query(
-    `INSERT INTO cases (id, naam, website, land, kvk_nummer, notities, status, progress, phase_data, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,'bezig','[]','{}',$7,$7)`,
-    [id, fields.naam || fields.website, fields.website, fields.land || null, fields.kvkNummer || null, fields.notities || null, now]
+    `INSERT INTO cases (id, naam, website, land, kvk_nummer, notities, status, progress, phase_data, owner_token_hash, created_at, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,'bezig','[]','{}',$7,$8,$8)`,
+    [id, fields.naam || fields.website, fields.website, fields.land || null, fields.kvkNummer || null, fields.notities || null, fields.ownerTokenHash || null, now]
   );
   return getCase(id);
 }
@@ -94,6 +100,17 @@ async function createCase(id, fields) {
 async function getCase(id) {
   const { rows } = await pool.query('SELECT * FROM cases WHERE id = $1', [id]);
   return rowToCase(rows[0]);
+}
+
+// Alleen de cases van één browser/eigenaar. Dit is de route die de frontend
+// gebruikt; listCases() hieronder is er nog uitsluitend voor ADMIN_TOKEN.
+async function listCasesByOwner(ownerTokenHash) {
+  if (!ownerTokenHash) return [];
+  const { rows } = await pool.query(
+    'SELECT * FROM cases WHERE owner_token_hash = $1 ORDER BY created_at DESC LIMIT 200',
+    [ownerTokenHash]
+  );
+  return rows.map(rowToCase);
 }
 
 async function listCases() {
@@ -190,6 +207,6 @@ async function getLatestDocumentByKind(caseId, kind) {
 }
 
 module.exports = {
-  pool, initSchema, createCase, getCase, listCases, updateCase, mergePhaseData, getStepStats, updateStepStats,
+  pool, initSchema, createCase, getCase, listCases, listCasesByOwner, updateCase, mergePhaseData, getStepStats, updateStepStats,
   addDocument, listDocuments, getDocument, getLatestDocumentByKind
 };
