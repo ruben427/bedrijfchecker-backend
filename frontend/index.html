@@ -1,282 +1,12 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
 <title>Bedrijfchecker</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  /* Anne's designsysteem: paars voor koppen, oranje als actiekleur, warme neutrals. */
-  :root{
-    --bg:#fffdfc;
-    --surface:#f9f9f8;
-    --surface-2:#f2efec;
-    --border:#ccc9c6;
-    --text:#0f0f0e;
-    --text-muted:#6e6862;
-    --heading:#730499;
-    --heading-2:#4d0266;
-    --accent:#f63d00;
-    --accent-strong:#a63406;
-    --accent-light:#ff7b00;
-    --accent-soft:#fff1ea;
-    --ok:#1a7f4b;
-    --ok-soft:#e3f3e8;
-    --warn:#a8710a;
-    --warn-soft:#faf0dc;
-    --danger:#ac2b21;
-    --danger-soft:#fbe7e4;
-    --grey:#6e6862;
-    --grey-soft:#f2efec;
-    --shadow: 0 1px 2px rgba(15,15,14,.05), 0 10px 28px -14px rgba(15,15,14,.16);
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#17100a;
-      --surface:#211911;
-      --surface-2:#2a2016;
-      --border:#3d2f22;
-      --text:#f6efe8;
-      --text-muted:#b9a99a;
-      --heading:#e2a6f5;
-      --heading-2:#d98bf0;
-      --accent:#ff5a1f;
-      --accent-strong:#ff8a4d;
-      --accent-light:#ffa14d;
-      --accent-soft:#3a2113;
-      --ok:#4cbf80;
-      --ok-soft:#17281e;
-      --warn:#d9a441;
-      --warn-soft:#2c250f;
-      --danger:#e07468;
-      --danger-soft:#2e1815;
-      --grey:#b9a99a;
-      --grey-soft:#2a2016;
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.55);
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#17100a;
-    --surface:#211911;
-    --surface-2:#2a2016;
-    --border:#3d2f22;
-    --text:#f6efe8;
-    --text-muted:#b9a99a;
-    --heading:#e2a6f5;
-    --heading-2:#d98bf0;
-    --accent:#ff5a1f;
-    --accent-strong:#ff8a4d;
-    --accent-light:#ffa14d;
-    --accent-soft:#3a2113;
-    --ok:#4cbf80;
-    --ok-soft:#17281e;
-    --warn:#d9a441;
-    --warn-soft:#2c250f;
-    --danger:#e07468;
-    --danger-soft:#2e1815;
-    --grey:#b9a99a;
-    --grey-soft:#2a2016;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.55);
-  }
-
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;}
-  body{
-    background:var(--bg);
-    color:var(--text);
-    font-family:"Open Sans", system-ui, sans-serif;
-    line-height:1.5;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{
-    max-width:1040px;
-    margin:0 auto;
-    padding-inline:20px;
-    padding-block:0 64px;
-  }
-  h1,h2,h3{
-    font-family:"Baloo 2", system-ui, sans-serif;
-    font-weight:600;
-    text-wrap:balance;
-    margin:0;
-    color:var(--text);
-  }
-  .mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
-  a{ color:var(--accent-strong); }
-
-  header.top{
-    display:flex; align-items:center; gap:16px;
-    padding-block:16px; margin-bottom:8px;
-    border-bottom:1px solid var(--border);
-  }
-  .brand-link{
-    appearance:none; background:none; border:none; padding:0; cursor:pointer;
-    font-family:"Baloo 2", system-ui, sans-serif; font-weight:700; font-size:1.05rem; color:var(--heading);
-  }
-  .brand-link:hover{ color:var(--accent); }
-  .btn{
-    appearance:none; border:1px solid var(--accent-strong); background:var(--accent); color:#fff9f5;
-    font:inherit; font-weight:600; font-size:.92rem;
-    padding:10px 16px; border-radius:8px; cursor:pointer;
-    display:inline-flex; align-items:center; gap:8px;
-  }
-  .btn:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
-  .btn:disabled{ opacity:.5; cursor:not-allowed; }
-  .btn.secondary{ background:transparent; color:var(--text); border-color:var(--border); }
-  .btn.secondary:hover{ background:var(--surface-2); }
-  .btn.ghost{ background:transparent; color:var(--accent-strong); border-color:transparent; padding-inline:4px; }
-
-  /* hero + start-audit / eerdere-audits kaarten (naar Anne's designsysteem in Figma) */
-  .hero{ text-align:center; padding:28px 0 40px; }
-  .hero h1{ font-size:clamp(2.1rem,5vw,3.4rem); color:var(--heading); letter-spacing:-.02em; line-height:1.05; }
-  .hero .hero-tag{ font-size:1.05rem; color:var(--text); max-width:640px; margin:12px auto 0; }
-
-  .hero-card{
-    background:var(--surface); border:1px solid var(--border); border-radius:24px;
-    padding:40px 32px; max-width:820px; margin:0 auto 28px; box-shadow:var(--shadow);
-  }
-  .hero-card-inner{ max-width:640px; margin:0 auto; display:flex; flex-direction:column; gap:20px; align-items:center; }
-  .hero-card-title{ font-size:1.6rem; text-align:center; margin:0; }
-  .hero-card-title.c1{ color:var(--heading); }
-  .hero-card-title.c2{ color:var(--heading-2); }
-  .hero-card-note{ font-size:.85rem; color:var(--text-muted); text-align:center; }
-
-  .audit-form{ display:flex; gap:12px; width:100%; align-items:flex-start; }
-  .audit-form-row{ display:flex; gap:12px; width:100%; }
-  .audit-form input[type=text]{ flex:1; height:56px; border-radius:8px; padding:0 14px; font-size:1rem; }
-  .field-error{ color:var(--danger); font-size:.82rem; }
-  input.has-error{ border-color:var(--danger); }
-  @media (max-width:640px){
-    .audit-form-row{ flex-direction:column; }
-    .btn-cta{ width:100%; }
-  }
-
-  .btn-cta{
-    appearance:none; border:1px solid var(--accent-strong);
-    background:linear-gradient(135deg, var(--accent) 50%, var(--accent-light) 100%);
-    color:#fff9f5; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem;
-    padding:0 24px; height:56px; border-radius:999px; cursor:pointer;
-    display:inline-flex; align-items:center; justify-content:center; gap:10px; white-space:nowrap; flex-shrink:0;
-  }
-  .btn-cta:hover{ filter:brightness(1.05); }
-  .btn-cta:disabled{ opacity:.5; cursor:not-allowed; }
-  .btn-cta svg{ width:18px; height:18px; flex-shrink:0; }
-
-  .disclosure-toggle{
-    display:flex; align-items:center; gap:10px; background:none; border:none; font:inherit;
-    font-size:.95rem; color:var(--text); cursor:pointer; padding:4px 0; width:100%; text-align:left;
-  }
-  .disclosure-caret{ display:inline-flex; transition:transform .15s ease; transform:rotate(90deg); color:var(--accent); flex-shrink:0; }
-  .disclosure-toggle[aria-expanded="true"] .disclosure-caret{ transform:rotate(0deg); }
-  .disclosure-body{ margin-top:14px; width:100%; }
-
-  .dropzone{
-    border:1.5px dashed var(--accent); border-radius:8px; padding:36px 20px; text-align:center;
-    color:var(--text); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:10px;
-    background:transparent; width:100%;
-  }
-  .dropzone:hover{ border-color:var(--accent-strong); background:var(--accent-soft); }
-  .dropzone svg{ width:34px; height:34px; color:var(--accent-strong); }
-  .dropzone .dz-text{ font-size:.92rem; color:var(--text); }
-
-  .audit-list{ display:flex; flex-direction:column; width:100%; }
-  .audit-row{
-    display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 0;
-    border-bottom:1px solid var(--border); background:none; border-left:none; border-right:none; border-top:none;
-    width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
-  }
-  .audit-row:last-child{ border-bottom:none; }
-  .audit-row .left{ display:flex; align-items:center; gap:10px; min-width:0; flex-wrap:wrap; }
-  .audit-row .name{ font-weight:600; }
-  .audit-row .domain{ color:var(--text-muted); font-size:.85rem; }
-  .textlink{
-    display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-weight:700;
-    font-family:"Baloo 2", sans-serif; border-bottom:1px solid var(--accent); padding-bottom:1px;
-    white-space:nowrap; flex-shrink:0;
-  }
-  .textlink svg{ width:12px; height:12px; }
-
-  input[type=text], input[type=url], textarea{
-    font:inherit; font-size:.96rem; color:var(--text);
-    background:var(--surface); border:1px solid var(--border); border-radius:8px;
-    padding:10px 12px; width:100%;
-  }
-  textarea{ min-height:80px; resize:vertical; }
-  input:focus, textarea:focus, button:focus-visible, a:focus-visible{
-    outline:2px solid var(--accent); outline-offset:2px;
-  }
-
-  .card{
-    background:var(--surface); border:1px solid var(--border); border-radius:12px;
-    padding:20px; box-shadow:var(--shadow);
-  }
-
-  .empty-state{ padding:40px 20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:12px; }
-
-  .chip{
-    display:inline-flex; align-items:center; gap:6px; font-size:.78rem; font-weight:600;
-    padding:4px 10px; border-radius:999px; white-space:nowrap;
-  }
-  .chip.ok{ background:var(--ok-soft); color:var(--ok); }
-  .chip.warn{ background:var(--warn-soft); color:var(--warn); }
-  .chip.danger{ background:var(--danger-soft); color:var(--danger); }
-  .chip.grey{ background:var(--grey-soft); color:var(--grey); }
-
-  .file-list{ display:flex; flex-direction:column; gap:6px; margin-top:12px; width:100%; }
-  .file-item{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 12px;
-    font-size:.86rem;
-  }
-  .file-item button{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:.8rem; font-weight:600; padding:0; }
-  .overview-grid{ display:grid; grid-template-columns:140px 1fr; gap:8px 14px; font-size:.92rem; }
-  .overview-grid dt{ color:var(--text-muted); font-weight:600; }
-  .overview-grid dd{ margin:0; }
-
-  /* case detail */
-  .detail-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
-  .detail-head h2{ font-size:1.5rem; }
-  .detail-head .site{ color:var(--text-muted); font-size:.9rem; }
-  .kv-row{ display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:.85rem; color:var(--text-muted); }
-  .kv-row .mono{ color:var(--text); }
-
-  .progress-list{ display:flex; flex-direction:column; gap:10px; margin:18px 0; }
-  .progress-item{ display:flex; align-items:center; gap:10px; font-size:.9rem; }
-  .progress-item .dot{ width:9px; height:9px; border-radius:50%; background:var(--border); flex-shrink:0; }
-  .progress-item.done .dot{ background:var(--ok); }
-  .progress-item.active .dot{ background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
-  .progress-item.done{ color:var(--text-muted); }
-  .progress-item.active{ color:var(--text); font-weight:600; }
-  .step-label{ flex:1; }
-  .step-hint{ color:var(--text-muted); font-size:.78rem; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .step-retry{ padding:2px 9px; font-size:.72rem; font-weight:600; border:1px solid var(--border); border-radius:6px; flex-shrink:0; }
-
-  section.report-block{ margin-top:30px; }
-  section.report-block h3{ font-size:1.05rem; margin-bottom:10px; }
-  section.report-block p{ margin:0; color:var(--text); }
-  .findings{ display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }
-  .findings li{ padding:10px 14px; border-radius:8px; background:var(--surface-2); font-size:.92rem; border-left:3px solid var(--border); }
-  .findings li.danger{ border-left-color:var(--danger); background:var(--danger-soft); }
-  .findings li.ok{ border-left-color:var(--ok); background:var(--ok-soft); }
-  .findings li .src{ display:block; margin-top:4px; font-size:.78rem; color:var(--text-muted); }
-
-  .score-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
-  .score-tile{ border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface); }
-  .score-tile .label{ font-size:.8rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; }
-  .score-tile .note{ font-size:.82rem; color:var(--text-muted); margin-top:6px; }
-
-  ol.numbered{ margin:0; padding-left:22px; display:flex; flex-direction:column; gap:8px; }
-  .deepen-item{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:10px 14px; background:var(--surface-2); border-radius:8px; }
-  .sources{ display:flex; flex-direction:column; gap:4px; font-size:.85rem; }
-  .disclaimer{ margin-top:34px; padding:14px 16px; border-radius:10px; background:var(--surface-2); color:var(--text-muted); font-size:.82rem; border:1px solid var(--border); }
-  details.raw{ margin-top:20px; font-size:.85rem; }
-  details.raw summary{ cursor:pointer; color:var(--text-muted); }
-  .banner{ padding:12px 14px; border-radius:8px; background:var(--warn-soft); color:var(--warn); font-size:.88rem; margin-bottom:18px; }
-  .banner.danger{ background:var(--danger-soft); color:var(--danger); }
-  .spinner{ display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
-  @media (prefers-reduced-motion: reduce){ .spinner{ animation:none; } }
-  @keyframes spin{ to{ transform:rotate(360deg); } }
-
-  [hidden]{ display:none !important; }
-</style>
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
 
 <div class="wrap">
   <header class="top">
@@ -308,8 +38,10 @@
     startDraft: { website:'' },
     startFiles: [],          // {file: File, kind: 'image'|'other'}
     startUploadOpen: false,  // documenten-uploadvak: standaard ingeklapt, caret naar links
+    startKvkFile: null,      // apart, want gaat naar de identiteitsstap i.p.v. de COA-stap
     startUrlError: null,
-    runningCaseIds: {}       // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
+    runningCaseIds: {},      // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
+    runningStepKeys: {}      // caseId -> key van de stap die nu via "opnieuw" wordt herdraaid (voor renderProgress)
   };
 
   var stepStats = {};        // nog geen live-stats-endpoint op de backend; avgForStep valt terug op DEFAULT_STEP_MS
@@ -463,7 +195,7 @@
     var data = await res.json();
     return data.case || null;
   }
-  async function apiCreateCase(fields, files){
+  async function apiCreateCase(fields, files, kvkFile){
     var fd = new FormData();
     fd.append('website', fields.website);
     if (fields.naam) fd.append('naam', fields.naam);
@@ -471,6 +203,7 @@
     if (fields.kvkNummer) fd.append('kvkNummer', fields.kvkNummer);
     if (fields.notities) fd.append('notities', fields.notities);
     (files||[]).forEach(function(f){ fd.append('files', f); });
+    if (kvkFile) fd.append('kvkDocument', kvkFile);
     var res = await fetch(API_BASE + '/api/audits', { method:'POST', body: fd });
     var data = await res.json().catch(function(){ return {}; });
     if (!res.ok){
@@ -535,6 +268,7 @@
     state.startDraft = { website:'' };
     state.startFiles = [];
     state.startUploadOpen = false;
+    state.startKvkFile = null;
     state.startUrlError = null;
     render();
     apiListCases().then(function(cases){
@@ -604,6 +338,15 @@
           '<input type="file" id="f-files" multiple accept="image/*,application/pdf" style="display:none">' +
           '<div class="file-list">' + items + '</div>' +
         '</div>' +
+      '</div>' +
+      '<div style="width:100%;">' +
+        '<label class="disclosure-toggle" for="f-kvk" style="cursor:pointer;">' +
+          '<span>KvK-uittreksel toevoegen (optioneel, PDF) — telt mee bij de identiteitsstap</span>' +
+        '</label>' +
+        '<input type="file" id="f-kvk" accept="application/pdf,image/*" style="display:none">' +
+        (state.startKvkFile ?
+          '<div class="file-list"><div class="file-item"><span>' + escapeHtml(state.startKvkFile.name) + ' <span class="hint mono">(' + Math.round(state.startKvkFile.size/1024) + ' kB)</span></span>' +
+          '<button type="button" id="wiz-remove-kvk">Verwijderen</button></div></div>' : '') +
       '</div>' +
       '<p class="hero-card-note">Dit is de gratis Evidence Check: juridische basisidentiteit, domein- en websitegeschiedenis, laboratorium, de volledige COA-dataset en -authenticiteit, social media/affiliates, reputatie, regelgeving/toezicht en tegenbewijs. Duurt doorgaans enkele minuten, met live voortgang.</p>' +
       '</div></div>';
@@ -681,6 +424,17 @@
       });
     });
 
+    var kvkInput = app.querySelector('#f-kvk');
+    if (kvkInput) kvkInput.addEventListener('change', function(e){
+      state.startKvkFile = e.target.files[0] || null;
+      renderDashboard();
+    });
+    var removeKvk = app.querySelector('#wiz-remove-kvk');
+    if (removeKvk) removeKvk.addEventListener('click', function(){
+      state.startKvkFile = null;
+      renderDashboard();
+    });
+
     var start = app.querySelector('#wiz-start');
     if (start) start.addEventListener('click', startAudit);
 
@@ -704,7 +458,7 @@
     state.runningCaseIds['__new__'] = true;
     renderDashboard();
     try {
-      var created = await apiCreateCase({ naam: domainOf(website), website: website }, files);
+      var created = await apiCreateCase({ naam: domainOf(website), website: website }, files, state.startKvkFile);
       delete state.runningCaseIds['__new__'];
       state.cases.unshift(created);
       goDetail(created.id);
@@ -789,13 +543,18 @@
     var steps = STEP_DEFS;
     var allowRetry = c.status !== 'bezig';
     var running = !!state.runningCaseIds[c.id];
+    // Bij een retry van één losse stap (runSingleStep) loopt er maar één
+    // stap opnieuw op de backend — runningStepKeys onthoudt precies welke,
+    // zodat hier niet alle stappen "bezig…" tonen terwijl er maar één draait.
+    var runningStepKey = state.runningStepKeys[c.id];
 
     var items = steps.map(function(s){
       var done = doneMap[s.key];
       var isCurrent = c.status === 'bezig' && c.currentStep && c.currentStep.key === s.key;
-      var cls = done ? 'done' : (isCurrent ? 'active' : '');
+      var isRetryingThis = running && s.key === runningStepKey;
+      var cls = done ? 'done' : ((isCurrent || isRetryingThis) ? 'active' : '');
       var hint = '';
-      if (running && !isCurrent){
+      if (isRetryingThis){
         hint = '<span class="step-hint">bezig…</span>';
       } else if (done){
         hint = '<span class="step-hint">' + fmtDuration(done.durationMs) + '</span>';
@@ -984,6 +743,7 @@
   async function runSingleStep(caseId, key){
     if (state.runningCaseIds[caseId]) return;
     state.runningCaseIds[caseId] = true;
+    state.runningStepKeys[caseId] = key;
     if (state.currentCaseId === caseId) render();
     try {
       var updated = await apiRetryStep(caseId, key);
@@ -995,6 +755,7 @@
       alert('Opnieuw proberen is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
     } finally {
       delete state.runningCaseIds[caseId];
+      delete state.runningStepKeys[caseId];
       if (state.currentCaseId === caseId) render();
     }
   }
