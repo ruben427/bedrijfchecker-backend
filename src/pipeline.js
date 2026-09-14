@@ -370,7 +370,8 @@ async function runResearchStep(caseId, ctx, key) {
       nieuwTenOpzichteVanZoekstap: crawlRecords.length,
       maximaalOpgehaald: COA_AUTOFETCH_MAX,
       nietGeprobeerdWegensLimiet: nietGeprobeerd,
-      beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd']
+      beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
+      diagnose: (crawl && crawl.diagnose) || []
     };
     result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo }) };
   } else if (key === 'identiteit') {

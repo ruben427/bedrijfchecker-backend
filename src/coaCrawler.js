@@ -55,14 +55,25 @@ async function fetchHtml(url) {
       signal: t.signal, redirect: 'follow',
       headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' }
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // 403/503 met een Cloudflare-header is iets anders dan een 404.
+      const server = (res.headers.get('server') || '').toLowerCase();
+      const botfilter = server.includes('cloudflare') || res.headers.has('cf-ray') || res.headers.has('cf-mitigated');
+      return { fout: 'http_' + res.status + (botfilter ? '_botfilter' : '') };
+    }
     const ct = (res.headers.get('content-type') || '').toLowerCase();
-    if (ct && !ct.includes('html')) return null;
+    if (ct && !ct.includes('html')) return { fout: 'geen_html (' + (ct || 'onbekend') + ')' };
     const text = await res.text();
-    if (!text || text.length > MAX_HTML_BYTES) return null;
+    if (!text) return { fout: 'lege_pagina' };
+    if (text.length > MAX_HTML_BYTES) return { fout: 'pagina_te_groot' };
+    // Een challenge-pagina geeft netjes 200 terug maar bevat geen site.
+    if (/just a moment|checking your browser|cf-browser-verification|challenge-platform|verify you are human/i.test(text.slice(0, 20000))) {
+      return { fout: 'botcheck_pagina' };
+    }
     return { html: text, finalUrl: res.url || url };
   } catch (e) {
-    return null;
+    const naam = (e && e.name) || 'Error';
+    return { fout: naam === 'AbortError' ? 'timeout_na_' + Math.round(TIMEOUT_MS / 1000) + 's' : 'netwerkfout (' + ((e && e.message) || naam).slice(0, 80) + ')' };
   } finally {
     t.done();
   }
@@ -147,9 +158,11 @@ async function crawlCoaIndex(website) {
 
   // 1. Homepage ophalen en kijken waar naar certificaten gelinkt wordt.
   const candidates = [];
+  const diagnose = [];
   const home = await fetchHtml(root + '/');
-  if (!home) {
-    notes.push('homepage niet op te halen (blokkade, time-out of geen HTML)');
+  if (!home || !home.html) {
+    notes.push('homepage niet op te halen: ' + ((home && home.fout) || 'onbekend'));
+    diagnose.push({ url: root + '/', resultaat: (home && home.fout) || 'onbekend' });
   } else {
     for (const link of extractLinks(home.html, home.finalUrl)) {
       if (DOC_EXT.test(link.url)) continue;
@@ -170,7 +183,10 @@ async function crawlCoaIndex(website) {
     tried.add(norm);
 
     const page = await fetchHtml(url);
-    if (!page) continue;
+    if (!page || !page.html) {
+      if (diagnose.length < 20) diagnose.push({ url, resultaat: (page && page.fout) || 'onbekend' });
+      continue;
+    }
 
     const rows = rowContextFor(page.html);
     const links = extractLinks(page.html, page.finalUrl);
@@ -179,7 +195,7 @@ async function crawlCoaIndex(website) {
     // Aangeklikte documenten hebben voorrang; alleen als die er niet zijn
     // vallen we terug op ingesloten afbeeldingen.
     const docs = aangelinkt.length ? aangelinkt : bruikbaar.filter((l) => l.uitAfbeelding);
-    if (!docs.length) continue;
+    if (!docs.length) { if (diagnose.length < 20) diagnose.push({ url, resultaat: 'pagina bestaat, maar bevat geen documentlinks' }); continue; }
 
     indexPages.push(page.finalUrl);
     for (const d of docs) {
@@ -203,7 +219,7 @@ async function crawlCoaIndex(website) {
   if (!indexPages.length) notes.push('geen pagina met certificaatdocumenten gevonden op het eigen domein');
   if (documents.size >= MAX_DOCUMENTS) notes.push('limiet van ' + MAX_DOCUMENTS + ' documenten bereikt; niet alles is meegenomen');
 
-  return { indexPages, documents: Array.from(documents.values()), notes };
+  return { indexPages, documents: Array.from(documents.values()), notes, diagnose };
 }
 
 module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, DOC_EXT, THUMBNAIL, INDEX_HINT };
