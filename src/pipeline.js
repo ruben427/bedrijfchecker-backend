@@ -354,6 +354,9 @@ async function runResearchStep(caseId, ctx, key) {
         }
       } catch (e) {
         noteer(url, 'fout tijdens lezen: ' + ((e && e.message) || 'onbekend').slice(0, 80));
+        if (records[idx] && records[idx].uit === 'crawl' && records[idx].accessStatus === 'pending') {
+          records[idx] = Object.assign({}, records[idx], { accessStatus: 'error' });
+        }
         // Document kon niet gelezen worden (bv. kapotte/gescande PDF) — laat
         // de oorspronkelijke AI-inschatting voor deze COA ongewijzigd staan.
       }

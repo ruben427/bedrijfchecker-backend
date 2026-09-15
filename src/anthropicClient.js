@@ -67,8 +67,20 @@ async function sampleJson(prompt, opts) {
   });
   // PDF's (bijv. een geüpload KvK-uittreksel) gaan als 'document'-content mee;
   // Claude leest die native, geen conversie naar afbeeldingen nodig.
+  //
+  // LET OP: een 'document'-block accepteert ALLEEN application/pdf. Een JPEG
+  // of PNG die hier binnenkomt levert een 400 invalid_request_error op. Dat
+  // gebeurde bij elk gecrawld COA van nextgenpeptides.nl (21 .jpeg-bestanden):
+  // de aanroeper gaf ze als 'documents' mee, de API weigerde ze allemaal, en
+  // de fout werd verderop stil weggevangen. Daarom routeren we hier op
+  // mediatype in plaats van te vertrouwen op de aanroeper.
   (opts.documents || []).forEach((doc) => {
-    content.push({ type: 'document', source: { type: 'base64', media_type: doc.mediaType || 'application/pdf', data: doc.data } });
+    const mt = (doc.mediaType || 'application/pdf').toLowerCase();
+    if (mt.startsWith('image/')) {
+      content.push({ type: 'image', source: { type: 'base64', media_type: mt, data: doc.data } });
+    } else {
+      content.push({ type: 'document', source: { type: 'base64', media_type: mt, data: doc.data } });
+    }
   });
   // ROOT CAUSE van de "empty_response"/afgekapte-JSON-fouten (bv. de
   // categorize-fout die Ruben zag, met detail "stop_reason: max_tokens,
