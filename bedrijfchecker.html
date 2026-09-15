@@ -985,10 +985,9 @@
       '<span class="created">Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div>' +
       (c.naam && c.naam !== c.website ? '<div class="company">' + escapeHtml(c.naam) + '</div>' : '') +
       (kort ? '<div class="rapport-kort"><h3>In het kort</h3>' + kort + '</div>' : '') +
+      renderGateBanner(engine) +
       '</div>' +
       '<div class="rapport-top-side">' + upsellKaart(c) + '</div></div>';
-
-    out += renderGateBanner(engine);
 
     // Groep 1: de 17 categorieën, per pijler een uitklapbaar blok.
     if (engine && engine.assessments){
