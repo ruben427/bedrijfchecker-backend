@@ -68,8 +68,14 @@ function bouwReferentie(velden) {
   const task = String(v.reportId || v.taskNumber || '').replace(/^#/, '').trim();
   const key = String(v.verificationKey || '').trim();
   const sample = String(v.sampleLabel || v.sample || '').trim();
-  if (!/^\d+$/.test(task) || !/^[A-Za-z0-9]+$/.test(key) || !sample) return null;
-  return { taskNumber: task, sample, key, referentie: task + '-' + sample + '_' + key };
+  if (!/^\d+$/.test(task) || !/^[A-Za-z0-9]+$/.test(key)) return null;
+  // Het sampledeel is NIET nodig om op te lossen: getest op 15 sep 2026,
+  // '164849-_E7US5H3NA1RL' en '164849-x_E7US5H3NA1RL' geven allebei hetzelfde
+  // rapport als de volledige referentie. Dat maakt verificatie mogelijk zodra
+  // je tasknummer en sleutel hebt - en die staan allebei op het rapport.
+  // Eerder was sample verplicht, waardoor 21 geldige Janoshik-rapporten van
+  // nextgenpeptides.nl onterecht op klasse C bleven staan.
+  return { taskNumber: task, sample: sample || null, key, referentie: task + '-' + (sample || '') + '_' + key };
 }
 
 function resolveUrl(ref) {
@@ -128,9 +134,15 @@ async function resolveer(velden) {
     }
     return { klasse: null, status: 'verificatie niet uitvoerbaar: ' + page.fout, resolved: null, ...ref, url };
   }
-  const rapportAfbeelding = (page.afbeeldingen || []).find((u) => isOfficieleHost(u)) || (page.afbeeldingen || [])[0] || null;
-  if (!rapportAfbeelding) {
-    return { klasse: 'D', status: 'referentie lost niet op naar een rapport', resolved: false, ...ref, url };
+  // Een ongeldige referentie (verkeerde sleutel, verzonnen nummer, of alleen
+  // een nummer) stuurt door naar navigation.php en levert nul afbeeldingen.
+  // Een geldige blijft op /tests/<ref> staan met het rapport onder /images/.
+  // Het logo staat onder /img/ - die mag niet als rapport tellen, anders
+  // lijkt elke ongeldige verwijzing alsnog opgelost.
+  const doorgestuurd = /navigation\.php/i.test(page.finalUrl || '');
+  const rapportAfbeelding = (page.afbeeldingen || []).find((u) => /\/images\//i.test(u));
+  if (doorgestuurd || !rapportAfbeelding) {
+    return { klasse: 'D', status: 'referentie lost niet op naar een rapport bij het lab', resolved: false, ...ref, url };
   }
   return {
     klasse: null, // A of B volgt pas na de veldvergelijking

@@ -143,7 +143,7 @@ function stepOpts(key, ctx) {
       key: 'coaDataset', title: 'COA-dataset en -authenticiteit',
       searchQueries: [ctx.naam + ' COA certificate of analysis', ctx.naam + ' COA verification lab report number', ctx.naam + ' lab results batch'],
       researchQuery: 'Zoek alle publiek vindbare COA\'s (certificates of analysis) van leverancier "' + ctx.naam + '" (website: ' + ctx.website + '). Verzamel per COA: product, geclaimde en gemeten hoeveelheid met eenheid, purity-percentage en meetmethode, batchnummer, report/task-ID, verification key, laboratoriumnaam, order/ontvangst/analyse/rapportdatum, sterility- en endotoxin-testresultaten indien vermeld, overige contaminantentests, en of het rapport extern controleerbaar is (bijv. via een verification key of publiek opzoeksysteem bij het lab).',
-      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted","accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Gebruik authenticiteitsklasse A (authentiek + goede batchtraceerbaarheid), B (authentiek maar koppeling beperkt), C (niet onafhankelijk verifieerbaar) of D (concreet bewijs van afwijking) exact per het hoofdprotocol; gebruik D alleen met overtuigend bewijs.'
+      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted","accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Gebruik authenticiteitsklasse A (authentiek + goede batchtraceerbaarheid), B (authentiek maar koppeling beperkt), C (niet onafhankelijk verifieerbaar) of D (concreet bewijs van afwijking) exact per het hoofdprotocol; gebruik D alleen met overtuigend bewijs.'
     };
     case 'socialAffiliates': return {
       key: 'socialAffiliates', title: 'Social media, affiliates en commerciële relaties',
@@ -408,14 +408,23 @@ async function runResearchStep(caseId, ctx, key) {
       }
 
       const klasse = janoshik.bepaalKlasse(res, vergelijking);
+      // 'failed' betekent: geprobeerd bij het lab en het lag er niet. Dat is
+      // iets heel anders dan 'er stond geen verwijzing op het rapport' of
+      // 'dit lab heeft geen verificatiesysteem dat wij aankunnen'. Die twee
+      // zijn 'unavailable' - anders lezen ze als een verwijt dat we niet
+      // kunnen onderbouwen.
+      const geenReferentie = res.resolved === false && /geen bruikbare verificatiereferentie/i.test(res.status || '');
       const extern = res.resolved === true
         ? (klasse === 'B' ? 'contradicted' : (klasse === 'A' ? 'verified' : 'pending'))
-        : (res.resolved === false ? 'failed' : 'unavailable');
+        : (res.resolved === false && !geenReferentie ? 'failed' : 'unavailable');
 
       records[i] = Object.assign({}, r, {
         // Een eerder door het model geraden klasse wordt hier overschreven:
         // resolutie bij het lab weegt zwaarder dan een inschatting.
-        authenticiteitsklasse: klasse || r.authenticiteitsklasse || null,
+        // Alleen de resolver mag klasse D toekennen: D betekent 'verzonnen of
+        // ingetrokken ID' en dat is een concrete beschuldiging. Een inschatting
+        // van het model wordt daarom afgetopt op C.
+        authenticiteitsklasse: klasse || (r.authenticiteitsklasse === 'D' ? 'C' : r.authenticiteitsklasse) || null,
         externalVerification: extern,
         verificatie: {
           url: res.url || null,
