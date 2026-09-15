@@ -262,7 +262,17 @@ async function runResearchStep(caseId, ctx, key) {
     // nieuwste bovenaan, dus een limiet levert dan 'de N nieuwste' op. Dat is
     // een uitlegbare steekproef; 'de eerste N die toevallig langskwamen' niet.
     autofetchCandidates.sort((a, b) => (a.prioriteit - b.prioriteit));
+    const lusLog = {
+      recordsVoorLus: records.length,
+      kandidaten: autofetchCandidates.length,
+      kandidatenUitCrawl: autofetchCandidates.filter((k) => k.prioriteit === 0).length,
+      limiet: COA_AUTOFETCH_MAX,
+      behandeld: 0,
+      uitkomsten: []
+    };
+    const noteer = (url, wat) => { if (lusLog.uitkomsten.length < 40) lusLog.uitkomsten.push({ url: String(url).slice(-60), wat }); };
     for (const { url, idx } of autofetchCandidates.slice(0, COA_AUTOFETCH_MAX)) {
+      lusLog.behandeld++;
       // Stap 1: kennen we dit document al? Zo ja, hergebruik de analyse en
       // sla zowel de download als de (dure) vision-call over. Dit is het hele
       // punt van het archief — elk uniek COA-document gaat exact één keer
@@ -271,7 +281,7 @@ async function runResearchStep(caseId, ctx, key) {
       const head = await coaStore.checkUnchanged(url).catch(() => null);
       if (head && head.unchanged && head.sha256) {
         cached = await coaStore.getExtraction(head.sha256, COA_EXTRACTOR_VERSION);
-        if (cached) archiveNotes.push({ url, status: 'hergebruikt', reden: 'ongewijzigd (' + (head.reason || 'fingerprint') + ')' });
+        if (cached) { archiveNotes.push({ url, status: 'hergebruikt', reden: 'ongewijzigd (' + (head.reason || 'fingerprint') + ')' }); noteer(url, 'hergebruikt uit archief'); }
       }
 
       let doc = null;
@@ -279,6 +289,7 @@ async function runResearchStep(caseId, ctx, key) {
       if (!cached) {
         doc = await fetchRemoteDocument(url);
         if (!doc) {
+          noteer(url, 'ophalen mislukt');
           if (records[idx] && records[idx].uit === 'crawl') {
             records[idx] = Object.assign({}, records[idx], { accessStatus: 'inaccessible' });
           }
@@ -306,6 +317,7 @@ async function runResearchStep(caseId, ctx, key) {
       }
 
       if (cached) {
+        noteer(url, 'uit archief');
         const cachedRecords = ((cached && cached.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'archief' }));
         if (cachedRecords.length) {
           records[idx] = cachedRecords[0];
@@ -319,6 +331,7 @@ async function runResearchStep(caseId, ctx, key) {
       }
       try {
         const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
+        noteer(url, 'wordt gelezen');
         const autofetchData = await sampleJsonSafe(autofetchPrompt, { documents: [doc], label: 'coaDataset-autofetch' });
         const autofetchRecords = ((autofetchData && autofetchData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'auto-fetch' }));
         if (observation && observation.sha256) {
@@ -332,10 +345,15 @@ async function runResearchStep(caseId, ctx, key) {
         if (autofetchRecords.length) {
           records[idx] = autofetchRecords[0];
           if (autofetchRecords.length > 1) records = records.concat(autofetchRecords.slice(1));
+          noteer(url, 'gelezen: ' + autofetchRecords.length + ' record(s)');
         } else if (records[idx] && records[idx].uit === 'crawl') {
           records[idx] = Object.assign({}, records[idx], { accessStatus: 'unreadable' });
+          noteer(url, 'gelezen maar geen COA erin');
+        } else {
+          noteer(url, 'gelezen, geen record en geen crawl-placeholder');
         }
       } catch (e) {
+        noteer(url, 'fout tijdens lezen: ' + ((e && e.message) || 'onbekend').slice(0, 80));
         // Document kon niet gelezen worden (bv. kapotte/gescande PDF) — laat
         // de oorspronkelijke AI-inschatting voor deze COA ongewijzigd staan.
       }
@@ -449,6 +467,7 @@ async function runResearchStep(caseId, ctx, key) {
       nieuwTenOpzichteVanZoekstap: crawlRecords.length,
       maximaalOpgehaald: COA_AUTOFETCH_MAX,
       nietGeprobeerdWegensLimiet: nietGeprobeerd,
+      lus: lusLog,
       beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
       diagnose: (crawl && crawl.diagnose) || []
     };
