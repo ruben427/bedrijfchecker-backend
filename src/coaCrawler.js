@@ -60,6 +60,37 @@ const RAPPORT_NAAM = /(coa|certificate|certificaat|analysis|analyse|test[-_]?rep
 // publicatievorm die er is: er is geen kopie om te bewerken. Lumopeptides
 // doet dit met 14 rapporten; de crawler liep er straal voorbij omdat het
 // geen .pdf of .png is.
+// Vingerafdruk van een pagina, om soft-404's te herkennen. Sommige sites
+// geven op ELK pad een 200 terug met dezelfde 'niet gevonden'-pagina. De
+// crawler denkt dan dat achttien pagina's bestaan en vindt op geen enkele
+// documenten - dat gebeurde bij mypept.eu, pepsresearch.com en
+// peptidemeester.org. Alle drie hebben wel degelijk COA's.
+//
+// Aanpak: vraag eerst een onzinpad op. Wat daarop terugkomt IS per definitie
+// de niet-gevonden-pagina. Alles wat daar sterk op lijkt behandelen we
+// daarna als niet bestaand, ook al zegt de server 200.
+function vingerafdruk(html) {
+  const tekst = stripTags(html);
+  return {
+    lengte: tekst.length,
+    // Eerste stuk tekst plus de titel: genoeg om twee foutpagina's aan elkaar
+    // gelijk te zien zonder te struikelen over een wisselend jaartal of
+    // sessie-id ergens onderin.
+    kop: (/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html) || [, ''])[1].trim().slice(0, 120),
+    begin: tekst.slice(0, 400)
+  };
+}
+
+function lijktOpFoutpagina(kandidaat, fout) {
+  if (!kandidaat || !fout) return false;
+  if (kandidaat.kop && fout.kop && kandidaat.kop === fout.kop) return true;
+  if (!fout.begin) return false;
+  // Lengte binnen 10% en dezelfde openingstekst: dan is het dezelfde pagina
+  // met hooguit een ander pad erin.
+  const lengteLijkt = Math.abs(kandidaat.lengte - fout.lengte) <= Math.max(200, fout.lengte * 0.1);
+  return lengteLijkt && kandidaat.begin.slice(0, 200) === fout.begin.slice(0, 200);
+}
+
 const LAB_VERIFICATIELINK = /^https:\/\/verify\.janoshik\.com\/tests\/\d+-[^/?#]*_[A-Za-z0-9]+$/i;
 
 function withTimeout() {
@@ -216,6 +247,16 @@ async function crawlCoaIndex(website) {
     }
   }
 
+  // Meet hoe deze site reageert op een pad dat zeker niet bestaat.
+  let foutpagina = null;
+  const onzinpad = root + '/bedrijfchecker-bestaat-niet-' + Date.now().toString(36) + '/';
+  const proef = await fetchHtml(onzinpad);
+  if (proef && proef.html) {
+    // 200 op een onzinpad: deze site doet aan soft-404.
+    foutpagina = vingerafdruk(proef.html);
+    notes.push('site geeft een 200 op niet-bestaande paden (soft-404); pagina-inhoud wordt vergeleken in plaats van de statuscode');
+  }
+
   // 2. Plus de gebruikelijke paden, ook als er nergens naar gelinkt wordt.
   for (const p of COMMON_PATHS) candidates.push(root + p);
 
@@ -230,6 +271,11 @@ async function crawlCoaIndex(website) {
     const page = await fetchHtml(url);
     if (!page || !page.html) {
       if (diagnose.length < 20) diagnose.push({ url, resultaat: (page && page.fout) || 'onbekend' });
+      continue;
+    }
+
+    if (foutpagina && lijktOpFoutpagina(vingerafdruk(page.html), foutpagina)) {
+      if (diagnose.length < 20) diagnose.push({ url, resultaat: 'soft-404: pagina bestaat niet echt' });
       continue;
     }
 
@@ -290,4 +336,4 @@ async function crawlCoaIndex(website) {
   return { indexPages, documents: Array.from(documents.values()), verificatieLinks: Array.from(verificatieLinks.values()), notes, diagnose };
 }
 
-module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, INDEX_HINT };
+module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, vingerafdruk, lijktOpFoutpagina, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, INDEX_HINT };
