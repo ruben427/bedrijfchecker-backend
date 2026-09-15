@@ -225,9 +225,12 @@ function trimPhasesForPrompt(phases) {
     const d = p.data;
     const slim = { title: p.title };
     if (d.kortSamenvatting) slim.kortSamenvatting = String(d.kortSamenvatting).slice(0, 300);
+    // De laboratoriumstap begint met geteld feitenmateriaal uit de COA-stap;
+    // bij zes zou het externe onderzoek daarachter wegvallen.
+    const maxBevindingen = key === 'laboratorium' ? 10 : 6;
     ['bevindingen', 'verbanden'].forEach((arrKey) => {
       if (Array.isArray(d[arrKey])) {
-        slim[arrKey] = d[arrKey].slice(0, 6).map((item) => {
+        slim[arrKey] = d[arrKey].slice(0, maxBevindingen).map((item) => {
           const c = {};
           for (const k in item) c[k] = typeof item[k] === 'string' ? item[k].slice(0, 220) : item[k];
           return c;
