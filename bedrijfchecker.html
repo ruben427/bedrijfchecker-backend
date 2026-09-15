@@ -8,6 +8,91 @@
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
+<style>
+/* Deep Dive-kaart en het informatiepaneel. Deze regels staan hier en niet in
+   bedrijfchecker.css omdat dat bestand alleen op de server leeft; zo hoeft er
+   maar een bestand vervangen te worden. Kleuren komen uit solike.css, dus dit
+   volgt automatisch de donkere modus mee. */
+
+.deepdive-card{
+  background:var(--surface); border:1px solid var(--purple-300);
+  border-radius:var(--radius-lg); padding:24px; margin-top:30px;
+}
+.deepdive-price{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:2rem; line-height:1.1; letter-spacing:-.05em; color:var(--heading-2);
+}
+.deepdive-title{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:3.5rem; line-height:1.05; letter-spacing:-.05em; color:var(--heading-2);
+  margin:0 0 24px;
+}
+.deepdive-card p{ margin:0 0 12px; }
+.deepdive-card ul{ margin:0 0 12px; padding-left:24px; }
+.deepdive-card li{ margin-bottom:8px; }
+.deepdive-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:36px; margin-top:24px; }
+
+/* .textlink is in het designsysteem een span; als knop moet de
+   browser-eigen knopstijl eraf. */
+button.textlink{
+  background:none; border:0; border-bottom:1px solid var(--accent);
+  font-size:1.125rem; line-height:1; padding:0 0 2px; cursor:pointer;
+}
+
+.sheet-overlay{
+  position:fixed; inset:0; z-index:60; background:rgba(15,15,14,.3);
+  display:flex; justify-content:flex-end;
+}
+.sheet-panel{
+  background:var(--surface); color:var(--text);
+  width:540px; max-width:100%;
+  border-radius:var(--radius-lg) 0 0 var(--radius-lg);
+  padding:12px 24px 48px 48px;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  box-shadow:var(--shadow);
+  animation:sheet-in-right .22s ease-out;
+}
+@keyframes sheet-in-right{ from{ transform:translateX(32px); opacity:0; } to{ transform:none; opacity:1; } }
+.sheet-close-row{ display:flex; justify-content:flex-end; }
+.sheet-close{
+  display:inline-flex; align-items:center; gap:12px; height:56px;
+  background:none; border:0; cursor:pointer; color:var(--accent);
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.125rem;
+}
+.sheet-close .lbl{ border-bottom:1px solid var(--accent); }
+.sheet-title{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:2.75rem; line-height:1.05; letter-spacing:-.05em;
+  color:var(--heading-2); margin:0 0 12px;
+}
+.sheet-body p{ margin:0 0 12px; }
+.sheet-body ul{ margin:0 0 12px; padding-left:24px; }
+.sheet-body li{ margin-bottom:8px; }
+
+/* Mobiel wordt hetzelfde paneel een bottomsheet. Het verschil zit volledig
+   hier, zodat er in JavaScript geen breakpoint-logica nodig is. */
+@media (max-width:860px){
+  .deepdive-price{ font-size:1.375rem; }
+  .deepdive-title{ font-size:2.25rem; margin-bottom:16px; }
+  .deepdive-actions{ gap:20px; }
+  .sheet-overlay{ align-items:flex-end; justify-content:stretch; }
+  .sheet-panel{
+    width:100%; max-height:88vh;
+    border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+    padding:12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    animation:sheet-in-up .24s ease-out;
+  }
+  .sheet-title{ font-size:1.75rem; }
+}
+@keyframes sheet-in-up{ from{ transform:translateY(32px); opacity:0; } to{ transform:none; opacity:1; } }
+@media (prefers-reduced-motion: reduce){ .sheet-panel{ animation:none; } }
+
+body.sheet-open{ overflow:hidden; }
+
+/* Witruimte tussen het afgeronde gratis blok en de Deep Dive-stappen. */
+.run-step-sep{ height:16px; }
+</style>
+
 <div class="wrap">
   <header class="top">
     <button type="button" class="brand-link" id="brand-home">Bedrijfchecker</button>
@@ -16,6 +101,10 @@
   <div id="capability-banner"></div>
   <main id="app"></main>
 </div>
+
+<!-- Buiten .wrap, want het paneel ligt over de hele pagina en mag niet
+     verdwijnen bij een re-render van #app. -->
+<div id="sheet-root"></div>
 
 <script>
 (function(){
@@ -81,13 +170,20 @@
     var s = stepStats && stepStats[key];
     return (s && s.avgMs) || DEFAULT_STEP_MS;
   }
-  // Welke STEP_DEFS-entries relevant zijn voor de lopende tier van een case —
-  // zodat de live-stappenlijst nooit stappen toont die deze pas niet gaat
-  // draaien (bv. "Juridische identiteit" tijdens een gratis-only run).
-  function stepsForTier(tier){
-    var keys = (tier === 'deep' ? DEEP_STEP_KEYS : FREE_STEP_KEYS).concat(['categorize', 'reportA', 'reportB']);
-    return STEP_DEFS.filter(function(s){ return keys.indexOf(s.key) !== -1; });
+  var AFRONDSTAPPEN = ['categorize', 'reportA', 'reportB'];
+  // De stappenlijst tijdens een run. Bij een Deep Dive is dat niet alleen de
+  // deep-stappen: de gebruiker heeft de gratis run net zien draaien en moet
+  // die bovenaan terugzien staan, precies zoals in het design.
+  function runRijenVoorCase(c){
+    function rijen(keys, fase){
+      return STEP_DEFS.filter(function(s){ return keys.indexOf(s.key) !== -1; })
+        .map(function(s){ return { key:s.key, label:s.label, fase:fase }; });
+    }
+    var gratis = rijen(FREE_STEP_KEYS.concat(AFRONDSTAPPEN), 'gratis');
+    if (c.tier !== 'deep') return gratis;
+    return gratis.concat(rijen(DEEP_STEP_KEYS.concat(AFRONDSTAPPEN), 'deep'));
   }
+
   function isStuck(c){
     if (c.status !== 'bezig' || !c.currentStep) return false;
     var threshold = Math.max(avgForStep(c.currentStep.key) * 2.5, 60000);
@@ -401,7 +497,7 @@
         '</div>' +
         '<div class="ladder-card featured">' +
           '<div class="ladder-top">' +
-            '<div class="ladder-badges"><span class="ladder-badge tier2">Stap 2 &middot; &euro; 2,95</span><span class="ladder-tier-label">Deep Dive</span></div>' +
+            '<div class="ladder-badges"><span class="ladder-badge tier2">Stap 2 &middot; &euro; 3,50</span><span class="ladder-tier-label">Deep Dive</span></div>' +
             '<div class="ladder-body">' +
               '<div class="ladder-title">Wie zit erachter?</div>' +
               '<ul class="ladder-list">' +
@@ -504,7 +600,7 @@
       // detail-head/chip + retry-bare renderProgress()-lijst + losse terug-
       // en stop-knoppen hieronder; die blijven ongewijzigd voor fout/
       // gestopt/klaar.
-      app.innerHTML = '<button type="button" class="stop-link" id="stop-audit"><span class="chev">' + ICON_CHEVRON_LEFT + '</span><span class="lbl">Stop de check</span></button>' +
+      app.innerHTML = '<button type="button" class="stop-link" id="stop-audit"><span class="chev">' + ICON_CHEVRON_LEFT + '</span><span class="lbl">' + (c.tier === 'deep' ? 'Stop de Deepdive' : 'Stop de check') + '</span></button>' +
         renderRunningCard(c);
       wireDetailStopButton(c);
       return;
@@ -536,9 +632,21 @@
     if ((c.status === 'klaar' || c.status === 'gratis_klaar') && c.report){
       html += renderReport(c);
       if (c.status === 'gratis_klaar'){
-        html += '<section class="report-block"><h3>Meer weten over deze leverancier?</h3>' +
-          '<p style="color:var(--text-muted);">De gratis Evidence Check is klaar. Een betaalde Deep Dive (&euro;2,95) onderzoekt ook de leverancier zelf: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p>' +
-          '<button type="button" class="btn-cta" id="continue-deep">Start Deep Dive (nog zonder betaalstraat)</button></section>';
+        html += '<section class="deepdive-card">' +
+          '<div class="deepdive-price">Voor slechts &euro;3,50</div>' +
+          '<h3 class="deepdive-title">Een deepdive</h3>' +
+          '<p>De <strong>Deep Dive</strong> bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
+          '<ul>' +
+            '<li>Officiële bedrijfsregistratie via de KvK (t.w.v. &euro; 2,95)</li>' +
+            '<li>Upload van eigen foto\'s om je eigen batch te verifiëren</li>' +
+            '<li>Welke onderneming zit daadwerkelijk achter de webshop?</li>' +
+            '<li>Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.</li>' +
+          '</ul>' +
+          '<p>En nog veel meer</p>' +
+          '<div class="deepdive-actions">' +
+            '<button type="button" class="btn-cta" id="continue-deep">Ja, ik wil meer bewijs</button>' +
+            '<button type="button" class="textlink" id="deepdive-info">Meer informatie</button>' +
+          '</div></section>';
       }
       html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';
       html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren (nieuwe audit)</button></div>';
@@ -551,6 +659,8 @@
     // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
     // draaien; dit start een nieuwe audit voor dezelfde leverancier.
     if (retryBtn) retryBtn.addEventListener('click', function(){ retryAsNewAudit(c); });
+    var infoBtn = app.querySelector('#deepdive-info');
+    if (infoBtn) infoBtn.addEventListener('click', function(){ openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
     var continueBtn = app.querySelector('#continue-deep');
     if (continueBtn) continueBtn.addEventListener('click', function(){
       continueBtn.disabled = true; continueBtn.textContent = 'Starten…';
@@ -560,7 +670,7 @@
         render();
         if (updated.status === 'bezig') ensureCasePoller(c.id);
       }).catch(function(e){
-        continueBtn.disabled = false; continueBtn.textContent = 'Start Deep Dive (nog zonder betaalstraat)';
+        continueBtn.disabled = false; continueBtn.textContent = 'Ja, ik wil meer bewijs';
         alert('Starten van de Deep Dive is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
       });
     });
@@ -573,32 +683,69 @@
     });
   }
 
-  // Live-lopende kaart voor status 'bezig' (Figma "URL check", 14 sep) —
-  // toont alleen de stappen die voor déze tier relevant zijn (stepsForTier),
-  // zonder retry-knoppen; renderProgress() hieronder blijft de bron voor
-  // fout/gestopt/klaar, waar retry wél zinvol is.
+  // Live-lopende kaart voor status 'bezig' (Figma "URL check" en "Deepdive",
+  // 15 sep) — toont de stappen die voor deze run relevant zijn
+  // (runRijenVoorCase), zonder retry-knoppen; renderProgress() hieronder
+  // blijft de bron voor fout/gestopt/klaar, waar retry wel zinvol is.
   function renderRunningCard(c){
     var progress = c.progress || [];
     var doneMap = {};
     progress.forEach(function(p){ doneMap[p.key] = p; });
-    var steps = stepsForTier(c.tier);
+    var rijen = runRijenVoorCase(c);
+    // Tijdens een Deep Dive staat de gratis run als afgerond blok bovenaan en
+    // komen de deep-stappen daaronder. categorize en de twee rapportstappen
+    // draaien een tweede keer over de volledige dataset, dus die staan in
+    // beide blokken. Omdat progress per sleutel maar een regel bewaart, kan
+    // de tweede reeks niet uit doneMap worden afgeleid: die volgt uit de
+    // positie ten opzichte van de stap die nu draait.
+    var deepStart = rijen.length;
+    for (var di = 0; di < rijen.length; di++){ if (rijen[di].fase === 'deep'){ deepStart = di; break; } }
+    // Tussen "Deep Dive gestart" en de eerste deep-stap wijst currentStep nog
+    // naar de laatste stap van de gratis run. Zonder deze check zou die dan
+    // matchen op dezelfde sleutel in het deep-blok en het hele blok ten
+    // onrechte als afgerond tonen.
+    var deepBezig = false;
+    if (c.tier === 'deep' && c.currentStep){
+      deepBezig = DEEP_STEP_KEYS.indexOf(c.currentStep.key) !== -1 ||
+        (!!doneMap.reportB && c.currentStep.startedAt > doneMap.reportB.ts);
+    }
+    var actief = -1;
+    if (c.currentStep && (c.tier !== 'deep' || deepBezig)){
+      var zoekVanaf = (c.tier === 'deep') ? deepStart : 0;
+      for (var aj = zoekVanaf; aj < rijen.length; aj++){
+        if (rijen[aj].key === c.currentStep.key){ actief = aj; break; }
+      }
+    }
 
-    var stepsHtml = steps.map(function(s){
-      var done = doneMap[s.key];
-      var isCurrent = c.currentStep && c.currentStep.key === s.key;
+    var stepsHtml = rijen.map(function(rij, idx){
+      var entry = doneMap[rij.key];
+      var isCurrent, done;
+      if (rij.fase === 'deep'){
+        isCurrent = (idx === actief);
+        // Geen actieve deep-stap betekent hier: de Deep Dive is nog niet
+        // begonnen. De regels uit de gratis run tellen dan niet mee.
+        done = (actief === -1) ? false : (idx < actief);
+      } else if (c.tier === 'deep'){
+        // De gratis run is per definitie af zodra de Deep Dive loopt.
+        isCurrent = false; done = !!entry;
+      } else {
+        isCurrent = !!(c.currentStep && c.currentStep.key === rij.key);
+        done = !!entry && !isCurrent;
+      }
+      var sep = (idx === deepStart && deepStart > 0) ? '<div class="run-step-sep"></div>' : '';
       if (done){
-        return '<div class="run-step done"><span class="step-icon">' + ICON_STEP_DONE + '</span>' +
-          '<span class="run-step-label">' + escapeHtml(s.label) + '</span>' +
-          '<span class="run-step-dur">' + fmtDuration(done.durationMs) + '</span></div>';
+        return sep + '<div class="run-step done"><span class="step-icon">' + ICON_STEP_DONE + '</span>' +
+          '<span class="run-step-label">' + escapeHtml(rij.label) + '</span>' +
+          '<span class="run-step-dur">' + (entry ? fmtDuration(entry.durationMs) : '') + '</span></div>';
       }
       if (isCurrent){
-        return '<div class="run-step active"><span class="step-icon active"></span>' +
-          '<span class="run-step-label">' + escapeHtml(s.label) + '</span>' +
+        return sep + '<div class="run-step active"><span class="step-icon active"></span>' +
+          '<span class="run-step-label">' + escapeHtml(rij.label) + '</span>' +
           '<span class="run-step-meta">bezig ' + fmtDuration(Date.now() - c.currentStep.startedAt) +
-          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span></span></div>';
+          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(rij.key)) + '</span></span></div>';
       }
-      return '<div class="run-step pending"><span class="step-icon pending"></span>' +
-        '<span class="run-step-label">' + escapeHtml(s.label) + '</span></div>';
+      return sep + '<div class="run-step pending"><span class="step-icon pending"></span>' +
+        '<span class="run-step-label">' + escapeHtml(rij.label) + '</span></div>';
     }).join('');
 
     var stuckBanner = '';
@@ -632,10 +779,74 @@
         if (state.currentCaseId === c.id){ state.currentCase = updated; render(); }
       }).catch(function(e){
         stopBtn.disabled = false;
-        if (lbl) lbl.textContent = 'Stop de check';
+        if (lbl) lbl.textContent = (c.tier === 'deep' ? 'Stop de Deepdive' : 'Stop de check');
         alert('Stoppen is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
       });
     });
+  }
+
+  // ---------- Deep Dive-informatiepaneel ----------
+  // Een paneel, twee verschijningsvormen: rechts uitschuivend op desktop,
+  // bottomsheet op mobiel. Dat verschil zit volledig in CSS, dus hier is geen
+  // breakpoint-logica nodig. Het paneel hangt in #sheet-root, buiten #app, en
+  // overleeft dus een re-render van de casedetail.
+  var DEEPDIVE_PUNTEN = [
+    ['Officiële bedrijfsregistratie', 'Waar mogelijk via officiële registers/API\'s in plaats van alleen openbare websites. In Nederland bijvoorbeeld actuele KvK-informatie.'],
+    ['Juridische entiteit', 'Welke onderneming zit daadwerkelijk achter de webshop?'],
+    ['Eigenaren/bestuurders/vennoten', 'Wie zijn officieel aan de onderneming verbonden, voor zover dat uit legitieme openbare bedrijfsbronnen blijkt?'],
+    ['Bedrijfshistorie', 'Oprichtingsdatum, wijzigingen, handelsnamen en relevante historische bedrijfsgegevens.'],
+    ['Adres- en contactconsistentie', 'Komen website, bedrijfsregistratie en andere zakelijke bronnen met elkaar overeen?'],
+    ['Gerelateerde ondernemingen', 'Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.'],
+    ['Domein - bedrijf-tijdlijn', 'Past het verhaal van de website bij de aantoonbare historie van bedrijf en domein?'],
+    ['Regulatoire/oversight-check', 'Relevante toezichthouders, waarschuwingen, maatregelen of andere officieel verifieerbare informatie.'],
+    ['Reputatie & transparantie', 'Publieke reputatie wordt breder onderzocht, maar wel met onderscheid tussen harde feiten, ervaringen en onbevestigde claims.'],
+    ['Affiliate/commerciële transparantie', 'Zijn er zichtbare affiliate-, influencer- of andere commerciële constructies die relevant zijn voor hoe de leverancier zich presenteert?'],
+    ['Tegenbewijs en inconsistenties', 'De Deep Dive zoekt expliciet niet alleen bevestiging, maar ook informatie die claims van de leverancier tegenspreekt of nuanceert.']
+  ];
+  var DEEPDIVE_SLOT = [
+    'Daarna komt het grote verschil in de output. De Deep Dive krijgt de volledige Supplier Score, opgebouwd uit onze vier pijlers:',
+    '45% COA & productbewijs + 30% laboratorium + 15% bedrijf/regulatie + 10% reputatie/transparantie.',
+    'Daarbij tonen we ook coverage, zodat 80% op basis van bijna volledig bewijs niet hetzelfde wordt gepresenteerd als 80% terwijl de helft onbekend is.'
+  ];
+
+  function deepdiveInfoBody(){
+    var lijst = DEEPDIVE_PUNTEN.map(function(punt){
+      return '<li><strong>' + escapeHtml(punt[0]) + '</strong><br>' + escapeHtml(punt[1]) + '</li>';
+    }).join('');
+    return '<p>De Deep Dive bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
+      '<ul>' + lijst + '</ul>' +
+      DEEPDIVE_SLOT.map(function(t){ return '<p>' + escapeHtml(t) + '</p>'; }).join('');
+  }
+
+  var sheetVorigeFocus = null;
+  function sheetEscape(e){ if (e.key === 'Escape' || e.keyCode === 27) closeSheet(); }
+  function openSheet(titel, bodyHtml){
+    var root = document.getElementById('sheet-root');
+    if (!root) return;
+    sheetVorigeFocus = document.activeElement;
+    root.innerHTML = '<div class="sheet-overlay" id="sheet-overlay">' +
+      '<div class="sheet-panel" role="dialog" aria-modal="true" aria-label="' + escapeHtml(titel) + '">' +
+      '<div class="sheet-close-row"><button type="button" class="sheet-close" id="sheet-close">' +
+      '<span aria-hidden="true">&times;</span><span class="lbl">Sluiten</span></button></div>' +
+      '<h2 class="sheet-title">' + escapeHtml(titel) + '</h2>' +
+      '<div class="sheet-body">' + bodyHtml + '</div>' +
+      '</div></div>';
+    document.body.classList.add('sheet-open');
+    var overlay = document.getElementById('sheet-overlay');
+    // Klik naast het paneel sluit het; een klik in het paneel zelf niet.
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) closeSheet(); });
+    var sluit = document.getElementById('sheet-close');
+    sluit.addEventListener('click', closeSheet);
+    sluit.focus();
+    document.addEventListener('keydown', sheetEscape);
+  }
+  function closeSheet(){
+    var root = document.getElementById('sheet-root');
+    if (root) root.innerHTML = '';
+    document.body.classList.remove('sheet-open');
+    document.removeEventListener('keydown', sheetEscape);
+    if (sheetVorigeFocus && sheetVorigeFocus.focus) sheetVorigeFocus.focus();
+    sheetVorigeFocus = null;
   }
 
   function renderProgress(c){
@@ -837,7 +1048,7 @@
         '</div></section>';
     }
 
-    if (c.tier !== 'deep'){
+    if (c.tier !== 'deep' && c.status !== 'gratis_klaar'){
       out += '<section class="report-block"><h3>Vervolgonderzoek</h3>' +
         '<p style="color:var(--text-muted);">Dit is de gratis Evidence Check: laboratorium en de volledige COA-dataset en -authenticiteit. Een betaalde Deep Dive voegt de leverancier zelf toe: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p></section>';
     }

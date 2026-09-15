@@ -803,7 +803,7 @@ async function runSynthesis(caseId, ctx, tier) {
   await db.updateCase(caseId, { report });
 }
 
-// Gratis tier: alleen FREE_STEP_KEYS (laboratorium + coaDataset), dan
+// Gratis tier: alleen FREE_STEP_KEYS (coaDataset + laboratorium), dan
 // categorize/engine/synthese in "gratis"-stand. Eindigt op status
 // 'gratis_klaar' (niet 'klaar') zodat de UI een bewuste "ga door naar Deep
 // Dive"-stap kan tonen in plaats van de audit als volledig afgerond te laten
