@@ -228,7 +228,20 @@ async function runResearchStep(caseId, ctx, key) {
         geclaimdeContext: d.context || null,
         gevondenOp: d.gevondenOp || null
       }));
-    records = records.concat(crawlRecords);
+    // Directe verwijzingen naar de verificatiepagina van het lab. Hier is
+    // geen leesopdracht voor nodig: de referentie staat al in de URL, dus
+    // deze gaan rechtstreeks door naar de resolver. Sterker bewijs dan een
+    // gehoste kopie, want er valt niets aan te bewerken.
+    const verwijzingRecords = ((crawl && crawl.verificatieLinks) || []).map((v) => ({
+      product: v.context || null, batchnummer: null, purityPercent: null, laboratorium: 'Janoshik',
+      reportId: null, verificationKey: null, authenticiteitsklasse: null,
+      verificationUrl: v.url,
+      bronUrl: null,
+      accessStatus: 'readable',
+      uit: 'labverwijzing',
+      gevondenOp: v.gevondenOp || null
+    }));
+    records = records.concat(crawlRecords).concat(verwijzingRecords);
     if (ctx.images && ctx.images.length) {
       const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
@@ -371,7 +384,7 @@ async function runResearchStep(caseId, ctx, key) {
     let verificatieTeller = 0;
     for (let i = 0; i < records.length; i++) {
       const r = records[i];
-      if (!r || (!r.reportId && !r.verificationKey)) continue;
+      if (!r || (!r.reportId && !r.verificationKey && !r.verificationUrl)) continue;
       if (verificatieTeller >= LAB_VERIFY_MAX) break;
       verificatieTeller++;
       const res = await janoshik.resolveer(r).catch(() => null);
@@ -476,6 +489,7 @@ async function runResearchStep(caseId, ctx, key) {
     const crawlInfo = {
       indexPaginas: (crawl && crawl.indexPages) || [],
       documentenGevonden: ((crawl && crawl.documents) || []).length,
+      directeLabverwijzingen: ((crawl && crawl.verificatieLinks) || []).length,
       nieuwTenOpzichteVanZoekstap: crawlRecords.length,
       maximaalOpgehaald: COA_AUTOFETCH_MAX,
       nietGeprobeerdWegensLimiet: nietGeprobeerd,

@@ -55,6 +55,13 @@ const INRICHTING_NAAM = /(logo|icon|sprite|favicon|placeholder|banner|avatar|thu
 // Test-Report-199613.png, COA_BPC157.pdf, lab-result-2026.jpg.
 const RAPPORT_NAAM = /(coa|certificate|certificaat|analysis|analyse|test[-_]?report|testrapport|lab[-_]?(result|report)|labresultaat|hplc|purity)/i;
 
+// Sommige leveranciers hosten helemaal geen COA-bestand maar linken
+// rechtstreeks naar de verificatiepagina van het lab. Dat is de sterkste
+// publicatievorm die er is: er is geen kopie om te bewerken. Lumopeptides
+// doet dit met 14 rapporten; de crawler liep er straal voorbij omdat het
+// geen .pdf of .png is.
+const LAB_VERIFICATIELINK = /^https:\/\/verify\.janoshik\.com\/tests\/\d+-[^/?#]*_[A-Za-z0-9]+$/i;
+
 function withTimeout() {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -185,6 +192,7 @@ function sameSite(a, b) {
 async function crawlCoaIndex(website) {
   const notes = [];
   const documents = new Map();
+  const verificatieLinks = new Map();
   const indexPages = [];
   let root;
   try {
@@ -227,6 +235,12 @@ async function crawlCoaIndex(website) {
 
     const rows = rowContextFor(page.html);
     const links = extractLinks(page.html, page.finalUrl);
+    for (const l of links) {
+      if (verificatieLinks.size >= MAX_DOCUMENTS) break;
+      if (LAB_VERIFICATIELINK.test(l.url) && !verificatieLinks.has(l.url)) {
+        verificatieLinks.set(l.url, { url: l.url, context: (l.text || '').slice(0, 200), gevondenOp: page.finalUrl });
+      }
+    }
     const bruikbaar = links.filter((l) => DOC_EXT.test(l.url) && !THUMBNAIL.test(l.url) &&
       !SITE_INRICHTING.test(l.url) && !INRICHTING_NAAM.test(l.url.split('/').pop() || ''));
     const aangelinkt = bruikbaar.filter((l) => !l.uitAfbeelding);
@@ -241,7 +255,14 @@ async function crawlCoaIndex(website) {
     // staan in /brand/ en /icons/ of heten ernaar. Een rapportnaam is een
     // bonus, geen eis.
     const docs = aangelinkt.length ? aangelinkt : bruikbaar.filter((l) => l.uitAfbeelding);
-    if (!docs.length) { if (diagnose.length < 20) diagnose.push({ url, resultaat: 'pagina bestaat, maar bevat geen documentlinks' }); continue; }
+    if (!docs.length) {
+      // Geen bestanden, maar wel directe labverwijzingen? Dan is dit wel
+      // degelijk de COA-pagina - en een betere dan een met kopieen.
+      const verwijzingenHier = [...verificatieLinks.values()].filter((v) => v.gevondenOp === page.finalUrl).length;
+      if (verwijzingenHier) { indexPages.push(page.finalUrl); continue; }
+      if (diagnose.length < 20) diagnose.push({ url, resultaat: 'pagina bestaat, maar bevat geen documentlinks' });
+      continue;
+    }
 
     indexPages.push(page.finalUrl);
     for (const d of docs) {
@@ -263,9 +284,10 @@ async function crawlCoaIndex(website) {
   }
 
   if (!indexPages.length) notes.push('geen pagina met certificaatdocumenten gevonden op het eigen domein');
+  if (verificatieLinks.size) notes.push(verificatieLinks.size + ' directe verwijzingen naar de verificatiepagina van het lab gevonden');
   if (documents.size >= MAX_DOCUMENTS) notes.push('limiet van ' + MAX_DOCUMENTS + ' documenten bereikt; niet alles is meegenomen');
 
-  return { indexPages, documents: Array.from(documents.values()), notes, diagnose };
+  return { indexPages, documents: Array.from(documents.values()), verificatieLinks: Array.from(verificatieLinks.values()), notes, diagnose };
 }
 
-module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, INDEX_HINT };
+module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, INDEX_HINT };
