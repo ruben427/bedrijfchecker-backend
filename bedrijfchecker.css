@@ -1,0 +1,603 @@
+/* ============================================================
+   bedrijfchecker.css — productstijlen
+   ============================================================
+   Componenten en layout specifiek voor Bedrijfchecker. Bouwt voort op
+   de kleuren/fonts/vorm-tokens uit solike.css (--bg, --accent,
+   --radius-*, etc.) — laad solike.css dus altijd eerst.
+*/
+
+.wrap{
+  max-width:1040px;
+  margin:0 auto;
+  padding-inline:20px;
+  padding-block:0 64px;
+}
+
+header.top{
+  display:flex; align-items:center; gap:16px;
+  padding-block:16px; margin-bottom:8px;
+  border-bottom:1px solid var(--border);
+}
+.brand-link{
+  appearance:none; background:none; border:none; padding:0; cursor:pointer;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:700; font-size:1.05rem; color:var(--heading);
+}
+.brand-link:hover{ color:var(--accent); }
+.btn{
+  appearance:none; border:1px solid var(--accent-strong); background:var(--accent); color:#fff9f5;
+  font:inherit; font-weight:600; font-size:.92rem;
+  padding:10px 16px; border-radius:8px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.btn:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
+.btn:disabled{ opacity:.5; cursor:not-allowed; }
+.btn.secondary{ background:transparent; color:var(--text); border-color:var(--border); }
+.btn.secondary:hover{ background:var(--surface-2); }
+.btn.ghost{ background:transparent; color:var(--accent-strong); border-color:transparent; padding-inline:4px; }
+
+/* hero (Anne's designsysteem v2, Figma "Checker design", 14 sep) — de hero
+   staat los op de paginaondergrond, geen kaartwrapper meer eromheen. */
+.hero{ text-align:left; padding:48px 0 8px; max-width:820px; margin:0 auto; }
+.hero .eyebrow{
+  display:block; font-family:"Open Sans", sans-serif; font-weight:700; font-size:1rem;
+  letter-spacing:.4em; text-transform:uppercase; color:var(--accent); margin:0 0 10px;
+}
+.hero h1{ font-size:clamp(2rem,5.5vw,3.6rem); color:var(--heading-3); letter-spacing:-.02em; line-height:1.05; }
+.hero .hero-tag{ font-size:1.05rem; color:var(--text); max-width:640px; margin:16px 0 0; }
+.hero .hero-tag p{ margin:0; }
+
+.hero-form{ max-width:820px; margin:24px auto 0; display:flex; flex-direction:column; gap:12px; }
+.hero-form-note{ font-size:.85rem; color:var(--text); margin:0; }
+
+/* "Binnenkort"-hero — gecentreerde variant, Figma "UNDER CONSTRUCTION" 15 sep */
+.hero.centered{ text-align:center; margin:0 auto; }
+.hero.centered .hero-tag{ margin-inline:auto; }
+
+/* Wachtlijst-kaart (label + los invulveld + checkbox + losse pil-knop), en
+   de "Bedankt"-variant erna — Figma-update 15 sep (checkbox-component +
+   footer + Ruben's mobiele Bedankt-scherm, hier ook voor desktop uitgewerkt),
+   herschikt op 15 sep na Rubens kleine aanpassing: het label staat nu in de
+   kaart (niet meer in de hero), het invulveld staat los boven de checkbox,
+   en de knop is een losse pil onder de checkbox i.p.v. aan het veld vast. */
+.signup-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:24px 48px; max-width:768px; width:100%; margin:24px auto 0;
+  display:flex; flex-direction:column; gap:24px; text-align:left;
+}
+@media (max-width:640px){ .signup-card{ padding:24px 16px; } }
+
+.signup-label{
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3125rem;
+  color:var(--heading); letter-spacing:-.02em; line-height:1.5; margin:0;
+}
+@media (max-width:640px){ .signup-label{ font-size:1.125rem; } }
+
+.signup-fields{ display:flex; flex-direction:column; gap:12px; width:100%; }
+
+.consent-row{ display:flex; align-items:center; gap:8px; width:100%; cursor:pointer; }
+.consent-checkbox{
+  appearance:none; -webkit-appearance:none; flex-shrink:0; margin:0;
+  width:24px; height:24px; border:1px solid var(--text-faint); border-radius:4px;
+  background:var(--surface); cursor:pointer; position:relative;
+}
+.consent-checkbox:checked{ background:var(--accent); border-color:var(--accent-strong); }
+.consent-checkbox:checked::after{
+  content:''; position:absolute; left:8px; top:4px; width:6px; height:11px;
+  border:solid #fff9f5; border-width:0 2px 2px 0; transform:rotate(45deg);
+}
+.consent-checkbox.has-error{ border-color:var(--danger); }
+.consent-checkbox:disabled{ opacity:.6; cursor:not-allowed; }
+.consent-checkbox:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+.consent-label{ font-family:"Open Sans", sans-serif; font-weight:600; font-size:1rem; color:var(--text); line-height:1.5; }
+@media (max-width:640px){ .consent-label{ font-size:.875rem; } }
+
+.signup-input{ height:56px; padding:0 14px; font-size:1rem; }
+
+.signup-btn{
+  appearance:none; border:1px solid var(--accent-strong);
+  background:linear-gradient(62deg, var(--accent) 50%, var(--accent-light) 100%);
+  color:#fff9f5; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem;
+  padding:0 32px; height:56px; border-radius:48px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; white-space:nowrap;
+  align-self:flex-start;
+}
+.signup-btn:hover{ filter:brightness(1.05); }
+.signup-btn:disabled{ opacity:.5; cursor:not-allowed; }
+@media (max-width:640px){ .signup-btn{ width:100%; align-self:stretch; } }
+/* Vaste minimumbreedte zodat de knop niet smaller wordt zodra de tekst
+   plaatsmaakt voor het laad-icoon hieronder. */
+#signup-submit{ min-width:260px; }
+.signup-btn .icon-spin{
+  display:inline-block; width:22px; height:22px; flex-shrink:0;
+  border:2.5px solid rgba(255,249,245,.4); border-top-color:#fff9f5;
+  border-radius:50%; animation:spin .8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce){ .signup-btn .icon-spin{ animation:none; border-top-color:rgba(255,249,245,.7); } }
+
+.thanks-card{ text-align:center; align-items:center; }
+.thanks-title{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.5rem; color:var(--heading); letter-spacing:-.02em; margin:0; }
+.thanks-body{ font-size:1.05rem; color:var(--text); margin:0; line-height:1.6; }
+
+.signup-footer{ font-size:.82rem; color:var(--text-faint); text-align:center; margin:40px auto 0; max-width:820px; }
+
+/* sectiekop tussen hero en de 3-staps-ladder */
+.ladder-intro{ max-width:820px; margin:56px auto 24px; }
+.ladder-intro h2{ font-size:1.7rem; color:var(--heading-3); letter-spacing:-.02em; }
+.ladder-intro p{ font-size:1.02rem; color:var(--text); margin:10px 0 0; max-width:720px; }
+
+/* 3-staps-ladder: Gratis / Deep Dive (uitgelicht) / Expert-laag (in ontwikkeling) */
+.ladder{ display:flex; gap:16px; max-width:1040px; margin:0 auto; align-items:stretch; }
+@media (max-width:860px){ .ladder{ flex-direction:column; } }
+.ladder-card{
+  flex:1; min-width:0; display:flex; flex-direction:column; justify-content:space-between;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md);
+  padding:24px; box-shadow:var(--shadow);
+}
+.ladder-card.featured{
+  background:var(--purple-50); border:1.5px solid var(--purple-300);
+  box-shadow:0 2px 4px rgba(38,1,51,.06), 0 16px 32px -16px rgba(115,4,153,.25);
+}
+@media (min-width:861px){ .ladder-card.featured{ margin-block:-6px; } }
+.ladder-top{ display:flex; flex-direction:column; gap:20px; }
+.ladder-badges{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ladder-badge{
+  display:inline-flex; align-items:center; font-family:"Open Sans", sans-serif; font-weight:700;
+  font-size:.72rem; letter-spacing:.02em; text-transform:uppercase; padding:4px 12px; border-radius:999px;
+  border:1px solid var(--heading); background:var(--purple-50); color:var(--heading); white-space:nowrap;
+}
+.ladder-badge.tier2{ background:var(--purple-600); border-color:var(--heading); color:#fff9fe; }
+.ladder-badge.tier3{ background:var(--surface); border-color:var(--text-faint); color:var(--text); }
+.ladder-tier-label{ font-size:.85rem; color:var(--text-faint); }
+.ladder-body{ display:flex; flex-direction:column; gap:8px; }
+.ladder-title{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.15rem; color:var(--heading-2); letter-spacing:-.02em; }
+.ladder-list{ margin:0; padding-left:20px; display:flex; flex-direction:column; gap:6px; font-size:.95rem; color:var(--text); }
+.ladder-list li{ line-height:1.5; }
+.ladder-punch{ font-size:.95rem; color:var(--text); margin:6px 0 0; }
+.ladder-footer{ padding-top:24px; }
+
+.audit-form{ display:flex; gap:12px; width:100%; align-items:flex-start; }
+.audit-form-row{ display:flex; gap:12px; width:100%; }
+.audit-form input[type=text]{ flex:1; height:56px; border-radius:8px; padding:0 14px; font-size:1rem; }
+.field-error{ color:var(--danger); font-size:.82rem; }
+input.has-error{ border-color:var(--danger); }
+@media (max-width:640px){
+  .audit-form-row{ flex-direction:column; }
+  .btn-cta{ width:100%; }
+}
+
+.btn-cta{
+  appearance:none; border:1px solid var(--accent-strong);
+  background:linear-gradient(57deg, var(--accent) 50%, var(--accent-light) 100%);
+  color:#fff9f5; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem;
+  padding:0 24px; height:56px; border-radius:999px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:10px; white-space:nowrap; flex-shrink:0;
+}
+.btn-cta:hover{ filter:brightness(1.05); }
+.btn-cta:disabled{ opacity:.5; cursor:not-allowed; }
+.btn-cta svg{ width:18px; height:18px; flex-shrink:0; }
+/* Vaste minimumbreedte zodat de startknop niet smaller wordt zodra de tekst
+   plaatsmaakt voor het laad-icoon hieronder. */
+#wiz-start{ min-width:248px; }
+/* Laad-icoon in .btn-cta terwijl een check gestart wordt — zelfde
+   spin-mechaniek als .run-step .step-icon.active (de draaiende stap tijdens
+   de live-check), hier lichter gekleurd zodat hij op de oranje knopvulling
+   zichtbaar blijft. */
+.btn-cta .icon-spin{
+  display:inline-block; width:22px; height:22px; flex-shrink:0;
+  border:2.5px solid rgba(255,249,245,.4); border-top-color:#fff9f5;
+  border-radius:50%; animation:spin .8s linear infinite;
+}
+@media (prefers-reduced-motion: reduce){ .btn-cta .icon-spin{ animation:none; border-top-color:rgba(255,249,245,.7); } }
+
+.disclosure-toggle{
+  display:flex; align-items:center; gap:10px; background:none; border:none; font:inherit;
+  font-size:.95rem; color:var(--text); cursor:pointer; padding:4px 0; width:100%; text-align:left;
+}
+.disclosure-caret{ display:inline-flex; transition:transform .15s ease; transform:rotate(90deg); color:var(--accent); flex-shrink:0; }
+.disclosure-toggle[aria-expanded="true"] .disclosure-caret{ transform:rotate(0deg); }
+.disclosure-body{ margin-top:14px; width:100%; }
+
+.dropzone{
+  border:1.5px dashed var(--accent); border-radius:8px; padding:36px 20px; text-align:center;
+  color:var(--text); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:10px;
+  background:transparent; width:100%;
+}
+.dropzone:hover{ border-color:var(--accent-strong); background:var(--accent-soft); }
+.dropzone svg{ width:34px; height:34px; color:var(--accent-strong); }
+.dropzone .dz-text{ font-size:.92rem; color:var(--text); }
+
+.audit-list{ display:flex; flex-direction:column; width:100%; }
+.audit-row{
+  display:flex; align-items:center; justify-content:space-between; gap:14px; padding:16px 0;
+  border-bottom:1px solid var(--border); background:none; border-left:none; border-right:none; border-top:none;
+  width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer;
+}
+.audit-row:last-child{ border-bottom:none; }
+.audit-row:hover{ background:var(--surface-2); }
+.audit-row .left{ display:flex; align-items:center; gap:10px; min-width:0; flex-wrap:wrap; }
+.audit-row .name{ font-weight:600; }
+.audit-row .domain{ color:var(--text-muted); font-size:.85rem; }
+.audit-row .right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.audit-row .right .date{ color:var(--text-muted); font-size:.8rem; }
+.audit-row .right .chev{ display:inline-flex; color:var(--text-faint); }
+.audit-row .right .chev svg{ width:16px; height:16px; }
+
+.completed-checks{ margin-top:56px; }
+.completed-checks h2{ font-size:1.7rem; color:var(--heading-3); letter-spacing:-.02em; margin:0 0 8px; }
+.textlink{
+  display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-weight:700;
+  font-family:"Baloo 2", sans-serif; border-bottom:1px solid var(--accent); padding-bottom:1px;
+  white-space:nowrap; flex-shrink:0; text-decoration:none;
+}
+.textlink svg{ width:12px; height:12px; }
+
+input[type=text], input[type=url], input[type=email], textarea{
+  font:inherit; font-size:.96rem; color:var(--text);
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  padding:10px 12px; width:100%;
+}
+textarea{ min-height:80px; resize:vertical; }
+
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:20px; box-shadow:var(--shadow);
+}
+
+.empty-state{ padding:40px 20px; text-align:center; color:var(--text-muted); border:1px dashed var(--border); border-radius:12px; }
+
+.chip{
+  display:inline-flex; align-items:center; gap:6px; font-size:.78rem; font-weight:600;
+  padding:4px 10px; border-radius:999px; white-space:nowrap;
+}
+.chip.ok{ background:var(--ok-soft); color:var(--ok); }
+.chip.warn{ background:var(--warn-soft); color:var(--warn); }
+.chip.danger{ background:var(--danger-soft); color:var(--danger); }
+.chip.grey{ background:var(--grey-soft); color:var(--grey); }
+
+.file-list{ display:flex; flex-direction:column; gap:6px; margin-top:12px; width:100%; }
+.file-item{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 12px;
+  font-size:.86rem;
+}
+.file-item button{ background:none; border:none; color:var(--danger); cursor:pointer; font-size:.8rem; font-weight:600; padding:0; }
+.overview-grid{ display:grid; grid-template-columns:140px 1fr; gap:8px 14px; font-size:.92rem; }
+.overview-grid dt{ color:var(--text-muted); font-weight:600; }
+.overview-grid dd{ margin:0; }
+
+/* case detail */
+.detail-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+.detail-head h2{ font-size:1.5rem; }
+.detail-head .site{ color:var(--text-muted); font-size:.9rem; }
+.kv-row{ display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:.85rem; color:var(--text-muted); }
+.kv-row .mono{ color:var(--text); }
+
+/* live-lopende check (status 'bezig') — Figma "URL check", 14 sep: één
+   kaart met url/metadata + stappenlijst, geen aparte terug/stop-knoppen meer
+   maar één "Stop de check"-link erboven. Alleen voor de live weergave; de
+   retry-baar stappenlijst (renderProgress) blijft ongewijzigd voor fout/
+   gestopt/klaar-schermen. */
+.stop-link{
+  display:inline-flex; align-items:center; gap:8px; background:none; border:none; cursor:pointer;
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem; color:var(--accent);
+  padding:12px 0; margin-bottom:8px;
+}
+.stop-link .chev{ display:inline-flex; width:14px; height:14px; }
+.stop-link span.lbl{ border-bottom:1px solid var(--accent); padding-bottom:1px; }
+.stop-link:disabled{ opacity:.6; cursor:default; }
+
+/* Bevestig-dialoog "Stop de check" — desktop centered popup / mobiel bottom
+   sheet, Figma "stop check - desktop" & "stop check - mobile" (15 sep). Het
+   overlay-element wordt los aan document.body gehangen (niet in #app),
+   zodat de 4s-poller van renderDetail() de dialoog niet wegrendert terwijl
+   hij openstaat. */
+.stop-confirm-overlay{
+  position:fixed; inset:0; z-index:200;
+  background:rgba(15,15,14,.3);
+  display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+  padding-top:120px; padding-inline:20px;
+}
+.stop-confirm-dialog{
+  background:var(--surface); border-radius:var(--radius-lg); box-shadow:var(--shadow);
+  padding:36px 24px; max-width:480px; width:100%;
+  display:flex; flex-direction:column; gap:36px;
+}
+.stop-confirm-title{
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:2rem;
+  color:var(--text); letter-spacing:-.02em; line-height:1.2; margin:0 0 8px;
+}
+.stop-confirm-body{ font-size:1.125rem; color:var(--text); margin:0; line-height:1.5; }
+.stop-confirm-actions{ display:flex; gap:12px; flex-wrap:wrap; }
+.stop-confirm-btn{
+  appearance:none; border-radius:48px; height:56px; padding:0 24px;
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.125rem;
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; white-space:nowrap;
+}
+.stop-confirm-btn.primary{
+  border:1px solid var(--accent-strong);
+  background:linear-gradient(68deg, var(--accent) 50%, var(--accent-light) 100%);
+  color:#f9f9f8;
+}
+.stop-confirm-btn.primary:hover{ filter:brightness(1.05); }
+.stop-confirm-btn.secondary{
+  background:var(--surface); border:1px solid var(--accent); color:var(--accent);
+}
+.stop-confirm-btn.secondary:hover{ background:var(--accent-soft); }
+.stop-confirm-btn:disabled{ opacity:.6; cursor:not-allowed; }
+@media (max-width:640px){
+  .stop-confirm-overlay{ justify-content:flex-end; padding-top:0; padding-inline:0; }
+  .stop-confirm-dialog{
+    max-width:none; border-radius:24px 24px 0 0;
+    padding:26px 24px 60px;
+  }
+  .stop-confirm-title{ font-size:1.5rem; }
+}
+
+.run-card{
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+  padding:48px 40px; max-width:1024px; margin:0 auto; box-shadow:var(--shadow);
+}
+@media (max-width:640px){ .run-card{ padding:28px 20px; } }
+.run-slot{ max-width:768px; margin:0 auto; display:flex; flex-direction:column; gap:24px; }
+.run-url{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:clamp(1.4rem,4vw,2rem); color:var(--heading); letter-spacing:-.02em; word-break:break-word; }
+.run-meta{ display:flex; gap:14px; flex-wrap:wrap; font-size:.85rem; margin:10px 0 0; }
+.run-meta .kvk{ color:var(--text); }
+.run-meta .created{ color:var(--text-muted); }
+.run-name{ font-size:1.05rem; color:var(--text); margin:8px 0 0; }
+
+.run-steps{ display:flex; flex-direction:column; gap:14px; }
+.run-step{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.run-step .step-icon{ flex-shrink:0; width:21px; height:21px; }
+.run-step .step-icon.pending{ border:2px solid var(--border); border-radius:50%; box-sizing:border-box; }
+.run-step .step-icon.active{ border:2.5px solid var(--accent-soft); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce){ .run-step .step-icon.active{ animation:none; border-top-color:var(--accent-soft); } }
+.run-step.done .run-step-label{ font-size:1.02rem; color:var(--text); }
+.run-step.done .run-step-dur{ color:var(--text-subtle); font-size:.9rem; margin-left:auto; }
+.run-step.active .run-step-label{ font-family:"Open Sans",sans-serif; font-weight:700; font-size:1.2rem; color:var(--text); }
+.run-step.active .run-step-meta{ display:flex; gap:10px; align-items:center; font-size:.9rem; color:var(--text); flex-wrap:wrap; }
+.run-step.active .run-step-meta .avg{ color:var(--text-subtle); }
+.run-step.pending .run-step-label{ font-size:.85rem; color:var(--text); }
+
+.progress-list{ display:flex; flex-direction:column; gap:10px; margin:18px 0; }
+.progress-item{ display:flex; align-items:center; gap:10px; font-size:.9rem; }
+.progress-item .dot{ width:9px; height:9px; border-radius:50%; background:var(--border); flex-shrink:0; }
+.progress-item.done .dot{ background:var(--ok); }
+.progress-item.active .dot{ background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+.progress-item.done{ color:var(--text-muted); }
+.progress-item.active{ color:var(--text); font-weight:600; }
+.step-label{ flex:1; }
+.step-hint{ color:var(--text-muted); font-size:.78rem; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.step-retry{ padding:2px 9px; font-size:.72rem; font-weight:600; border:1px solid var(--border); border-radius:6px; flex-shrink:0; }
+
+section.report-block{ margin-top:30px; }
+section.report-block h3{ font-size:1.05rem; margin-bottom:10px; }
+section.report-block p{ margin:0; color:var(--text); }
+.findings{ display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none; }
+.findings li{ padding:10px 14px; border-radius:8px; background:var(--surface-2); font-size:.92rem; border-left:3px solid var(--border); }
+.findings li.danger{ border-left-color:var(--danger); background:var(--danger-soft); }
+.findings li.ok{ border-left-color:var(--ok); background:var(--ok-soft); }
+.findings li .src{ display:block; margin-top:4px; font-size:.78rem; color:var(--text-muted); }
+
+.score-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.score-tile{ border:1px solid var(--border); border-radius:10px; padding:14px; background:var(--surface); }
+.score-tile .label{ font-size:.8rem; font-weight:600; color:var(--text-muted); margin-bottom:6px; }
+.score-tile .note{ font-size:.82rem; color:var(--text-muted); margin-top:6px; }
+
+ol.numbered{ margin:0; padding-left:22px; display:flex; flex-direction:column; gap:8px; }
+.deepen-item{ display:flex; justify-content:space-between; gap:10px; align-items:flex-start; padding:10px 14px; background:var(--surface-2); border-radius:8px; }
+.sources{ display:flex; flex-direction:column; gap:4px; font-size:.85rem; }
+.disclaimer{ margin-top:34px; padding:14px 16px; border-radius:10px; background:var(--surface-2); color:var(--text-muted); font-size:.82rem; border:1px solid var(--border); }
+details.raw{ margin-top:20px; font-size:.85rem; }
+details.raw summary{ cursor:pointer; color:var(--text-muted); }
+.banner{ padding:12px 14px; border-radius:8px; background:var(--warn-soft); color:var(--warn); font-size:.88rem; margin-bottom:18px; }
+.banner.danger{ background:var(--danger-soft); color:var(--danger); }
+.spinner{ display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce){ .spinner{ animation:none; } }
+@keyframes spin{ to{ transform:rotate(360deg); } }
+
+/* ---------- Rapport (accordion-rapport, sep 2026, Figma "Rapport" 494:14614) ----------
+   Mobiel 1-op-1 uit Figma; desktop (>=900px) is eigen vormgeving hierboven
+   op voortgebouwd (Ruben: "mag jij de desktop vanuit daar vormgeven"). */
+.detail-head-slim{ margin:14px 0 4px; }
+.rapport{ display:flex; flex-direction:column; gap:22px; margin-top:18px; }
+
+.rapport-top{ display:flex; flex-direction:column; gap:16px; }
+.rapport-head{ display:flex; flex-direction:column; gap:10px; padding-inline:2px; }
+.rapport-head .url{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:clamp(1.3rem,4vw,1.6rem); color:var(--heading-2); letter-spacing:-.02em; word-break:break-word; }
+.rapport-head .meta{ display:flex; flex-direction:column; gap:2px; font-size:.85rem; }
+.rapport-head .meta .kvk{ color:var(--text); }
+.rapport-head .meta .created{ color:var(--text-muted); }
+.rapport-head .company{ font-size:1rem; color:var(--text); line-height:1.5; }
+
+.rapport-kort{
+  background:var(--accent-soft); border:1px solid var(--accent-light); border-radius:var(--radius-md);
+  padding:24px 16px; display:flex; flex-direction:column; gap:8px;
+}
+.rapport-kort h3{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; color:var(--accent); margin:0; letter-spacing:-.02em; }
+.rapport-kort p{ margin:0; font-size:1rem; color:var(--text); line-height:1.5; }
+
+.rapport-upsell{
+  border-radius:var(--radius-md); padding:24px 16px; display:flex; flex-direction:column; gap:16px;
+  background:linear-gradient(120deg, var(--heading) 45%, var(--purple-600) 100%); color:#f9f9f8;
+}
+.rapport-upsell-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.rapport-upsell-head h3{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; margin:0; letter-spacing:-.02em; color:inherit; }
+.rapport-upsell-head .price{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; flex-shrink:0; }
+.rapport-upsell-body{ font-size:1rem; line-height:1.5; }
+.rapport-upsell-body p{ margin:0 0 12px; }
+.rapport-upsell-body ul{ margin:0 0 12px; padding-left:22px; display:flex; flex-direction:column; gap:6px; }
+.rapport-upsell-actions{ display:flex; flex-direction:column; gap:0; }
+.rapport-upsell-btn{
+  appearance:none; border-radius:48px; height:56px; padding:0 24px; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.05rem;
+  border:1px solid var(--accent-strong); background:linear-gradient(68deg, var(--accent) 50%, var(--accent-light) 100%); color:#f9f9f8;
+  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; width:100%;
+}
+.rapport-upsell-btn:hover{ filter:brightness(1.05); }
+.rapport-upsell-btn:disabled{ opacity:.7; cursor:not-allowed; }
+.rapport-upsell-link{
+  background:none; border:none; height:56px; color:#fffdfc; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.05rem;
+  border-bottom:1px solid #fffdfc; cursor:pointer; align-self:center; padding:0; margin-top:4px;
+}
+.rapport-upsell-link:disabled{ opacity:.7; cursor:not-allowed; }
+
+.rapport-group-label{ font-family:"Open Sans", sans-serif; font-weight:700; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:0 0 -8px 4px; }
+
+.accordion{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
+.acc-item + .acc-item{ border-top:1px solid var(--border); }
+.acc-header{
+  appearance:none; background:none; border:none; width:100%; display:flex; align-items:center; justify-content:space-between;
+  gap:12px; padding:16px; font:inherit; color:var(--text); cursor:pointer; text-align:left;
+}
+.acc-header .acc-title{ display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; text-transform:uppercase; letter-spacing:.02em; font-size:.92rem; font-weight:600; }
+.acc-header .acc-sub{ font-size:.78rem; text-transform:none; color:var(--text-muted); font-weight:400; letter-spacing:0; }
+.acc-chevron{ display:inline-flex; flex-shrink:0; width:18px; height:18px; color:var(--text); transition:transform .15s ease; }
+.acc-item[data-open="true"] .acc-chevron{ transform:rotate(180deg); }
+.acc-body{ padding:0 16px 20px; }
+.acc-item[data-open="false"] .acc-body{ display:none; }
+
+.acc-category{ padding-top:16px; border-top:1px solid var(--border); break-inside:avoid; }
+.acc-category:first-child{ padding-top:0; border-top:none; }
+.acc-category + .acc-category{ margin-top:16px; }
+.acc-category h4{ margin:0 0 8px; font-size:1rem; font-weight:700; color:var(--text); }
+.acc-category .acc-note{ margin:8px 0 0; font-size:.82rem; color:var(--text-muted); }
+.acc-body > div + div{ margin-top:16px; }
+
+.rapport-label{
+  display:inline-flex; align-items:center; border-radius:var(--radius-pill); border:1px solid var(--border);
+  background:var(--surface); color:var(--text); font-size:.72rem; font-weight:600; letter-spacing:.02em;
+  text-transform:uppercase; padding:4px 10px; margin:2px 0 8px;
+}
+.rapport-label.ok{ border-color:var(--ok); color:var(--ok); }
+.rapport-label.warn{ border-color:var(--warn); color:var(--warn); }
+.rapport-label.danger{ border-color:var(--danger); color:var(--danger); }
+.rapport-label.grey{ border-color:var(--border); color:var(--text); }
+
+.truncate p{ margin:0 0 10px; font-size:1rem; color:var(--text); line-height:1.5; }
+.truncate p:last-child{ margin-bottom:0; }
+.truncate-short p{ margin-bottom:0; }
+.read-more-toggle{
+  background:none; border:none; padding:0; margin-left:2px; color:var(--accent); font-weight:700; font-family:"Open Sans",sans-serif;
+  cursor:pointer; text-decoration:underline; font-size:1rem; display:inline;
+}
+.truncate-full .read-more-toggle{ display:block; margin-top:8px; }
+
+.rapport-plain{ padding-inline:2px; display:flex; flex-direction:column; gap:8px; }
+.rapport-plain h3{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; color:var(--heading-2); margin:0; letter-spacing:-.02em; }
+.rapport-plain .sources{ gap:8px; margin-top:4px; }
+.rapport-plain .sources a{ color:var(--accent); }
+
+.rapport-footer{ padding-inline:2px; font-size:.875rem; color:var(--text-subtle); line-height:1.5; }
+
+@media (min-width:900px){
+  .rapport{ max-width:960px; }
+  .rapport-top{ flex-direction:row; align-items:stretch; }
+  .rapport-top .rapport-head{ flex:1 0 0; justify-content:center; }
+  .rapport-top-side{ flex:1 0 0; display:flex; flex-direction:column; gap:16px; }
+}
+
+/* ---------- Deep Dive-kaart en informatiepaneel (Figma "Rapport", 15 sep) ---------- */
+
+.deepdive-card{
+  background:var(--surface); border:1px solid var(--purple-300);
+  border-radius:var(--radius-lg); padding:24px; margin-top:30px;
+}
+.deepdive-price{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:2rem; line-height:1.1; letter-spacing:-.05em; color:var(--heading-2);
+}
+.deepdive-title{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:3.5rem; line-height:1.05; letter-spacing:-.05em; color:var(--heading-2);
+  margin:0 0 24px;
+}
+.deepdive-card p{ margin:0 0 12px; }
+.deepdive-card ul{ margin:0 0 12px; padding-left:24px; }
+.deepdive-card li{ margin-bottom:8px; }
+.deepdive-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:36px; margin-top:24px; }
+
+/* .textlink is in het designsysteem een span; als knop moet de
+   browser-eigen knopstijl eraf. */
+button.textlink{
+  background:none; border:0; border-bottom:1px solid var(--accent);
+  font-size:1.125rem; line-height:1; padding:0 0 2px; cursor:pointer;
+}
+
+.sheet-overlay{
+  position:fixed; inset:0; z-index:60; background:rgba(15,15,14,.3);
+  display:flex; justify-content:flex-end;
+}
+.sheet-panel{
+  background:var(--surface); color:var(--text);
+  width:540px; max-width:100%;
+  border-radius:var(--radius-lg) 0 0 var(--radius-lg);
+  padding:12px 24px 48px 48px;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  box-shadow:var(--shadow);
+  animation:sheet-in-right .22s ease-out;
+}
+@keyframes sheet-in-right{ from{ transform:translateX(32px); opacity:0; } to{ transform:none; opacity:1; } }
+.sheet-close-row{ display:flex; justify-content:flex-end; }
+.sheet-close{
+  display:inline-flex; align-items:center; gap:12px; height:56px;
+  background:none; border:0; cursor:pointer; color:var(--accent);
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.125rem;
+}
+.sheet-close .lbl{ border-bottom:1px solid var(--accent); }
+.sheet-title{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:2.75rem; line-height:1.05; letter-spacing:-.05em;
+  color:var(--heading-2); margin:0 0 12px;
+}
+.sheet-body p{ margin:0 0 12px; }
+.sheet-body ul{ margin:0 0 12px; padding-left:24px; }
+.sheet-body li{ margin-bottom:8px; }
+
+/* Mobiel wordt hetzelfde paneel een bottomsheet. Het verschil zit volledig
+   hier, zodat er in JavaScript geen breakpoint-logica nodig is. */
+@media (max-width:860px){
+  .deepdive-price{ font-size:1.375rem; }
+  .deepdive-title{ font-size:2.25rem; margin-bottom:16px; }
+  .deepdive-actions{ gap:20px; }
+  .sheet-overlay{ align-items:flex-end; justify-content:stretch; }
+  .sheet-panel{
+    width:100%; max-height:88vh;
+    border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+    padding:12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    animation:sheet-in-up .24s ease-out;
+  }
+  .sheet-title{ font-size:1.75rem; }
+}
+@keyframes sheet-in-up{ from{ transform:translateY(32px); opacity:0; } to{ transform:none; opacity:1; } }
+@media (prefers-reduced-motion: reduce){ .sheet-panel{ animation:none; } }
+
+body.sheet-open{ overflow:hidden; }
+
+/* Witruimte tussen het afgeronde gratis blok en de Deep Dive-stappen. */
+.run-step-sep{ height:16px; }
+
+/* ---------- Aanvullingen op het accordion-rapport ---------- */
+
+/* De tweede groep uit het design (Free Evidence Score, Executive summary en
+   verder) staat daar in gewone schrijfwijze, niet in kapitalen. */
+.acc-header .acc-title.plain{ text-transform:none; letter-spacing:0; font-size:1rem; }
+
+/* Ingeklapte lopende tekst toont alleen de eerste alinea. */
+.truncate-short p:not(:first-child){ display:none; }
+
+/* Voettekst: mobiel onder elkaar, op desktop disclaimer links en het
+   bronnenregister rechts, zoals in het design. */
+.rapport-bottom{ display:flex; flex-direction:column; gap:16px; }
+@media (min-width:900px){
+  .rapport-bottom{ flex-direction:row; gap:32px; align-items:flex-start; }
+  .rapport-bottom > *{ flex:1 1 0; }
+  /* Raster in plaats van kolommen: column-count vult kolom voor kolom, en dan
+     staat C02 onder C01 in plaats van ernaast zoals in het design. */
+  .acc-body.acc-columns{
+    column-count:initial; display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:24px 32px; align-items:start;
+  }
+  .acc-body.acc-columns .acc-category{ padding-top:0; margin-top:0; border-top:none; }
+}
+@media (min-width:900px) and (max-width:1199px){
+  .acc-body.acc-columns{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}

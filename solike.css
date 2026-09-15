@@ -1,0 +1,148 @@
+/* ============================================================
+   Solike.css — designsysteem-foundation (kleuren, fonts, vormen)
+   ============================================================
+   Losgetrokken uit Bedrijfchecker's Anne-designsysteem: paars voor
+   koppen, oranje als actiekleur, warme neutrals. Bedoeld als de
+   gedeelde basis waar losse producten (zoals Bedrijfchecker) straks
+   op verder bouwen — dus alleen kleuren, typografie en generieke
+   vorm-tokens hier, geen product-specifieke componenten.
+
+   Laad dit bestand vóór het product-specifieke stylesheet, zodat de
+   custom properties (--bg, --accent, --radius-*, etc.) al bestaan
+   wanneer de componentstijlen ze gebruiken.
+*/
+
+/* ---------- kleuren ---------- */
+:root{
+  --bg:#f1efef;
+  --surface:#f9f9f8;
+  --surface-2:#f2efec;
+  --border:#ccc9c6;
+  --text:#0f0f0e;
+  --text-muted:#6e6862;
+  --text-subtle:#89827b;
+  --text-faint:#9f9a94;
+  --heading:#730499;
+  --heading-2:#4d0266;
+  --heading-3:#260133;
+  --purple-50:#fcf3ff;
+  --purple-300:#d865ff;
+  --purple-600:#9a05cc;
+  --accent:#f63d00;
+  --accent-strong:#a63406;
+  --accent-light:#ff7b00;
+  --accent-soft:#fff1ea;
+  --ok:#1a7f4b;
+  --ok-soft:#e3f3e8;
+  --warn:#a8710a;
+  --warn-soft:#faf0dc;
+  --danger:#ac2b21;
+  --danger-soft:#fbe7e4;
+  --grey:#6e6862;
+  --grey-soft:#f2efec;
+  --shadow: 0 1px 2px rgba(15,15,14,.05), 0 10px 28px -14px rgba(15,15,14,.16);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#17100a;
+    --surface:#211911;
+    --surface-2:#2a2016;
+    --border:#3d2f22;
+    --text:#f6efe8;
+    --text-muted:#b9a99a;
+    --text-subtle:#a8988a;
+    --text-faint:#8a7a6c;
+    --heading:#e2a6f5;
+    --heading-2:#d98bf0;
+    --heading-3:#f3d4ff;
+    --purple-50:#2a1730;
+    --purple-300:#c874f0;
+    --purple-600:#c15fea;
+    --accent:#ff5a1f;
+    --accent-strong:#ff8a4d;
+    --accent-light:#ffa14d;
+    --accent-soft:#3a2113;
+    --ok:#4cbf80;
+    --ok-soft:#17281e;
+    --warn:#d9a441;
+    --warn-soft:#2c250f;
+    --danger:#e07468;
+    --danger-soft:#2e1815;
+    --grey:#b9a99a;
+    --grey-soft:#2a2016;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#17100a;
+  --surface:#211911;
+  --surface-2:#2a2016;
+  --border:#3d2f22;
+  --text:#f6efe8;
+  --text-muted:#b9a99a;
+  --text-subtle:#a8988a;
+  --text-faint:#8a7a6c;
+  --heading:#e2a6f5;
+  --heading-2:#d98bf0;
+  --heading-3:#f3d4ff;
+  --purple-50:#2a1730;
+  --purple-300:#c874f0;
+  --purple-600:#c15fea;
+  --accent:#ff5a1f;
+  --accent-strong:#ff8a4d;
+  --accent-light:#ffa14d;
+  --accent-soft:#3a2113;
+  --ok:#4cbf80;
+  --ok-soft:#17281e;
+  --warn:#d9a441;
+  --warn-soft:#2c250f;
+  --danger:#e07468;
+  --danger-soft:#2e1815;
+  --grey:#b9a99a;
+  --grey-soft:#2a2016;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.55);
+}
+
+/* ---------- vormen (basis-tokens) ---------- */
+/* Nog niet overal consequent toegepast in het product-CSS (dat gebruikt
+   nog losse pixelwaarden per component) — deze tokens staan hier vast
+   zodat we het product-CSS er geleidelijk naartoe kunnen migreren
+   zonder de foundation opnieuw te hoeven aanpassen. */
+:root{
+  --radius-sm: 8px;    /* knoppen, inputs, kleine kaartjes */
+  --radius-md: 12px;   /* standaardkaarten */
+  --radius-lg: 24px;   /* hero-kaarten, grote containers */
+  --radius-pill: 999px; /* chips, pil-knoppen */
+}
+
+/* ---------- basisreset ---------- */
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+
+/* ---------- typografie ---------- */
+/* Google Fonts-import staat als <link> in de HTML-head van elk product
+   (preconnect + stylesheet), niet hier, zodat de browser zo vroeg
+   mogelijk begint met laden. Dit bestand zet alleen hoe de fonts
+   toegepast worden. */
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Open Sans", system-ui, sans-serif;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{
+  font-family:"Baloo 2", system-ui, sans-serif;
+  font-weight:600;
+  text-wrap:balance;
+  margin:0;
+  color:var(--text);
+}
+.mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+a{ color:var(--accent-strong); }
+
+/* ---------- basis-interactie ---------- */
+input:focus, textarea:focus, button:focus-visible, a:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+[hidden]{ display:none !important; }

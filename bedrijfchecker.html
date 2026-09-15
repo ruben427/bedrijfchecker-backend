@@ -8,90 +8,6 @@
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
-<style>
-/* Deep Dive-kaart en het informatiepaneel. Deze regels staan hier en niet in
-   bedrijfchecker.css omdat dat bestand alleen op de server leeft; zo hoeft er
-   maar een bestand vervangen te worden. Kleuren komen uit solike.css, dus dit
-   volgt automatisch de donkere modus mee. */
-
-.deepdive-card{
-  background:var(--surface); border:1px solid var(--purple-300);
-  border-radius:var(--radius-lg); padding:24px; margin-top:30px;
-}
-.deepdive-price{
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
-  font-size:2rem; line-height:1.1; letter-spacing:-.05em; color:var(--heading-2);
-}
-.deepdive-title{
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
-  font-size:3.5rem; line-height:1.05; letter-spacing:-.05em; color:var(--heading-2);
-  margin:0 0 24px;
-}
-.deepdive-card p{ margin:0 0 12px; }
-.deepdive-card ul{ margin:0 0 12px; padding-left:24px; }
-.deepdive-card li{ margin-bottom:8px; }
-.deepdive-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:36px; margin-top:24px; }
-
-/* .textlink is in het designsysteem een span; als knop moet de
-   browser-eigen knopstijl eraf. */
-button.textlink{
-  background:none; border:0; border-bottom:1px solid var(--accent);
-  font-size:1.125rem; line-height:1; padding:0 0 2px; cursor:pointer;
-}
-
-.sheet-overlay{
-  position:fixed; inset:0; z-index:60; background:rgba(15,15,14,.3);
-  display:flex; justify-content:flex-end;
-}
-.sheet-panel{
-  background:var(--surface); color:var(--text);
-  width:540px; max-width:100%;
-  border-radius:var(--radius-lg) 0 0 var(--radius-lg);
-  padding:12px 24px 48px 48px;
-  overflow-y:auto; -webkit-overflow-scrolling:touch;
-  box-shadow:var(--shadow);
-  animation:sheet-in-right .22s ease-out;
-}
-@keyframes sheet-in-right{ from{ transform:translateX(32px); opacity:0; } to{ transform:none; opacity:1; } }
-.sheet-close-row{ display:flex; justify-content:flex-end; }
-.sheet-close{
-  display:inline-flex; align-items:center; gap:12px; height:56px;
-  background:none; border:0; cursor:pointer; color:var(--accent);
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.125rem;
-}
-.sheet-close .lbl{ border-bottom:1px solid var(--accent); }
-.sheet-title{
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
-  font-size:2.75rem; line-height:1.05; letter-spacing:-.05em;
-  color:var(--heading-2); margin:0 0 12px;
-}
-.sheet-body p{ margin:0 0 12px; }
-.sheet-body ul{ margin:0 0 12px; padding-left:24px; }
-.sheet-body li{ margin-bottom:8px; }
-
-/* Mobiel wordt hetzelfde paneel een bottomsheet. Het verschil zit volledig
-   hier, zodat er in JavaScript geen breakpoint-logica nodig is. */
-@media (max-width:860px){
-  .deepdive-price{ font-size:1.375rem; }
-  .deepdive-title{ font-size:2.25rem; margin-bottom:16px; }
-  .deepdive-actions{ gap:20px; }
-  .sheet-overlay{ align-items:flex-end; justify-content:stretch; }
-  .sheet-panel{
-    width:100%; max-height:88vh;
-    border-radius:var(--radius-lg) var(--radius-lg) 0 0;
-    padding:12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
-    animation:sheet-in-up .24s ease-out;
-  }
-  .sheet-title{ font-size:1.75rem; }
-}
-@keyframes sheet-in-up{ from{ transform:translateY(32px); opacity:0; } to{ transform:none; opacity:1; } }
-@media (prefers-reduced-motion: reduce){ .sheet-panel{ animation:none; } }
-
-body.sheet-open{ overflow:hidden; }
-
-/* Witruimte tussen het afgeronde gratis blok en de Deep Dive-stappen. */
-.run-step-sep{ height:16px; }
-</style>
 
 <div class="wrap">
   <header class="top">
@@ -612,12 +528,16 @@ body.sheet-open{ overflow:hidden; }
     else if (c.status === 'gratis_klaar') chip = '<span class="chip ok">Gratis check klaar</span>';
     else if (c.status === 'klaar') chip = '<span class="chip ok">' + (c.tier === 'deep' ? 'Deep Dive klaar' : 'Klaar') + '</span>';
 
+    var toontRapport = (c.status === 'klaar' || c.status === 'gratis_klaar') && !!c.report;
     var html = '<button class="btn ghost" id="back-to-dash">&larr; Terug naar overzicht</button>';
-    html += '<div class="detail-head"><div><h2>' + escapeHtml(c.naam) + '</h2>' +
-      '<div class="site"><a href="' + escapeHtml(c.website) + '" target="_blank" rel="noopener">' + escapeHtml(c.website) + '</a></div>' +
-      '<div class="kv-row"><span>KvK-uittreksel: <span class="mono">' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span></span>' +
-      '<span>Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div></div>' +
-      '<div>' + chip + '</div></div>';
+    // Bij een rapport staat de kop al in .rapport-head; dan alleen de status.
+    html += toontRapport
+      ? '<div class="detail-head-slim">' + chip + '</div>'
+      : '<div class="detail-head"><div><h2>' + escapeHtml(c.naam) + '</h2>' +
+        '<div class="site"><a href="' + escapeHtml(c.website) + '" target="_blank" rel="noopener">' + escapeHtml(c.website) + '</a></div>' +
+        '<div class="kv-row"><span>KvK-uittreksel: <span class="mono">' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span></span>' +
+        '<span>Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div></div>' +
+        '<div>' + chip + '</div></div>';
 
     if (c.status === 'fout'){
       html += '<div class="banner danger">Audit mislukt: ' + escapeHtml(c.error || 'onbekende fout') + '</div>' +
@@ -629,25 +549,8 @@ body.sheet-open{ overflow:hidden; }
         '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
       if (c.progress && c.progress.length) html += renderProgress(c);
     }
-    if ((c.status === 'klaar' || c.status === 'gratis_klaar') && c.report){
+    if (toontRapport){
       html += renderReport(c);
-      if (c.status === 'gratis_klaar'){
-        html += '<section class="deepdive-card">' +
-          '<div class="deepdive-price">Voor slechts &euro;3,50</div>' +
-          '<h3 class="deepdive-title">Een deepdive</h3>' +
-          '<p>De <strong>Deep Dive</strong> bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
-          '<ul>' +
-            '<li>Officiële bedrijfsregistratie via de KvK (t.w.v. &euro; 2,95)</li>' +
-            '<li>Upload van eigen foto\'s om je eigen batch te verifiëren</li>' +
-            '<li>Welke onderneming zit daadwerkelijk achter de webshop?</li>' +
-            '<li>Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.</li>' +
-          '</ul>' +
-          '<p>En nog veel meer</p>' +
-          '<div class="deepdive-actions">' +
-            '<button type="button" class="btn-cta" id="continue-deep">Ja, ik wil meer bewijs</button>' +
-            '<button type="button" class="textlink" id="deepdive-info">Meer informatie</button>' +
-          '</div></section>';
-      }
       html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';
       html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren (nieuwe audit)</button></div>';
     }
@@ -659,8 +562,27 @@ body.sheet-open{ overflow:hidden; }
     // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
     // draaien; dit start een nieuwe audit voor dezelfde leverancier.
     if (retryBtn) retryBtn.addEventListener('click', function(){ retryAsNewAudit(c); });
-    var infoBtn = app.querySelector('#deepdive-info');
-    if (infoBtn) infoBtn.addEventListener('click', function(){ openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
+    // Uitklappers, "Lees meer" en elke knop die het Deep Dive-paneel opent.
+    Array.prototype.forEach.call(app.querySelectorAll('.acc-header'), function(btn){
+      btn.addEventListener('click', function(){
+        var item = btn.parentNode;
+        var open = item.getAttribute('data-open') !== 'true';
+        item.setAttribute('data-open', open ? 'true' : 'false');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    });
+    Array.prototype.forEach.call(app.querySelectorAll('.read-more-toggle'), function(btn){
+      btn.addEventListener('click', function(){
+        var blok = btn.parentNode;
+        var uit = blok.classList.contains('truncate-short');
+        blok.classList.toggle('truncate-short', !uit);
+        blok.classList.toggle('truncate-full', uit);
+        btn.textContent = uit ? 'Lees minder' : 'Lees meer';
+      });
+    });
+    Array.prototype.forEach.call(app.querySelectorAll('.js-deepdive-info'), function(btn){
+      btn.addEventListener('click', function(){ openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
+    });
     var continueBtn = app.querySelector('#continue-deep');
     if (continueBtn) continueBtn.addEventListener('click', function(){
       continueBtn.disabled = true; continueBtn.textContent = 'Starten…';
@@ -920,80 +842,129 @@ body.sheet-open{ overflow:hidden; }
       '<p style="margin-top:8px;color:var(--text-muted);">' + escapeHtml(note) + ' (' + gate.foundCount + ' COA gevonden, ' + gate.usableCount + ' bruikbaar.)</p></div>';
   }
 
-  function renderCategoryGrid(engine, tier){
-    if (!engine || !engine.assessments) return '';
-    var pillarMeta = {
-      COA: 'COA & productbewijs', LAB: 'Laboratorium',
-      COMPANY: tier === 'deep' ? 'Bedrijf' : 'Bedrijf (Deep-scope, buiten de gratis check)',
-      REPUTATION: 'Reputatie & commerciële transparantie'
-    };
-    var out = '<section class="report-block"><h3>Bewijscategorieën</h3>';
-    PILLARS.forEach(function(pillar){
-      var ids = pillarCategoryIds(pillar);
-      var tiles = ids.map(function(id){
-        var def = categoryDef(id);
-        var a = engine.assessments[id] || {};
-        var note = a.dependencyApplied
-          ? '<div class="note" style="color:var(--text-muted);">' + escapeHtml(UI_STATES.independenceInsufficient.title) + ': ' + escapeHtml(UI_STATES.independenceInsufficient.text) + '</div>'
-          : '';
-        return '<div class="score-tile"><div class="label">' + escapeHtml(id + ' · ' + def.label) + '</div>' +
-          '<span class="chip ' + catColorClass(a.color) + '">' + catColorLabel(a.color) + '</span>' +
-          '<div class="note">' + escapeHtml(a.rationale||'') + '</div>' + note + '</div>';
-      }).join('');
-      out += '<h4 style="margin:14px 0 6px;color:var(--text-muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.03em;">' + escapeHtml(pillarMeta[pillar]) + '</h4>' +
-        '<div class="score-grid">' + tiles + '</div>';
-    });
-    out += '</section>';
-    return out;
+  // ---------- Rapport (Figma "Rapport" 494:14614) ----------
+  // De opmaak staat al in bedrijfchecker.css (.rapport, .accordion, .acc-item,
+  // .rapport-upsell). Deze functies leveren precies de markup die die regels
+  // verwachten; er wordt hier geen losse stijl meer bijgezet.
+
+  function accItem(titel, bodyHtml, opties){
+    if (!bodyHtml) return '';
+    var o = opties || {};
+    var open = o.open ? 'true' : 'false';
+    var sub = o.sub ? '<span class="acc-sub">' + escapeHtml(o.sub) + '</span>' : '';
+    return '<div class="acc-item" data-open="' + open + '">' +
+      '<button type="button" class="acc-header" aria-expanded="' + open + '">' +
+      '<span class="acc-title' + (o.plain ? ' plain' : '') + '">' + escapeHtml(titel) + sub + '</span>' +
+      '<span class="acc-chevron">' + ICON_CARET + '</span></button>' +
+      '<div class="acc-body' + (o.columns ? ' acc-columns' : '') + '">' + bodyHtml + '</div></div>';
   }
 
-  function renderEvidenceScoreBlock(engine){
+  // Lange lopende tekst met "Lees meer". Welke alinea's zichtbaar zijn regelt
+  // de CSS via .truncate-short; hier staan ze allemaal in de markup.
+  function truncateBlok(tekst){
+    var alineas = String(tekst || '').split(/\n\s*\n/).filter(function(t){ return t.trim(); });
+    if (!alineas.length) return '';
+    var html = alineas.map(function(t){ return '<p>' + escapeHtml(t.trim()) + '</p>'; }).join('');
+    if (alineas.length === 1) return '<div class="truncate">' + html + '</div>';
+    return '<div class="truncate truncate-short">' + html +
+      '<button type="button" class="read-more-toggle">Lees meer</button></div>';
+  }
+
+  function bevindingenLijst(items, cls){
+    if (!items || !items.length) return '';
+    return '<ul class="findings">' + items.map(function(i){
+      return '<li' + (cls ? ' class="' + cls + '"' : '') + '>' + escapeHtml(i) + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function pijlerBody(engine, pillar){
+    if (!engine || !engine.assessments) return '';
+    return pillarCategoryIds(pillar).map(function(id){
+      var def = categoryDef(id);
+      var a = engine.assessments[id] || {};
+      var note = a.dependencyApplied
+        ? '<p class="acc-note">' + escapeHtml(UI_STATES.independenceInsufficient.title) + ': ' +
+          escapeHtml(UI_STATES.independenceInsufficient.text) + '</p>'
+        : '';
+      return '<div class="acc-category"><h4>' + escapeHtml(id + ' - ' + (def ? def.label : id)) + '</h4>' +
+        '<span class="rapport-label ' + catColorClass(a.color) + '">' + escapeHtml(catColorLabel(a.color)) + '</span>' +
+        '<p>' + escapeHtml(a.rationale || '') + '</p>' + note + '</div>';
+    }).join('');
+  }
+
+  function evidenceScoreBody(engine){
     if (!engine || !engine.evidenceScore) return '';
     var es = engine.evidenceScore;
-    var out = '<section class="report-block"><h3>Free Evidence Score</h3>';
-    if (es.published){
-      out += '<div class="score-tile" style="max-width:260px;"><div class="label">Evidence Score</div>' +
-        '<span class="chip ok" style="font-size:1.1rem;">' + es.value + ' / 100</span>' +
-        '<div class="note">Coverage: ' + Math.round(es.coverage) + '%. Samengesteld uit 60% COA-pijler (na eventuele cap) en 40% laboratoriumpijler.</div></div>';
-      if (es.cap && es.cap.applied){
-        out += '<p style="color:var(--text-muted);margin-top:8px;">De COA-deelscore is gemaximeerd op 33,33% omdat Identity/Purity/Quantity uitsluitend steunen op onvoldoende onafhankelijk verifieerbare labs (' + escapeHtml(es.cap.reason||'') + ').</p>';
-      }
-    } else {
-      out += '<p style="color:var(--text-muted);">Geen Evidence Score gepubliceerd: ' + escapeHtml(es.reason||'onvoldoende bewijsbasis') + '. Coverage tot nu toe: ' + Math.round(es.coverage||0) + '%.</p>';
+    if (!es.published){
+      return '<p>Geen Evidence Score gepubliceerd: ' + escapeHtml(es.reason || 'onvoldoende bewijsbasis') +
+        '. Coverage tot nu toe: ' + Math.round(es.coverage || 0) + '%.</p>';
     }
-    out += '</section>';
+    var out = '<div class="score-tile" style="max-width:260px;"><div class="label">Evidence Score</div>' +
+      '<span class="chip ok" style="font-size:1.1rem;">' + es.value + ' / 100</span>' +
+      '<div class="note">Coverage: ' + Math.round(es.coverage) + '%. Samengesteld uit 60% COA-pijler (na eventuele cap) en 40% laboratoriumpijler.</div></div>';
+    if (es.cap && es.cap.applied){
+      out += '<p class="acc-note">De COA-deelscore is gemaximeerd op 33,33% omdat Identity/Purity/Quantity uitsluitend steunen op onvoldoende onafhankelijk verifieerbare labs (' +
+        escapeHtml(es.cap.reason || '') + ').</p>';
+    }
     return out;
   }
 
-  function renderSupplierScoreBlock(engine, tier){
+  function supplierScoreBody(engine, tier){
     if (tier !== 'deep' || !engine || !engine.deep || engine.deep.value == null) return '';
     var d = engine.deep;
-    return '<section class="report-block"><h3>Supplier Score (Deep Dive)</h3>' +
-      '<div class="score-tile" style="max-width:260px;"><div class="label">Supplier Score</div>' +
+    return '<div class="score-tile" style="max-width:260px;"><div class="label">Supplier Score</div>' +
       '<span class="chip ok" style="font-size:1.1rem;">' + d.value + ' / 100</span>' +
-      '<div class="note">Coverage: ' + Math.round(d.coverage) + '%. Samengesteld uit 45% COA, 30% laboratorium, 15% bedrijf/regelgeving, 10% reputatie/transparantie.</div></div>' +
-      '</section>';
+      '<div class="note">Coverage: ' + Math.round(d.coverage) + '%. Samengesteld uit 45% COA, 30% laboratorium, 15% bedrijf/regelgeving, 10% reputatie/transparantie.</div></div>';
   }
 
-  function renderQuantityTable(coaRecords, engine){
-    var withQty = (coaRecords||[]).filter(function(r){ return r.quantity && r.quantity.deviationPct != null; });
+  function quantityBody(coaRecords, engine){
+    var withQty = (coaRecords || []).filter(function(r){ return r.quantity && r.quantity.deviationPct != null; });
     if (!withQty.length) return '';
-    var quantityIndependent = engine && engine.assessments && engine.assessments.C04 && !engine.assessments.C04.dependencyApplied;
+    var onafhankelijk = engine && engine.assessments && engine.assessments.C04 && !engine.assessments.C04.dependencyApplied;
     var rows = withQty.map(function(r){
       var q = r.quantity;
-      var signal = q.signalGt20 ? '<span class="chip danger">&gt;20%</span>' : q.signalGt10 ? '<span class="chip warn">&gt;10%</span>' : '<span class="chip ok">binnen 10%</span>';
-      return '<tr><td>' + escapeHtml(r.product||'onbekend') + '</td><td>' + escapeHtml(r.batchnummer||'-') + '</td>' +
-        '<td>' + (r.claimedQuantity!=null?r.claimedQuantity+' '+escapeHtml(r.claimedUnit||''):'-') + '</td>' +
-        '<td>' + (r.measuredQuantity!=null?r.measuredQuantity+' '+escapeHtml(r.measuredUnit||''):'-') + '</td>' +
-        '<td>' + (q.deviationPct!=null ? (Math.round(q.deviationPct*100)/100)+'%' : '-') + '</td>' +
-        '<td>' + signal + '</td></tr>';
+      var signaal = q.signalGt20 ? '<span class="chip danger">&gt;20%</span>'
+        : q.signalGt10 ? '<span class="chip warn">&gt;10%</span>'
+        : '<span class="chip ok">binnen 10%</span>';
+      return '<tr><td>' + escapeHtml(r.product || 'onbekend') + '</td><td>' + escapeHtml(r.batchnummer || '-') + '</td>' +
+        '<td>' + (r.claimedQuantity != null ? r.claimedQuantity + ' ' + escapeHtml(r.claimedUnit || '') : '-') + '</td>' +
+        '<td>' + (r.measuredQuantity != null ? r.measuredQuantity + ' ' + escapeHtml(r.measuredUnit || '') : '-') + '</td>' +
+        '<td>' + (q.deviationPct != null ? (Math.round(q.deviationPct * 100) / 100) + '%' : '-') + '</td>' +
+        '<td>' + signaal + '</td></tr>';
     }).join('');
-    var note = quantityIndependent ? '' :
-      '<p style="color:var(--text-muted);margin-top:8px;">' + escapeHtml(UI_STATES.sourceClaimDetail.title) + ': ' + escapeHtml(UI_STATES.sourceClaimDetail.text) + '</p>';
-    return '<section class="report-block"><h3>Quantity-afwijking per record</h3>' +
-      '<div style="overflow-x:auto;"><table class="mono" style="width:100%;border-collapse:collapse;font-size:.85rem;">' +
-      '<thead><tr><th style="text-align:left;padding:4px 8px;">Product</th><th style="text-align:left;padding:4px 8px;">Batch</th><th style="text-align:left;padding:4px 8px;">Claim</th><th style="text-align:left;padding:4px 8px;">Gemeten</th><th style="text-align:left;padding:4px 8px;">Afwijking</th><th style="text-align:left;padding:4px 8px;">Signaal</th></tr></thead>' +
-      '<tbody>' + rows + '</tbody></table></div>' + note + '</section>';
+    var note = onafhankelijk ? '' :
+      '<p class="acc-note">' + escapeHtml(UI_STATES.sourceClaimDetail.title) + ': ' + escapeHtml(UI_STATES.sourceClaimDetail.text) + '</p>';
+    return '<div style="overflow-x:auto;"><table class="mono" style="width:100%;border-collapse:collapse;font-size:.85rem;">' +
+      '<thead><tr><th style="text-align:left;padding:4px 8px;">Product</th><th style="text-align:left;padding:4px 8px;">Batch</th>' +
+      '<th style="text-align:left;padding:4px 8px;">Claim</th><th style="text-align:left;padding:4px 8px;">Gemeten</th>' +
+      '<th style="text-align:left;padding:4px 8px;">Afwijking</th><th style="text-align:left;padding:4px 8px;">Signaal</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' + note;
+  }
+
+  // "In het kort" heeft geen eigen veld in het rapport: de synthese levert wel
+  // een executive summary en de engine een score. Hier staat dus de score plus
+  // de eerste alinea van die samenvatting, geen nieuw verzonnen tekst.
+  function kortBody(c, engine){
+    var r = c.report || {};
+    var delen = [];
+    var es = engine && engine.evidenceScore;
+    if (es && es.published) delen.push('Free Evidence Score: ' + es.value + ' van 100, coverage ' + Math.round(es.coverage) + '%.');
+    else if (es) delen.push('Nog geen Evidence Score: ' + (es.reason || 'onvoldoende bewijsbasis') + '.');
+    var samenvatting = String(r.executiveSummary || '').trim();
+    var eerste = samenvatting.split(/\n\s*\n/)[0] || samenvatting;
+    if (eerste) delen.push(eerste);
+    if (!delen.length) return '';
+    return '<p>' + escapeHtml(delen.join(' ')) + '</p>';
+  }
+
+  function upsellKaart(c){
+    if (c.tier === 'deep') return '';
+    return '<div class="rapport-upsell">' +
+      '<div class="rapport-upsell-head"><h3>Een deepdive</h3><span class="price">&euro; 3,50</span></div>' +
+      '<div class="rapport-upsell-body"><p>Wil je nog meer weten over deze supplier? Dan kunnen we nog veel meer informatie voor je ophalen</p></div>' +
+      '<div class="rapport-upsell-actions">' +
+      '<button type="button" class="rapport-upsell-link js-deepdive-info">Wat is een Deepdive?</button>' +
+      '</div></div>';
   }
 
   function renderReport(c){
@@ -1001,70 +972,105 @@ body.sheet-open{ overflow:hidden; }
     var engine = c.engineResult;
     var documents = c.documents || [];
     var coaRecords = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.coaRecords) || [];
+    var kort = kortBody(c, engine);
 
-    var out = '';
+    var out = '<div class="rapport">';
+
+    // Kop, "In het kort" en de upsell. Op desktop zet de CSS deze twee
+    // kolommen naast elkaar.
+    out += '<div class="rapport-top">' +
+      '<div class="rapport-head">' +
+      '<div class="url">' + escapeHtml(c.website) + '</div>' +
+      '<div class="meta"><span class="kvk">KvK-uittreksel: ' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span>' +
+      '<span class="created">Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div>' +
+      (c.naam && c.naam !== c.website ? '<div class="company">' + escapeHtml(c.naam) + '</div>' : '') +
+      (kort ? '<div class="rapport-kort"><h3>In het kort</h3>' + kort + '</div>' : '') +
+      '</div>' +
+      '<div class="rapport-top-side">' + upsellKaart(c) + '</div></div>';
+
     out += renderGateBanner(engine);
-    out += renderCategoryGrid(engine, c.tier);
-    out += renderEvidenceScoreBlock(engine);
-    out += renderSupplierScoreBlock(engine, c.tier);
-    out += renderQuantityTable(coaRecords, engine);
 
-    out += '<section class="report-block"><h3>Executive summary</h3><p>' + escapeHtml(r.executiveSummary||'') + '</p></section>';
-
-    out += renderFindingList('Sterkste positieve bevindingen', r.sterkstePositieveBevindingen, 'ok');
-    out += renderFindingList('Belangrijkste aandachtspunten', r.belangrijksteAandachtspunten, '');
-    if (r.rodeVlaggen && r.rodeVlaggen.length){
-      var flags = r.rodeVlaggen.map(function(f){
-        return '<li class="danger">' + escapeHtml(f.omschrijving||f) + (f.bron ? '<span class="src">Bron: ' + escapeHtml(f.bron) + '</span>' : '') + '</li>';
-      }).join('');
-      out += '<section class="report-block"><h3>Rode vlaggen</h3><ul class="findings">' + flags + '</ul></section>';
-    } else {
-      out += '<section class="report-block"><h3>Rode vlaggen</h3><p style="color:var(--text-muted)">Geen concreet aantoonbare problemen gevonden binnen deze automatische pas.</p></section>';
-    }
-    out += renderFindingList('Niet (voldoende) verifieerbaar', r.nietVerifieerbaar, '');
-
-    if (documents && documents.length){
-      out += '<section class="report-block"><h3>Geüploade documenten</h3><ul class="findings">' +
-        documents.map(function(d){ return '<li>' + escapeHtml(d.filename) + '</li>'; }).join('') + '</ul></section>';
-    }
-    if (r.documentanalyse && r.documentanalyse.length){
-      out += '<section class="report-block"><h3>Documentanalyse (letterlijke uitlezing, niet geverifieerd)</h3><ul class="findings">' +
-        r.documentanalyse.map(function(d){
-          return '<li>' + escapeHtml(d.omschrijving||'') +
-            '<span class="src">Product: ' + escapeHtml(d.product||'onbekend') + ' &middot; Batch: ' + escapeHtml(d.batchnummer||'onbekend') +
-            ' &middot; Purity: ' + escapeHtml(d.purity||'onbekend') + ' &middot; Lab: ' + escapeHtml(d.laboratorium||'onbekend') + '</span></li>';
-        }).join('') + '</ul></section>';
+    // Groep 1: de 17 categorieën, per pijler een uitklapbaar blok.
+    if (engine && engine.assessments){
+      out += '<p class="rapport-group-label">Pep Proof</p><div class="accordion">' +
+        accItem('COA & productbewijs', pijlerBody(engine, 'COA'), { open:true, columns:true }) +
+        accItem('Laboratorium', pijlerBody(engine, 'LAB'), { columns:true }) +
+        accItem('Bedrijf', pijlerBody(engine, 'COMPANY'), { columns:true, sub: c.tier === 'deep' ? '' : 'Light versie' }) +
+        accItem('Reputatie & commerciële transparantie', pijlerBody(engine, 'REPUTATION'), { columns:true }) +
+        '</div>';
     }
 
-    if (r.top5Vragen && r.top5Vragen.length){
-      out += '<section class="report-block"><h3>Top vragen aan leverancier</h3><ol class="numbered">' +
-        r.top5Vragen.map(function(q){ return '<li>' + escapeHtml(q) + '</li>'; }).join('') + '</ol></section>';
-    }
-    out += '<section class="report-block"><h3>Eindconclusie</h3><p>' + escapeHtml(r.eindconclusie||'') + '</p></section>';
+    // Groep 2: scores en de geschreven onderdelen van het rapport.
+    var groep2 = accItem('Free Evidence Score', evidenceScoreBody(engine), { plain:true }) +
+      accItem('Supplier Score (Deep Dive)', supplierScoreBody(engine, c.tier), { plain:true }) +
+      accItem('Executive summary', truncateBlok(r.executiveSummary), { plain:true, open:true }) +
+      accItem('Sterkste positieve bevindingen', bevindingenLijst(r.sterkstePositieveBevindingen, 'ok'), { plain:true }) +
+      accItem('Belangrijkste aandachtspunten', bevindingenLijst(r.belangrijksteAandachtspunten, ''), { plain:true }) +
+      accItem('Rode vlaggen', (r.rodeVlaggen && r.rodeVlaggen.length)
+        ? '<ul class="findings">' + r.rodeVlaggen.map(function(f){
+            return '<li class="danger">' + escapeHtml(f.omschrijving || f) +
+              (f.bron ? '<span class="src">Bron: ' + escapeHtml(f.bron) + '</span>' : '') + '</li>';
+          }).join('') + '</ul>'
+        : '<p>Geen concreet aantoonbare problemen gevonden binnen deze automatische pas.</p>', { plain:true }) +
+      accItem('Niet (voldoende) verifieerbaar', bevindingenLijst(r.nietVerifieerbaar, ''), { plain:true }) +
+      accItem('Quantity-afwijking per record', quantityBody(coaRecords, engine), { plain:true }) +
+      accItem('Documentanalyse', (r.documentanalyse && r.documentanalyse.length)
+        ? '<ul class="findings">' + r.documentanalyse.map(function(d){
+            return '<li>' + escapeHtml(d.omschrijving || '') +
+              '<span class="src">Product: ' + escapeHtml(d.product || 'onbekend') + ' &middot; Batch: ' + escapeHtml(d.batchnummer || 'onbekend') +
+              ' &middot; Purity: ' + escapeHtml(d.purity || 'onbekend') + ' &middot; Lab: ' + escapeHtml(d.laboratorium || 'onbekend') + '</span></li>';
+          }).join('') + '</ul>'
+        : '', { plain:true, sub:'letterlijke uitlezing, niet geverifieerd' }) +
+      accItem('Geüploade documenten', (documents && documents.length)
+        ? '<ul class="findings">' + documents.map(function(d){ return '<li>' + escapeHtml(d.filename) + '</li>'; }).join('') + '</ul>'
+        : '', { plain:true }) +
+      accItem('Eindconclusie', truncateBlok(r.eindconclusie), { plain:true });
+    if (groep2) out += '<div class="accordion">' + groep2 + '</div>';
 
-    if (r.bronnenregister && r.bronnenregister.length){
-      out += '<section class="report-block"><h3>Bronnenregister</h3><div class="sources">' +
-        r.bronnenregister.map(function(b){ return '<a href="' + escapeHtml(b.url) + '" target="_blank" rel="noopener">' + escapeHtml(b.titel||b.url) + '</a>'; }).join('') +
+    out += accordionLos('Top vragen aan leverancier', (r.top5Vragen && r.top5Vragen.length)
+      ? '<ol class="numbered">' + r.top5Vragen.map(function(q){ return '<li>' + escapeHtml(q) + '</li>'; }).join('') + '</ol>'
+      : '');
+
+    // De volledige Deep Dive-kaart met beide acties.
+    if (c.status === 'gratis_klaar'){
+      out += '<section class="deepdive-card">' +
+        '<div class="deepdive-price">Voor slechts &euro;3,50</div>' +
+        '<h3 class="deepdive-title">Een deepdive</h3>' +
+        '<p>De <strong>Deep Dive</strong> bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
+        '<ul>' +
+          '<li>Officiële bedrijfsregistratie via de KvK (t.w.v. &euro; 2,95)</li>' +
+          '<li>Upload van eigen foto\'s om je eigen batch te verifiëren</li>' +
+          '<li>Welke onderneming zit daadwerkelijk achter de webshop?</li>' +
+          '<li>Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.</li>' +
+        '</ul>' +
+        '<p>En nog veel meer</p>' +
+        '<div class="deepdive-actions">' +
+          '<button type="button" class="btn-cta" id="continue-deep">Ja, ik wil meer bewijs</button>' +
+          '<button type="button" class="textlink js-deepdive-info">Meer informatie</button>' +
         '</div></section>';
     }
 
-    if (c.tier !== 'deep' && c.status !== 'gratis_klaar'){
-      out += '<section class="report-block"><h3>Vervolgonderzoek</h3>' +
-        '<p style="color:var(--text-muted);">Dit is de gratis Evidence Check: laboratorium en de volledige COA-dataset en -authenticiteit. Een betaalde Deep Dive voegt de leverancier zelf toe: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p></section>';
-    }
-
-    out += '<p class="disclaimer">' + (c.tier === 'deep'
+    // Voettekst: disclaimer en bronnenregister, op desktop naast elkaar.
+    var bronnen = (r.bronnenregister && r.bronnenregister.length)
+      ? '<div class="rapport-plain"><h3>Bronnenregister</h3><div class="sources">' +
+        r.bronnenregister.map(function(b){
+          return '<a href="' + escapeHtml(b.url) + '" target="_blank" rel="noopener">' + escapeHtml(b.titel || b.url) + '</a>';
+        }).join('') + '</div></div>'
+      : '';
+    var disclaimer = '<p class="rapport-footer">' + (c.tier === 'deep'
       ? 'Dit rapport is de betaalde Deep Dive, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik.'
       : 'Dit rapport is de gratis Evidence Check, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik. Een ontbrekend KvK-uittreksel verlaagt geen enkele score automatisch.') +
       '</p>';
+    out += '<div class="rapport-bottom">' + disclaimer + bronnen + '</div>';
+
+    out += '</div>';
     return out;
   }
 
-  function renderFindingList(title, items, cls){
-    if (!items || !items.length) return '';
-    return '<section class="report-block"><h3>' + escapeHtml(title) + '</h3><ul class="findings">' +
-      items.map(function(i){ return '<li' + (cls?' class="'+cls+'"':'') + '>' + escapeHtml(i) + '</li>'; }).join('') +
-      '</ul></section>';
+  // Een losse uitklapper buiten een groep, zoals "Top vragen aan leverancier".
+  function accordionLos(titel, bodyHtml){
+    if (!bodyHtml) return '';
+    return '<div class="accordion">' + accItem(titel, bodyHtml, { plain:true }) + '</div>';
   }
 
   // ---------- retry-acties ----------
