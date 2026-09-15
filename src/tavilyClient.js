@@ -61,9 +61,10 @@ async function tavilySearch(queries) {
   return all;
 }
 
-async function tavilyExtract(urls) {
+async function tavilyExtract(urls, opts) {
+  const depth = (opts && opts.depth) || 'basic';
   try {
-    const payload = await tavilyFetch('/extract', { urls, extract_depth: 'basic' });
+    const payload = await tavilyFetch('/extract', { urls, extract_depth: depth });
     return {
       ok: (payload.results || []).map((r) => ({ url: r.url, title: r.title, content: (r.raw_content || '').slice(0, 4000) })),
       failed: payload.failed_results || []
