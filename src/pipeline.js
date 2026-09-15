@@ -40,8 +40,8 @@ const EVIDENCE_RULES = [
 const STEP_DEFS = [
   { key: 'identiteit', label: 'Juridische identiteit' },
   { key: 'domein', label: 'Domein- en websitegeschiedenis' },
-  { key: 'laboratorium', label: 'Laboratorium' },
   { key: 'coaDataset', label: 'COA-dataset en -authenticiteit' },
+  { key: 'laboratorium', label: 'Laboratorium' },
   { key: 'socialAffiliates', label: 'Social media, affiliates en commerciële relaties' },
   { key: 'reputatie', label: 'Reputatie' },
   { key: 'regelgeving', label: 'Regelgeving en toezicht' },
@@ -50,7 +50,7 @@ const STEP_DEFS = [
   { key: 'reportA', label: 'Evidence Check samenstellen (1/2)' },
   { key: 'reportB', label: 'Evidence Check samenstellen (2/2)' }
 ];
-const RESEARCH_STEP_KEYS = ['identiteit', 'domein', 'laboratorium', 'coaDataset', 'socialAffiliates', 'reputatie', 'regelgeving', 'tegenbewijs'];
+const RESEARCH_STEP_KEYS = ['identiteit', 'domein', 'coaDataset', 'laboratorium', 'socialAffiliates', 'reputatie', 'regelgeving', 'tegenbewijs'];
 
 // De knip tussen gratis en betaald (14 sep): FREE draait alleen de stappen
 // die freeEvidenceScore ook daadwerkelijk gebruikt (60% COA + 40% LAB, zie
@@ -58,7 +58,9 @@ const RESEARCH_STEP_KEYS = ['identiteit', 'domein', 'laboratorium', 'coaDataset'
 // coaDataset + laboratorium" is vastgelegd. Alle overige onderzoeksstappen
 // (incl. identiteit/KvK, nog niet gesplitst in een lichte/zware variant)
 // draaien pas als de gebruiker bewust doorgaat naar de Deep Dive.
-const FREE_STEP_KEYS = ['laboratorium', 'coaDataset'];
+// Volgorde is hier geen detail: coaDataset draait eerst, omdat de
+// laboratoriumstap leest welke labs er op de gelezen rapporten staan.
+const FREE_STEP_KEYS = ['coaDataset', 'laboratorium'];
 const DEEP_STEP_KEYS = RESEARCH_STEP_KEYS.filter((k) => FREE_STEP_KEYS.indexOf(k) === -1);
 
 function stepLabel(key) {
@@ -68,6 +70,142 @@ function stepLabel(key) {
 
 function domainOf(url) {
   try { return new URL(url).hostname.replace(/^www\./, ''); } catch (e) { return url; }
+}
+
+// ---- Labsignalen uit de COA-stap ----
+// De laboratoriumstap zocht tot nu toe blind: "welk lab test voor <shopnaam>".
+// Zoekmachines weten dat vrijwel nooit, dus de stap kwam leeg terug terwijl de
+// labnaam gewoon op de rapporten stond die de COA-stap net gelezen had. Wat
+// hieronder gebeurt is niet slim: het telt alleen wat er letterlijk op de
+// gelezen rapporten staat. Die telling is het vertrekpunt voor het onderzoek,
+// niet het onderzoek zelf.
+const LAB_RUIS = /\b(laboratories|laboratory|laboratorium|labs|lab|analytical|analytics|analysis|testing|services|company|group|international|inc|llc|ltd|limited|bv|gmbh|corp|co)\b/g;
+
+function normaliseerLabnaam(naam) {
+  const kaal = String(naam || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(LAB_RUIS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return kaal || String(naam || '').toLowerCase().trim();
+}
+
+// Leest de uitkomst van de COA-stap en bundelt per laboratorium wat we
+// feitelijk gezien hebben. Geen interpretatie, geen conclusie.
+function labsUitCoaData(coaData) {
+  const records = (coaData && coaData.coaRecords) || [];
+  const perLab = new Map();
+  let gelezenRapporten = 0;
+  let zonderLabnaam = 0;
+
+  records.forEach((r) => {
+    if (!r) return;
+    const leesbaar = r.accessStatus === 'readable';
+    if (leesbaar) gelezenRapporten++;
+    const ruw = r.laboratorium ? String(r.laboratorium).trim() : '';
+    if (!ruw) {
+      if (leesbaar && r.uit !== 'labverwijzing') zonderLabnaam++;
+      return;
+    }
+    const sleutel = normaliseerLabnaam(ruw);
+    let l = perLab.get(sleutel);
+    if (!l) {
+      l = {
+        naam: ruw, spellingen: {}, rapporten: 0, directeVerificatielinks: 0,
+        verificatieOpgelost: 0, verificatieMislukt: 0, zonderReferentie: 0,
+        klassen: {}, opdrachtgevers: [], voorbeeldBronnen: []
+      };
+      perLab.set(sleutel, l);
+    }
+    l.spellingen[ruw] = (l.spellingen[ruw] || 0) + 1;
+    l.rapporten++;
+    if (r.uit === 'labverwijzing') l.directeVerificatielinks++;
+    const v = r.verificatie;
+    if (v) {
+      if (v.opgelost === true) l.verificatieOpgelost++;
+      else if (v.opgelost === false) {
+        if (/geen bruikbare verificatiereferentie/i.test(v.status || '')) l.zonderReferentie++;
+        else l.verificatieMislukt++;
+      }
+      // Het veld Client op het originele labrapport zegt wie de test heeft
+      // laten doen. Staat daar de leverancier zelf, dan is dat een feit voor
+      // de onafhankelijkheidsvraag - geen oordeel, wel relevant.
+      [v.client, v.manufacturer].forEach((naam) => {
+        const n = naam ? String(naam).trim() : '';
+        if (n && l.opdrachtgevers.indexOf(n) === -1 && l.opdrachtgevers.length < 5) l.opdrachtgevers.push(n);
+      });
+    }
+    if (r.authenticiteitsklasse) l.klassen[r.authenticiteitsklasse] = (l.klassen[r.authenticiteitsklasse] || 0) + 1;
+    const bron = r.bronUrl || r.verificationUrl || null;
+    if (bron && l.voorbeeldBronnen.indexOf(bron) === -1 && l.voorbeeldBronnen.length < 3) l.voorbeeldBronnen.push(bron);
+  });
+
+  const labs = Array.from(perLab.values()).map((l) => {
+    // De meest voorkomende schrijfwijze wint, zodat "ILS Laboratories" en
+    // "ILS Labs" niet als twee labs in het rapport belanden.
+    const beste = Object.keys(l.spellingen).sort((a, b) => l.spellingen[b] - l.spellingen[a])[0];
+    const kopie = Object.assign({}, l, { naam: beste || l.naam });
+    delete kopie.spellingen;
+    return kopie;
+  }).sort((a, b) => b.rapporten - a.rapporten);
+
+  return { labs, gelezenRapporten, zonderLabnaam };
+}
+
+// Zet de telling om in bevindingen in het vaste format van de andere stappen.
+// Alles hier is FEIT: het is geteld, niet geconcludeerd.
+function labBevindingenUitWaarneming(w) {
+  const uit = [];
+  (w.labs || []).forEach((l) => {
+    const delen = [l.rapporten + ' gelezen rapport(en) noemen ' + l.naam + ' als uitvoerend laboratorium'];
+    if (l.directeVerificatielinks) delen.push(l.directeVerificatielinks + ' daarvan staan als directe link naar de verificatiepagina van het lab op de site van de leverancier');
+    if (l.verificatieOpgelost) delen.push(l.verificatieOpgelost + ' rapportnummer(s) losten op bij het lab zelf');
+    if (l.verificatieMislukt) delen.push(l.verificatieMislukt + ' rapportnummer(s) losten niet op');
+    if (l.zonderReferentie) delen.push(l.zonderReferentie + ' rapport(en) bevatten geen bruikbare verificatiereferentie');
+    uit.push({
+      claim: delen.join('; ') + '.',
+      classificatie: 'FEIT',
+      onderbouwing: 'Geteld over de certificaten die in de COA-stap daadwerkelijk zijn opgehaald en gelezen.',
+      bronUrl: l.voorbeeldBronnen[0] || null
+    });
+    if (l.opdrachtgevers.length) {
+      uit.push({
+        claim: 'Op het originele labrapport van ' + l.naam + ' staat als opdrachtgever/fabrikant: ' + l.opdrachtgevers.join(', ') + '.',
+        classificatie: 'FEIT',
+        onderbouwing: 'Letterlijk overgenomen uit het rapport zoals het lab dat zelf op zijn verificatiepagina teruggeeft.',
+        bronUrl: l.voorbeeldBronnen[0] || null
+      });
+    }
+  });
+  if (w.zonderLabnaam) {
+    uit.push({
+      claim: w.zonderLabnaam + ' gelezen rapport(en) vermelden geen laboratoriumnaam.',
+      classificatie: 'FEIT',
+      onderbouwing: 'Vastgesteld bij het lezen van de documenten zelf; ontbreken van een labnaam is geen bewijs dat er niet getest is.',
+      bronUrl: null
+    });
+  }
+  if (!(w.labs || []).length && w.gelezenRapporten) {
+    uit.push({
+      claim: 'Er zijn ' + w.gelezenRapporten + ' certificaten gelezen, maar geen daarvan noemt een laboratorium bij naam.',
+      classificatie: 'FEIT',
+      onderbouwing: 'Vastgesteld bij het lezen van de documenten zelf.',
+      bronUrl: null
+    });
+  }
+  return uit;
+}
+
+// Plakt het externe onderzoek per lab terug op de telling. Matcht op de
+// genormaliseerde naam, zodat een andere schrijfwijze in het zoekresultaat
+// niet tot een tweede lab leidt.
+function koppelLabBeoordelingen(labs, beoordelingen) {
+  const perNaam = new Map();
+  (beoordelingen || []).forEach((b) => {
+    if (b && b.naam) perNaam.set(normaliseerLabnaam(b.naam), b);
+  });
+  return (labs || []).map((l) => Object.assign({}, l, { extern: perNaam.get(normaliseerLabnaam(l.naam)) || null }));
 }
 
 function trimList(arr, maxItems, maxChars) {
@@ -99,6 +237,26 @@ function trimPhasesForPrompt(phases) {
     if (Array.isArray(d.positieveBevindingen)) slim.positieveBevindingen = d.positieveBevindingen.slice(0, 6).map((s) => String(s).slice(0, 220));
     if (Array.isArray(d.opvallendeAfwezigheid)) slim.opvallendeAfwezigheid = d.opvallendeAfwezigheid.slice(0, 6);
     if (Array.isArray(d.documenten)) slim.documenten = d.documenten.slice(0, 6);
+    if (Array.isArray(d.labs)) {
+      slim.labs = d.labs.slice(0, 6).map((l) => ({
+        naam: l.naam,
+        rapportenDieDitLabNoemen: l.rapporten,
+        directeVerificatielinks: l.directeVerificatielinks,
+        rapportnummersOpgelostBijLab: l.verificatieOpgelost,
+        rapportnummersNietOpgelost: l.verificatieMislukt,
+        klassen: l.klassen,
+        opdrachtgeverOpRapport: l.opdrachtgevers,
+        extern: l.extern ? {
+          bestaatAantoonbaar: l.extern.bestaatAantoonbaar,
+          land: l.extern.land,
+          accreditaties: l.extern.accreditaties,
+          publiekVerificatiesysteem: l.extern.publiekVerificatiesysteem,
+          onafhankelijkVanLeverancier: l.extern.onafhankelijkVanLeverancier,
+          onderbouwing: typeof l.extern.onderbouwing === 'string' ? l.extern.onderbouwing.slice(0, 220) : null,
+          bronUrl: l.extern.bronUrl || null
+        } : null
+      }));
+    }
     out[key] = slim;
   });
   return out;
@@ -123,7 +281,7 @@ async function runPhase(ctx, opts) {
   return { key: opts.key, title: opts.title, data };
 }
 
-function stepOpts(key, ctx) {
+function stepOpts(key, ctx, waarneming) {
   const domain = domainOf(ctx.website);
   switch (key) {
     case 'identiteit': return {
@@ -133,12 +291,32 @@ function stepOpts(key, ctx) {
         ctx.website.replace(/\/$/, '') + '/privacy', ctx.website.replace(/\/$/, '') + '/about', ctx.website.replace(/\/$/, '') + '/help-center'],
       schemaHint: 'Antwoord met JSON: {"bevindingen":[{"claim":string,"classificatie":"FEIT|BRONCLAIM|ONDERBOUWDE HYPOTHESE|ONBEKEND|TEGENGESPROKEN","onderbouwing":string,"bronUrl":string}],"opvallendeAfwezigheid":[string],"vastgesteldeNaam":string,"kortSamenvatting":string}. Zet vastgesteldeNaam op de officiële bedrijfs- of handelsnaam zoals die uit de brondata blijkt (footer, KvK-vermelding, voorwaarden); laat leeg als dat niet met redelijke zekerheid valt vast te stellen.'
     };
-    case 'laboratorium': return {
-      key: 'laboratorium', title: 'Laboratorium',
-      searchQueries: [ctx.naam + ' laboratorium COA test', ctx.naam + ' independent lab ISO 17025', ctx.naam + ' lab accreditation testing partner'],
-      researchQuery: 'Welk(e) laboratorium(s) test(en) de producten van "' + ctx.naam + '" (website: ' + ctx.website + ')? Zoek naar de naam van het laboratorium, land, accreditaties (zoals ISO/IEC 17025) en of dit laboratorium ook voor andere, niet-gelieerde leveranciers werkt. Onderzoek geen koppeling tussen leverancier en laboratorium zonder concreet bewijs zoals een gedeeld adres, bestuurder of domein.',
-      schemaHint: 'Antwoord met JSON: {"bevindingen":[{"claim":string,"classificatie":"FEIT|BRONCLAIM|ONDERBOUWDE HYPOTHESE|ONBEKEND|TEGENGESPROKEN","onderbouwing":string,"bronUrl":string}],"laboratoriumNaam":string,"kortSamenvatting":string}'
-    };
+    case 'laboratorium': {
+      // Namen komen uit de COA-stap: die heeft de rapporten al gelezen. Zonder
+      // die namen valt de stap terug op de oude, zwakke zoekopdracht.
+      const gezien = ((waarneming && waarneming.labs) || []).map((l) => l.naam).filter(Boolean).slice(0, 3);
+      const schema = 'Antwoord met JSON: {"bevindingen":[{"claim":string,"classificatie":"FEIT|BRONCLAIM|ONDERBOUWDE HYPOTHESE|ONBEKEND|TEGENGESPROKEN","onderbouwing":string,"bronUrl":string}],"labBeoordelingen":[{"naam":string,"bestaatAantoonbaar":true|false|null,"land":string,"accreditaties":[string],"publiekVerificatiesysteem":true|false|null,"werktOokVoorAndereOpdrachtgevers":true|false|null,"onafhankelijkVanLeverancier":true|false|null,"onderbouwing":string,"bronUrl":string}],"laboratoriumNaam":string,"kortSamenvatting":string}. Neem in labBeoordelingen exact de labnamen over die hieronder genoemd zijn; voeg geen labs toe die je niet in de brondata terugziet. Zet een veld op null als de brondata er niets over zegt; niet gevonden is niet hetzelfde als niet bestaand.';
+      if (!gezien.length) {
+        return {
+          key: 'laboratorium', title: 'Laboratorium',
+          searchQueries: [ctx.naam + ' laboratorium COA test', ctx.naam + ' independent lab ISO 17025', ctx.naam + ' lab accreditation testing partner'],
+          researchQuery: 'Welk(e) laboratorium(s) test(en) de producten van "' + ctx.naam + '" (website: ' + ctx.website + ')? Zoek naar de naam van het laboratorium, land, accreditaties (zoals ISO/IEC 17025) en of dit laboratorium ook voor andere, niet-gelieerde leveranciers werkt. Onderzoek geen koppeling tussen leverancier en laboratorium zonder concreet bewijs zoals een gedeeld adres, bestuurder of domein.',
+          schemaHint: schema
+        };
+      }
+      const queries = [];
+      gezien.slice(0, 2).forEach((naam) => {
+        queries.push(naam + ' laboratory ISO 17025 accreditation');
+        queries.push(naam + ' laboratory peptide testing clients');
+      });
+      queries.push(ctx.naam + ' ' + gezien[0] + ' lab');
+      return {
+        key: 'laboratorium', title: 'Laboratorium',
+        searchQueries: queries,
+        researchQuery: 'Op de certificaten van leverancier "' + ctx.naam + '" (website: ' + ctx.website + ') staan deze laboratoriumnamen: ' + gezien.join(', ') + '. Onderzoek per laboratorium: bestaat het aantoonbaar (eigen website, vestigingsadres, registratie), in welk land, welke accreditaties het voert (bijvoorbeeld ISO/IEC 17025, met certificaatnummer en accreditatie-instantie als die te vinden zijn), of het ook voor andere, niet-gelieerde opdrachtgevers werkt, en of er een publiek verificatiesysteem is waarmee een rapportnummer te controleren is. Onderzoek daarnaast of er een aanwijsbare band bestaat tussen ' + ctx.naam + ' en het laboratorium: gedeeld adres, gedeelde bestuurder, gedeeld domein of gedeelde eigenaar. Leg zo\'n band nooit op basis van alleen een gelijkende naam.',
+        schemaHint: schema
+      };
+    }
     case 'coaDataset': return {
       key: 'coaDataset', title: 'COA-dataset en -authenticiteit',
       searchQueries: [ctx.naam + ' COA certificate of analysis', ctx.naam + ' COA verification lab report number', ctx.naam + ' lab results batch'],
@@ -444,6 +622,8 @@ async function runResearchStep(caseId, ctx, key) {
           taskNumber: res.taskNumber || null,
           status: res.status,
           opgelost: res.resolved,
+          client: (res.labRecord && res.labRecord.client) || null,
+          manufacturer: (res.labRecord && res.labRecord.manufacturer) || null,
           vergelekenVelden: (vergelijking && vergelijking.gelijk) || [],
           verschillen: (vergelijking && vergelijking.verschillen) || [],
           labResultaten: (res.labRecord && res.labRecord.resultaten) || null
@@ -498,6 +678,23 @@ async function runResearchStep(caseId, ctx, key) {
       diagnose: (crawl && crawl.diagnose) || []
     };
     result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties }) };
+  } else if (key === 'laboratorium') {
+    // Begin bij wat de COA-stap al gezien heeft. Draait deze stap zonder
+    // voorafgaande COA-stap, dan is waarneming gewoon leeg en valt stepOpts
+    // terug op de oude zoekopdracht.
+    const bestaand = await db.getCase(caseId).catch(() => null);
+    const coaData = (bestaand && bestaand.phaseData && bestaand.phaseData.coaDataset && bestaand.phaseData.coaDataset.data) || null;
+    const waarneming = labsUitCoaData(coaData);
+    const fase = await runPhase(ctx, stepOpts('laboratorium', ctx, waarneming));
+    const data = Object.assign({}, (fase && fase.data) || {});
+    const gevonden = Array.isArray(data.bevindingen) ? data.bevindingen : [];
+    // Waarnemingen eerst: die zijn geteld, de rest is onderzoek.
+    data.bevindingen = labBevindingenUitWaarneming(waarneming).concat(gevonden);
+    data.labs = koppelLabBeoordelingen(waarneming.labs, data.labBeoordelingen);
+    data.labWaarneming = { gelezenRapporten: waarneming.gelezenRapporten, rapportenZonderLabnaam: waarneming.zonderLabnaam };
+    if (!data.laboratoriumNaam && waarneming.labs.length) data.laboratoriumNaam = waarneming.labs[0].naam;
+    delete data.labBeoordelingen;
+    result = { key: 'laboratorium', title: 'Laboratorium', data };
   } else if (key === 'identiteit') {
     result = await runPhase(ctx, stepOpts('identiteit', ctx));
     if (ctx.kvkDocument) {
@@ -532,10 +729,14 @@ async function runCategorize(caseId, ctx, tier) {
   const phaseData = c.phaseData || {};
   const slimPhases = trimPhasesForPrompt(phaseData);
   const coaRecords = (phaseData.coaDataset && phaseData.coaDataset.data && phaseData.coaDataset.data.coaRecords) || [];
+  // L01 kreeg tot nu toe geen enkele instructie mee, terwijl het 40% van de
+  // gratis score is. Zonder uitleg leest een leeg labveld als "fout" in plaats
+  // van "niet gevonden".
+  const l01Note = 'Voor L01 (Lab): oordeel op het veld labs uit de laboratoriumstap. Rapportnummers die daadwerkelijk oplossen op de eigen verificatiepagina van het lab zijn het sterkste bewijs dat hier te halen valt. Ontbrekende of onvindbare accreditatiegegevens zijn oranje of wit, nooit rood. Rood alleen bij een concreet aantoonbaar probleem, bijvoorbeeld rapportnummers die bij het lab niet oplossen of een laboratorium waarvan aantoonbaar is dat het niet bestaat. Dat de leverancier zelf als opdrachtgever op het rapport staat is in deze branche gebruikelijk en op zichzelf geen minpunt; het beperkt wel de onafhankelijkheid van de monstername, wat bij C06 hoort.';
   const b02Note = tier === 'deep'
     ? 'Beoordeel B02 (Eigenaren/bestuurders) net als de andere categorieën inhoudelijk, op basis van de aangeleverde fasegegevens (identiteitsstap, eventueel KvK-uittreksel).'
     : 'B02 (Eigenaren/bestuurders) hoort bij Deep en blijft in deze gratis check "white" met reden "buiten scope van de gratis check", tenzij een van de fasegegevens toevallig al een bestuurder/eigenaar noemt.';
-  const prompt = EVIDENCE_RULES + '\n\nWijs voor leverancier ' + ctx.naam + ' (' + ctx.website + ') een kleur en onderbouwing toe aan elk van de 17 vaste categorieën, uitsluitend gegrond op de aangeleverde fasegegevens. Gebruik exact: "green" (sterk/goed verifieerbaar), "orange" (beoordeelbaar met aandachtspunten), "red" (concreet aantoonbaar probleem, nooit alleen wegens ontbrekende informatie), "white" (onvoldoende informatie). Voor C02 (Identity), C03 (Purity), C04 (Quantity): zet independentlyAssessable op false als de ENIGE analytische onderbouwing van onvoldoende onafhankelijk verifieerbare labs komt (bijv. alleen het lab zelf, geen externe verificatie) — de score-engine zet die dan automatisch op wit. ' + b02Note + ' Beoordeel ook adequacy: kunnen authenticiteit, identiteit en monster-naar-rapport-naar-verkochte-batch inhoudelijk beoordeeld worden (adequacy.coa), en zijn de relevante labs/rapporten onafhankelijk voldoende verifieerbaar (adequacy.lab)? Geef bij elke categorie een korte (1-2 zinnen) onderbouwing.\n\n' +
+  const prompt = EVIDENCE_RULES + '\n\nWijs voor leverancier ' + ctx.naam + ' (' + ctx.website + ') een kleur en onderbouwing toe aan elk van de 17 vaste categorieën, uitsluitend gegrond op de aangeleverde fasegegevens. Gebruik exact: "green" (sterk/goed verifieerbaar), "orange" (beoordeelbaar met aandachtspunten), "red" (concreet aantoonbaar probleem, nooit alleen wegens ontbrekende informatie), "white" (onvoldoende informatie). Voor C02 (Identity), C03 (Purity), C04 (Quantity): zet independentlyAssessable op false als de ENIGE analytische onderbouwing van onvoldoende onafhankelijk verifieerbare labs komt (bijv. alleen het lab zelf, geen externe verificatie) — de score-engine zet die dan automatisch op wit. ' + l01Note + ' ' + b02Note + ' Beoordeel ook adequacy: kunnen authenticiteit, identiteit en monster-naar-rapport-naar-verkochte-batch inhoudelijk beoordeeld worden (adequacy.coa), en zijn de relevante labs/rapporten onafhankelijk voldoende verifieerbaar (adequacy.lab)? Geef bij elke categorie een korte (1-2 zinnen) onderbouwing.\n\n' +
     'Samengevatte fasegegevens (JSON):\n' + JSON.stringify(slimPhases) + '\n\n' +
     'Ruwe COA-dataset (JSON, voor C01-C09):\n' + JSON.stringify(trimList(coaRecords, 12, 400)) + '\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"categories":{"C01":{"color":string,"rationale":string},"C02":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C03":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C04":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C05":{"color":string,"rationale":string},"C06":{"color":string,"rationale":string},"C07":{"color":string,"rationale":string},"C08":{"color":string,"rationale":string},"C09":{"color":string,"rationale":string},"L01":{"color":string,"rationale":string},"B01":{"color":string,"rationale":string},"B02":{"color":string,"rationale":string},"B03":{"color":string,"rationale":string},"B04":{"color":string,"rationale":string},"B05":{"color":string,"rationale":string},"R01":{"color":string,"rationale":string},"R02":{"color":string,"rationale":string}},"adequacy":{"coa":boolean|null,"lab":boolean|null,"rationale":string}}';
