@@ -125,10 +125,32 @@ function extractLinks(html, baseUrl) {
     const url = absolutise(baseUrl, m[1]);
     if (url) out.push({ url, text: stripTags(m[2]).slice(0, 200) });
   }
-  const img = /<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
-  while ((m = img.exec(html)) !== null) {
-    const url = absolutise(baseUrl, m[1]);
-    if (url && DOC_EXT.test(url)) out.push({ url, text: '', uitAfbeelding: true });
+  // LET OP: veel WordPress-sites laden afbeeldingen lui in. In de ruwe HTML
+  // staat dan een base64-placeholder in src en de echte bestandsnaam in
+  // data-src. Bij lumopeptides.com zag de crawler daardoor nul documenten op
+  // een pagina die er veertien had staan. Daarom alle gangbare lazy-attributen
+  // meenemen, plus srcset.
+  const imgTag = /<img\b[^>]*>/gi;
+  const bronAttr = /\b(?:src|data-src|data-lazy-src|data-original|data-lazy|data-echo)\s*=\s*["']([^"']+)["']/gi;
+  const srcsetAttr = /\b(?:srcset|data-srcset|data-lazy-srcset)\s*=\s*["']([^"']+)["']/gi;
+  while ((m = imgTag.exec(html)) !== null) {
+    const tag = m[0];
+    const kandidaten = [];
+    let a;
+    bronAttr.lastIndex = 0;
+    while ((a = bronAttr.exec(tag)) !== null) kandidaten.push(a[1]);
+    srcsetAttr.lastIndex = 0;
+    while ((a = srcsetAttr.exec(tag)) !== null) {
+      // srcset is 'url 300w, url 600w' - alleen de URL's eruit.
+      a[1].split(',').forEach((deel) => { const u = deel.trim().split(/\s+/)[0]; if (u) kandidaten.push(u); });
+    }
+    for (const kandidaat of kandidaten) {
+      if (/^data:/i.test(kandidaat)) continue; // placeholder, geen bestand
+      const url = absolutise(baseUrl, kandidaat);
+      if (url && DOC_EXT.test(url) && !out.some((o) => o.url === url)) {
+        out.push({ url, text: '', uitAfbeelding: true });
+      }
+    }
   }
   return out;
 }
