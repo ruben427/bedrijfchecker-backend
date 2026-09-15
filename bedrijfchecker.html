@@ -391,6 +391,37 @@
       '<p class="hero-form-note">Werkt op elke peptide leveranciers-website en duurt enkele minuten om te draaien.</p>' +
       '</div>';
 
+    // Eerder gedraaide checks. Deze lijst is bij het herontwerp van de home
+    // (commit 403dfa6) meegesneuveld terwijl de klikafhandeling eronder bleef
+    // staan; hier komt hij terug in de opmaak die de CSS al had.
+    var eerder = '';
+    if (state.cases && state.cases.length){
+      var rijen = state.cases.map(function(c){
+        var chip = '<span class="chip grey">Nieuw</span>';
+        if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
+        else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
+        else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
+        else if (c.status === 'klaar' || c.status === 'gratis_klaar'){
+          var vlaggen = (c.report && c.report.rodeVlaggen && c.report.rodeVlaggen.length) || 0;
+          var es = c.engineResult && c.engineResult.evidenceScore;
+          if (vlaggen > 0) chip = '<span class="chip danger">' + vlaggen + ' rode vlag' + (vlaggen === 1 ? '' : 'gen') + '</span>';
+          else if (es && es.published) chip = '<span class="chip ok">Evidence Score ' + es.value + '</span>';
+          else if (c.engineResult && c.engineResult.gate && (c.engineResult.gate.code === 'NO_COA_FOUND' || c.engineResult.gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED')) chip = '<span class="chip grey">Geen bruikbare COA</span>';
+          else chip = '<span class="chip ok">Geen rode vlaggen</span>';
+          if (c.status === 'gratis_klaar') chip += ' <span class="chip grey">Gratis</span>';
+          else if (c.tier === 'deep') chip += ' <span class="chip grey">Deep Dive</span>';
+        }
+        return '<button type="button" class="audit-row" data-id="' + escapeHtml(c.id) + '">' +
+          '<span class="left"><span class="name">' + escapeHtml(c.naam || c.website) + '</span>' +
+          '<span class="domain">' + escapeHtml(domainOf(normalizeUrl(c.website))) + '</span>' + chip + '</span>' +
+          '<span class="right"><span class="date">' + fmtDate(c.createdAt) + '</span>' +
+          '<span class="chev">' + ICON_CHEVRON + '</span></span>' +
+          '</button>';
+      }).join('');
+      eerder = '<section class="report-block"><h3>Eerder gedraaide checks</h3>' +
+        '<div class="card"><div class="audit-list">' + rijen + '</div></div></section>';
+    }
+
     // 3-staps-ladder: exact de tekst uit Anne's Figma-ontwerp. "Details"-links
     // zijn nu decoratief (inert) — er is nog geen aparte uitlegpagina per stap.
     var ladder = '<div class="ladder-intro"><h2>Van eerste indruk naar zekerheid</h2>' +
@@ -443,7 +474,7 @@
         '</div>' +
       '</div>';
 
-    app.innerHTML = hero + heroForm + ladder;
+    app.innerHTML = hero + heroForm + eerder + ladder;
     wireDashboardEvents();
   }
 
