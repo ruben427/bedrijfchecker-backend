@@ -132,6 +132,22 @@ async function fetchHtml(url) {
   }
 }
 
+// Haalt de echte bestands-URL uit een beeldproxy. Werkt voor Next.js
+// (/_next/image?url=...), Shopify- en WordPress-varianten, en elke andere
+// die de bron in een url/src/image-parameter meegeeft.
+function pakBeeldproxyUit(url) {
+  try {
+    const u = new URL(url);
+    for (const sleutel of ['url', 'src', 'image', 'file', 'path']) {
+      const waarde = u.searchParams.get(sleutel);
+      if (!waarde) continue;
+      const echt = /^https?:\/\//i.test(waarde) ? waarde : (waarde.startsWith('/') ? u.origin + waarde : null);
+      if (echt && DOC_EXT.test(echt.split('?')[0])) return echt;
+    }
+  } catch (e) { /* geen geldige URL */ }
+  return null;
+}
+
 function absolutise(base, href) {
   try {
     const u = new URL(href, base);
@@ -184,8 +200,11 @@ function extractLinks(html, baseUrl) {
     }
     for (const kandidaat of kandidaten) {
       if (/^data:/i.test(kandidaat)) continue; // placeholder, geen bestand
-      const url = absolutise(baseUrl, kandidaat);
-      if (url && DOC_EXT.test(url) && !out.some((o) => o.url === url)) {
+      let url = absolutise(baseUrl, kandidaat);
+      if (!url) continue;
+      const uitgepakt = pakBeeldproxyUit(url);
+      if (uitgepakt) url = uitgepakt;
+      if (DOC_EXT.test(url) && !out.some((o) => o.url === url)) {
         out.push({ url, text: '', uitAfbeelding: true });
       }
     }
@@ -258,7 +277,11 @@ async function crawlCoaIndex(website) {
   }
 
   // 2. Plus de gebruikelijke paden, ook als er nergens naar gelinkt wordt.
-  for (const p of COMMON_PATHS) candidates.push(root + p);
+  for (const p of COMMON_PATHS) {
+    candidates.push(root + p);
+    // Zonder afsluitende slash is een andere pagina op veel frameworks.
+    if (p.endsWith('/')) candidates.push(root + p.slice(0, -1));
+  }
 
   // 3. Kandidaten aflopen tot we er genoeg hebben die echt documenten bevatten.
   const tried = new Set();
@@ -336,4 +359,4 @@ async function crawlCoaIndex(website) {
   return { indexPages, documents: Array.from(documents.values()), verificatieLinks: Array.from(verificatieLinks.values()), notes, diagnose };
 }
 
-module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, vingerafdruk, lijktOpFoutpagina, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, INDEX_HINT };
+module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, vingerafdruk, lijktOpFoutpagina, pakBeeldproxyUit, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, INDEX_HINT };
