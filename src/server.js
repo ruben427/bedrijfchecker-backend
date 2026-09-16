@@ -239,6 +239,30 @@ app.post('/api/audits/:id/continue-deep', rl.caseAction, auth.requireOwnerToken,
   }
 });
 
+// Dezelfde case volledig opnieuw draaien. Tot nu toe startte "opnieuw
+// analyseren" een nieuwe case, waardoor je bij elke herhaling een dubbele in
+// je lijst kreeg en de vorige uitkomst kwijt was als vergelijkingsmateriaal.
+// Deze route zet de bestaande case terug op nul en draait de gratis tier
+// opnieuw: zelfde id, zelfde link, zelfde geüploade documenten.
+app.post('/api/audits/:id/rerun', rl.caseAction, auth.requireOwnerToken, caseAccess, async (req, res) => {
+  try {
+    const c = req.case;
+    if (c.status === 'bezig') {
+      return res.status(409).json({ error: 'invalid_state', message: 'Deze audit draait al.' });
+    }
+    const storedKvk = await db.getLatestDocumentByKind(req.params.id, 'kvk').catch(() => null);
+    const ctx = {
+      naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities,
+      images: [], kvkDocument: storedKvk ? { data: storedKvk.data, mediaType: storedKvk.mimetype } : null
+    };
+    await db.resetCase(req.params.id);
+    pipeline.runFreeTier(req.params.id, ctx).catch(() => {});
+    res.json({ case: ownerCase(await db.getCase(req.params.id)) });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Herstart één specifieke stap (bijv. na een fout), zonder de hele audit
 // opnieuw te draaien. Zelfde cascade als de oude Artifact-client (runFromStep):
 // een onderzoeksstap trekt altijd categorize + de engine + een volledige

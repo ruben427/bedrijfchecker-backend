@@ -143,6 +143,21 @@ async function updateCase(id, patch) {
   return getCase(id);
 }
 
+// Zet een case terug op nul om hem opnieuw te kunnen draaien: alles wat uit
+// een vorige run kwam eruit, maar de case zelf (id, website, naam, notities)
+// en de geüploade documenten blijven staan. Zo blijft de link naar deze case
+// werken en houdt de gebruiker zijn geschiedenis.
+async function resetCase(id) {
+  await pool.query(
+    `UPDATE cases SET status = 'bezig', tier = 'gratis', error = NULL, current_step = NULL,
+       progress = '[]'::jsonb, phase_data = '{}'::jsonb, category_assessments = NULL,
+       adequacy = NULL, engine_result = NULL, report = NULL, updated_at = $2
+     WHERE id = $1`,
+    [id, Date.now()]
+  );
+  return getCase(id);
+}
+
 // phaseData is een JSONB-object; deze merget één key erin i.p.v. het geheel
 // te vervangen (zoals de Artifact's caseRef(id).update({phaseData:{key:...}}) deed).
 async function mergePhaseData(id, key, value) {
@@ -207,6 +222,6 @@ async function getLatestDocumentByKind(caseId, kind) {
 }
 
 module.exports = {
-  pool, initSchema, createCase, getCase, listCases, listCasesByOwner, updateCase, mergePhaseData, getStepStats, updateStepStats,
+  pool, initSchema, createCase, getCase, listCases, listCasesByOwner, updateCase, resetCase, mergePhaseData, getStepStats, updateStepStats,
   addDocument, listDocuments, getDocument, getLatestDocumentByKind
 };

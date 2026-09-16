@@ -279,6 +279,12 @@
     if (!res.ok) throw new Error(data.error || 'Opnieuw proberen is mislukt (' + res.status + ')');
     return data.case;
   }
+  async function apiRerunCase(id){
+    var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/rerun', { method:'POST' });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(data.message || data.error || 'Opnieuw draaien is mislukt (' + res.status + ')');
+    return data.case;
+  }
   async function apiContinueDeep(id){
     var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/continue-deep', { method:'POST' });
     var data = await res.json().catch(function(){ return {}; });
@@ -579,27 +585,25 @@
 
     if (c.status === 'fout'){
       html += '<div class="banner danger">Audit mislukt: ' + escapeHtml(c.error || 'onbekende fout') + '</div>' +
-        '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
+        '<button class="btn" id="retry-audit">Opnieuw proberen</button>';
       if (c.progress && c.progress.length) html += renderProgress(c);
     }
     if (c.status === 'gestopt'){
       html += '<div class="banner">Deze audit is handmatig gestopt' + (c.currentStep ? ' tijdens de stap "' + escapeHtml(stepLabel(c.currentStep.key)) + '"' : '') + '.</div>' +
-        '<button class="btn" id="retry-audit">Opnieuw proberen (nieuwe audit)</button>';
+        '<button class="btn" id="retry-audit">Opnieuw proberen</button>';
       if (c.progress && c.progress.length) html += renderProgress(c);
     }
     if (toontRapport){
       html += renderReport(c);
       html += '<section class="report-block"><h3>Afgeronde stappen</h3>' + renderProgress(c) + '</section>';
-      html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren (nieuwe audit)</button></div>';
+      html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren</button></div>';
     }
 
     app.innerHTML = html;
     var backBtn = app.querySelector('#back-to-dash');
     if (backBtn) backBtn.addEventListener('click', goDashboard);
     var retryBtn = app.querySelector('#retry-audit');
-    // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
-    // draaien; dit start een nieuwe audit voor dezelfde leverancier.
-    if (retryBtn) retryBtn.addEventListener('click', function(){ retryAsNewAudit(c); });
+    if (retryBtn) retryBtn.addEventListener('click', function(){ rerunCase(c); });
     // Uitklappers, "Lees meer" en elke knop die het Deep Dive-paneel opent.
     Array.prototype.forEach.call(app.querySelectorAll('.acc-header'), function(btn){
       btn.addEventListener('click', function(){
@@ -1272,19 +1276,23 @@
     }
   }
 
-  // Er is (nog) geen endpoint om exact dezelfde case volledig opnieuw te
-  // draaien; dit start een nieuwe audit voor dezelfde leverancier (zelfde
-  // website/land/KvK-nummer/notities) en navigeert daar direct naartoe.
-  async function retryAsNewAudit(c){
+  // Dezelfde case opnieuw draaien. Voorheen startte dit een nieuwe audit,
+  // waardoor je bij elke herhaling een dubbele in je lijst kreeg. Nu blijft
+  // het dezelfde case: zelfde id, zelfde link, zelfde documenten.
+  async function rerunCase(c){
     var btn = app.querySelector('#retry-audit');
+    var oorspronkelijk = btn ? btn.textContent : '';
     if (btn){ btn.disabled = true; btn.textContent = 'Starten…'; }
     try {
-      var created = await apiCreateCase({ naam: c.naam, website: c.website, land: c.land, kvkNummer: c.kvkNummer, notities: c.notities }, []);
-      state.cases.unshift(created);
-      goDetail(created.id);
+      var updated = await apiRerunCase(c.id);
+      state.currentCase = updated;
+      var i = state.cases.findIndex(function(x){ return x.id === c.id; });
+      if (i !== -1) state.cases[i] = updated;
+      render();
+      if (updated.status === 'bezig') ensureCasePoller(c.id);
     } catch(e){
-      if (btn){ btn.disabled = false; btn.textContent = 'Opnieuw proberen'; }
-      alert('Nieuwe audit starten is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+      if (btn){ btn.disabled = false; btn.textContent = oorspronkelijk; }
+      alert('Opnieuw draaien is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
     }
   }
 
