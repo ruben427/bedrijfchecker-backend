@@ -485,14 +485,14 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
   font-size:clamp(1.3rem, 4vw, 1.75rem); color:var(--heading-2); margin:0;
 }
 .upsell-banner p{ margin:0; color:var(--text); }
-.upsell-banner-head{ display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 16px; }
+.upsell-banner-head{ display:flex; align-items:center; flex-wrap:wrap; gap:8px 20px; }
 .upsell-prijs{
   font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; color:var(--purple-600);
-  line-height:1; white-space:nowrap;
+  line-height:1.05; white-space:nowrap; text-align:center; flex-shrink:0;
 }
-.upsell-prijs .klein{ font-size:1rem; color:var(--text); letter-spacing:0; font-weight:400; }
-.upsell-prijs .groot{ font-size:1.7rem; letter-spacing:-.04em; }
-.upsell-prijs .cent{ font-size:.9rem; vertical-align:super; }
+.upsell-prijs .klein{ display:block; font-size:1rem; color:var(--text); letter-spacing:0; font-weight:400; }
+.upsell-prijs .groot{ font-size:2.2rem; letter-spacing:-.04em; }
+.upsell-prijs .cent{ font-size:1.1rem; vertical-align:super; }
 
 /* ---------- rapportdetails ---------- */
 .rapport-gate{

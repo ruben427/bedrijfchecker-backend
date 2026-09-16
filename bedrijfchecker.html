@@ -566,10 +566,11 @@
     else if (c.status === 'klaar') chip = '<span class="chip ok">' + (c.tier === 'deep' ? 'Deep Dive klaar' : 'Klaar') + '</span>';
 
     var toontRapport = (c.status === 'klaar' || c.status === 'gratis_klaar') && !!c.report;
-    var html = '<button class="btn ghost" id="back-to-dash">&larr; Terug naar overzicht</button>';
-    // Bij een rapport staat de kop al in .rapport-head; dan alleen de status.
+    // Bij een rapport geen terugknop en geen statuschip: het logo in de header
+    // brengt je terug en de status staat al in het rapport zelf.
+    var html = toontRapport ? '' : '<button class="btn ghost" id="back-to-dash">&larr; Terug naar overzicht</button>';
     html += toontRapport
-      ? '<div class="detail-head-slim">' + chip + '</div>'
+      ? ''
       : '<div class="detail-head"><div><h2>' + escapeHtml(c.naam) + '</h2>' +
         '<div class="site"><a href="' + escapeHtml(c.website) + '" target="_blank" rel="noopener">' + escapeHtml(c.website) + '</a></div>' +
         '<div class="kv-row"><span>KvK-uittreksel: <span class="mono">' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span></span>' +
@@ -904,10 +905,8 @@
     { titel: 'Titel onderdeel', pct: 66, uitleg: 'Korte uitleg over deze score' }
   ];
 
-  // Hoeveel regels blijven staan voordat er wordt ingeklapt. In de smalle
-  // COA-kolommen is drie regels bijna niets, in de brede tekstblokken erna is
-  // drie regels juist een flinke lap. Vandaar twee waarden.
-  var KLEM_COA = 4;
+  // Hoeveel regels blijven staan voordat er wordt ingeklapt. Alleen in de
+  // tekstblokken van het tweede deel; de COA-blokken staan er helemaal uit.
   var KLEM_TEKST = 3;
 
   function accItem(titel, bodyHtml, opties){
@@ -968,7 +967,7 @@
         : '';
       return '<div class="acc-category"><h4>' + escapeHtml(id + ' - ' + (def ? def.label : id)) + '</h4>' +
         '<span class="rapport-label ' + catColorClass(a.color) + '">' + escapeHtml(catColorLabel(a.color)) + '</span>' +
-        klemBlok('<p>' + escapeHtml(a.rationale || '') + '</p>', KLEM_COA) + note + '</div>';
+        '<p>' + escapeHtml(a.rationale || '') + '</p>' + note + '</div>';
     }).join('');
   }
 
@@ -1021,6 +1020,16 @@
       '<tbody>' + rows + '</tbody></table></div>' + note;
   }
 
+  // De bedrijfsnaam is soms gewoon het domein; dan staat het er twee keer.
+  function bedrijfsnaam(c){
+    var naam = String(c.naam || '').trim();
+    if (!naam) return '';
+    var domein = domainOf(c.website);
+    var kaal = naam.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '');
+    if (kaal === domein.toLowerCase() || kaal === String(c.website || '').toLowerCase()) return '';
+    return naam;
+  }
+
   // Korte uitleg boven de balken. Er is geen apart veld voor in het rapport,
   // dus dit is de eerste alinea van de executive summary.
   function korteUitleg(c){
@@ -1058,9 +1067,9 @@
     if (c.tier === 'deep') return '';
     return '<div class="upsell-banner">' +
       '<div class="upsell-banner-head">' +
-      '<h3>Nog meer Proof met een deepdive</h3>' +
-      '<span class="upsell-prijs"><span class="klein">Voor slechts</span> ' +
+      '<span class="upsell-prijs"><span class="klein">Voor slechts</span>' +
       '<span class="groot">&euro; 3,<span class="cent">50</span></span></span>' +
+      '<h3>Nog meer Proof met een deepdive</h3>' +
       '</div>' +
       '<p>Wil je nog meer weten over deze leverancier? Dan kunnen we nog veel meer informatie voor je ophalen. Incl KVK handelsregister t.w.v. &euro; 2,95</p>' +
       '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
@@ -1101,7 +1110,7 @@
       '<h2 class="stats-domein">' + escapeHtml(domainOf(c.website)) + '</h2>' +
       '</div>' +
       '<div class="stats-url"><div class="stats-url-main">' +
-      (c.naam && c.naam !== c.website ? '<p class="stats-bedrijf">' + escapeHtml(c.naam) + '</p>' : '') +
+      (bedrijfsnaam(c) ? '<p class="stats-bedrijf">' + escapeHtml(bedrijfsnaam(c)) + '</p>' : '') +
       korteUitleg(c) +
       statBalkenHtml() +
       '</div>' + siteShotHtml(c) + '</div></div>';
