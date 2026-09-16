@@ -1057,13 +1057,13 @@
   function upsellBanner(c){
     if (c.tier === 'deep') return '';
     return '<div class="upsell-banner">' +
-      '<div class="upsell-banner-tekst">' +
+      '<div class="upsell-banner-head">' +
       '<h3>Nog meer Proof met een deepdive</h3>' +
+      '<span class="upsell-prijs"><span class="klein">Voor slechts</span> ' +
+      '<span class="groot">&euro; 3,<span class="cent">50</span></span></span>' +
+      '</div>' +
       '<p>Wil je nog meer weten over deze leverancier? Dan kunnen we nog veel meer informatie voor je ophalen. Incl KVK handelsregister t.w.v. &euro; 2,95</p>' +
       '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
-      '</div>' +
-      '<div class="upsell-prijs"><span class="klein">Voor slechts</span>' +
-      '<span class="groot">&euro; 3,<span class="cent">50</span></span></div>' +
       '</div>';
   }
 

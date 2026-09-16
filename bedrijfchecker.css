@@ -485,13 +485,14 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
   font-size:clamp(1.3rem, 4vw, 1.75rem); color:var(--heading-2); margin:0;
 }
 .upsell-banner p{ margin:0; color:var(--text); }
+.upsell-banner-head{ display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 16px; }
 .upsell-prijs{
   font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; color:var(--purple-600);
   line-height:1; white-space:nowrap;
 }
-.upsell-prijs .klein{ display:block; font-size:1rem; color:var(--text); letter-spacing:0; }
-.upsell-prijs .groot{ font-size:2.6rem; letter-spacing:-.04em; }
-.upsell-prijs .cent{ font-size:1.2rem; vertical-align:super; }
+.upsell-prijs .klein{ font-size:1rem; color:var(--text); letter-spacing:0; font-weight:400; }
+.upsell-prijs .groot{ font-size:1.7rem; letter-spacing:-.04em; }
+.upsell-prijs .cent{ font-size:.9rem; vertical-align:super; }
 
 /* ---------- rapportdetails ---------- */
 .rapport-gate{
@@ -570,14 +571,20 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 .rapport-plain .sources a{ color:var(--accent); }
 .rapport-footer{ padding-inline:2px; font-size:.875rem; color:var(--text-subtle); line-height:1.5; }
 
+/* Op een telefoon staan losse elementen 16px van de rand en de panelen 4px.
+   .wrap zet die 16px; de panelen halen er met een negatieve marge 12px af. */
+@media (max-width:640px){
+  .wrap{ padding-inline:16px; }
+  .card, .run-card, .banner, .accordion, .upsell-banner, .deepdive-card{
+    margin-inline:-12px;
+  }
+}
+
 @media (min-width:900px){
   .rapport{ max-width:1024px; }
   .stats-url{ flex-direction:row; align-items:flex-start; gap:40px; }
   .stats-url-main{ flex:1 1 0; }
   .site-shot{ flex:0 0 375px; align-self:flex-start; }
-  .upsell-banner{ flex-direction:row; align-items:center; justify-content:space-between; gap:32px; }
-  .upsell-banner-tekst{ flex:1 1 0; display:flex; flex-direction:column; gap:12px; }
-  .upsell-prijs{ text-align:right; }
   /* Tweede groep uitklappers staat in het design op iets meer dan de helft. */
   .accordion.smal{ max-width:589px; }
   .rapport-bottom{ flex-direction:row; gap:40px; align-items:flex-start; }
