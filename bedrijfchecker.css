@@ -168,7 +168,7 @@ input.has-error{ border-color:var(--danger); }
 .btn-cta{
   appearance:none; border:1px solid var(--accent-strong);
   background:linear-gradient(57deg, var(--accent) 50%, var(--accent-light) 100%);
-  color:#fff9f5; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem;
+  color:#fff9f5; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.125rem;
   padding:0 24px; height:56px; border-radius:999px; cursor:pointer;
   display:inline-flex; align-items:center; justify-content:center; gap:10px; white-space:nowrap; flex-shrink:0;
 }
@@ -225,8 +225,8 @@ input.has-error{ border-color:var(--danger); }
 .completed-checks{ margin-top:56px; }
 .completed-checks h2{ font-size:1.7rem; color:var(--heading-3); letter-spacing:-.02em; margin:0 0 8px; }
 .textlink{
-  display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-weight:700;
-  font-family:"Baloo 2", sans-serif; border-bottom:1px solid var(--accent); padding-bottom:1px;
+  display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-weight:600;
+  font-family:"Baloo 2", sans-serif; font-size:1.125rem; border-bottom:1px solid var(--accent); padding-bottom:1px;
   white-space:nowrap; flex-shrink:0; text-decoration:none;
 }
 .textlink svg{ width:12px; height:12px; }
@@ -619,7 +619,7 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 .deepdive-card p{ margin:0 0 12px; }
 .deepdive-card ul{ margin:0 0 12px; padding-left:24px; }
 .deepdive-card li{ margin-bottom:8px; }
-.deepdive-actions{ display:flex; flex-wrap:wrap; align-items:center; gap:36px; margin-top:24px; }
+.deepdive-actions{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:36px; margin-top:24px; }
 
 /* .textlink is in het designsysteem een span; als knop moet de
    browser-eigen knopstijl eraf. */
@@ -627,8 +627,9 @@ button.textlink{
   background:none; border:0; border-bottom:1px solid var(--accent);
   font-size:1.125rem; line-height:1; padding:0 0 2px; cursor:pointer;
   /* In een kolom rekt een knop mee met de breedte; dan loopt de streep door
-     tot aan de rand in plaats van onder het woord. */
-  align-self:flex-start; width:auto;
+     tot aan de rand in plaats van onder het woord. fit-content lost dat op
+     zonder de uitlijning te verstoren als de knop naast een andere staat. */
+  width:fit-content;
 }
 
 .sheet-overlay{
@@ -639,11 +640,14 @@ button.textlink{
   background:var(--surface); color:var(--text);
   width:540px; max-width:100%;
   border-radius:var(--radius-lg) 0 0 var(--radius-lg);
-  padding:12px 24px 48px 48px;
-  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:12px 24px 0 48px;
+  display:flex; flex-direction:column; overflow:hidden;
   box-shadow:var(--shadow);
   animation:sheet-in-right .22s ease-out;
 }
+/* Sluitknop en titel blijven staan; alleen de inhoud eronder scrolt. */
+.sheet-kop{ flex-shrink:0; background:var(--surface); padding-bottom:12px; }
+.sheet-body{ overflow-y:auto; -webkit-overflow-scrolling:touch; padding-bottom:48px; }
 @keyframes sheet-in-right{ from{ transform:translateX(32px); opacity:0; } to{ transform:none; opacity:1; } }
 .sheet-close-row{ display:flex; justify-content:flex-end; }
 .sheet-close{
@@ -669,9 +673,10 @@ button.textlink{
   .sheet-panel{
     width:100%; max-height:88vh;
     border-radius:var(--radius-lg) var(--radius-lg) 0 0;
-    padding:12px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+    padding:12px 16px 0;
     animation:sheet-in-up .24s ease-out;
   }
+  .sheet-body{ padding-bottom:calc(24px + env(safe-area-inset-bottom, 0px)); }
   .sheet-title{ font-size:1.75rem; }
 }
 @keyframes sheet-in-up{ from{ transform:translateY(32px); opacity:0; } to{ transform:none; opacity:1; } }

@@ -797,9 +797,11 @@
     sheetVorigeFocus = document.activeElement;
     root.innerHTML = '<div class="sheet-overlay" id="sheet-overlay">' +
       '<div class="sheet-panel" role="dialog" aria-modal="true" aria-label="' + escapeHtml(titel) + '">' +
+      '<div class="sheet-kop">' +
       '<div class="sheet-close-row"><button type="button" class="sheet-close" id="sheet-close">' +
       '<span aria-hidden="true">&times;</span><span class="lbl">Sluiten</span></button></div>' +
       '<h2 class="sheet-title">' + escapeHtml(titel) + '</h2>' +
+      '</div>' +
       '<div class="sheet-body">' + bodyHtml + '</div>' +
       '</div></div>';
     document.body.classList.add('sheet-open');
@@ -1067,9 +1069,9 @@
     if (c.tier === 'deep') return '';
     return '<div class="upsell-banner">' +
       '<div class="upsell-banner-head">' +
+      '<h3>Nog meer Proof met een deepdive</h3>' +
       '<span class="upsell-prijs"><span class="klein">Voor slechts</span>' +
       '<span class="groot">&euro; 3,<span class="cent">50</span></span></span>' +
-      '<h3>Nog meer Proof met een deepdive</h3>' +
       '</div>' +
       '<p>Wil je nog meer weten over deze leverancier? Dan kunnen we nog veel meer informatie voor je ophalen. Incl KVK handelsregister t.w.v. &euro; 2,95</p>' +
       '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
