@@ -813,8 +813,11 @@ async function runSynthesis(caseId, ctx, tier) {
 async function runFreeTier(caseId, ctx) {
   try {
     // Schermafdruk van de website, los van de stappen: hij hoort bij het
-    // rapport maar mag de audit niet vertragen of laten vallen.
-    siteShot.ensureShot(ctx.website).catch(() => null);
+    // rapport maar mag de audit niet vertragen of laten vallen. De uitkomst
+    // gaat naar de log, zodat in Railway te zien is wat hier gebeurde.
+    siteShot.ensureShot(ctx.website)
+      .then((r) => { if (r && r.status) console.log('schermafdruk ' + ctx.website + ': ' + r.status); })
+      .catch((e) => console.log('schermafdruk ' + ctx.website + ' mislukt: ' + ((e && e.message) || e)));
     for (const key of FREE_STEP_KEYS) {
       await ensureNotStopped(caseId);
       await runResearchStep(caseId, ctx, key);

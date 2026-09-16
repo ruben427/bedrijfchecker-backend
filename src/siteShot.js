@@ -8,15 +8,29 @@
 // Formaat komt uit het design: 1200 breed, verhouding 4:3, dus 1200x900.
 // Bewaartermijn een maand; daarna maakt de eerstvolgende run een nieuwe.
 
-const { Pool } = require('pg');
+const { pool } = require('./db');
 const urlGuard = require('./urlGuard');
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const BREEDTE = 1200;
 const HOOGTE = 900;                       // 4:3
 const GELDIG_MS = 30 * 24 * 60 * 60 * 1000;
 const TIMEOUT_MS = Number(process.env.SHOT_TIMEOUT_MS) || 20000;
+// Bewust uit tenzij expliciet aangezet: chromium naast Node vraagt honderden
+// MB's, en als de container daardoor omvalt sneuvelt de lopende audit mee.
+// Zet SITE_SHOT=on in Railway om hem aan te zetten.
+const AAN = String(process.env.SITE_SHOT || '').toLowerCase() === 'on';
+// Harde bovengrens over het hele maakproces heen, zodat een browser die
+// blijft hangen nooit iets openhoudt.
+const TOTAAL_MS = Number(process.env.SHOT_TOTAL_MS) || 45000;
+
+function metTijdslimiet(belofte, ms) {
+  return new Promise((resolve) => {
+    let klaar = false;
+    const t = setTimeout(() => { if (!klaar) { klaar = true; resolve(null); } }, ms);
+    belofte.then((v) => { if (!klaar) { klaar = true; clearTimeout(t); resolve(v); } })
+      .catch(() => { if (!klaar) { klaar = true; clearTimeout(t); resolve(null); } });
+  });
+}
 
 async function initShotSchema() {
   await pool.query(`
@@ -91,7 +105,11 @@ function zoekChromium() {
 async function maakShot(url) {
   const chromium = laadChromium();
   if (!chromium) return null;
-  const opties = { args: ['--no-sandbox', '--disable-dev-shm-usage'] };
+  const opties = { args: [
+    '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+    '--single-process', '--no-zygote', '--disable-extensions',
+    '--blink-settings=imagesEnabled=true'
+  ] };
   const pad = process.env.CHROMIUM_PATH || zoekChromium();
   if (pad) opties.executablePath = pad;
 
@@ -124,6 +142,7 @@ async function maakShot(url) {
 // Zorgt dat er een recente schermafdruk is. Geeft terug wat er gebeurde, zodat
 // de pipeline het in de crawl-notities kan zetten.
 async function ensureShot(website) {
+  if (!AAN) return { status: 'uit (SITE_SHOT staat niet op on)' };
   const supplierKey = sleutelVanUrl(website);
   if (!supplierKey) return { status: 'geen sleutel' };
   const bestaand = await getShot(supplierKey).catch(() => null);
@@ -134,7 +153,7 @@ async function ensureShot(website) {
   // Zelfde poortwachter als de rest van de fetch-laag: geen localhost, geen
   // interne adressen, geen cloud-metadata.
   if (!urlGuard.isPublicHttpUrl(url)) return { status: 'adres niet toegestaan' };
-  const buffer = await maakShot(url);
+  const buffer = await metTijdslimiet(maakShot(url), TOTAAL_MS);
   if (!buffer) return { status: bestaand ? 'verlopen, nieuwe poging mislukt' : 'geen schermafdruk gemaakt' };
   await saveShot(supplierKey, url, buffer, 'image/jpeg').catch(() => null);
   return { status: 'nieuw gemaakt' };
