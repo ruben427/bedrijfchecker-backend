@@ -1093,13 +1093,18 @@
 
     var out = '<div class="rapport">';
 
-    out += '<div class="stats-url"><div class="stats-url-main">' +
+    // Datum en domein staan over de volle breedte; pas daaronder splitst het
+    // in twee kolommen.
+    out += '<div class="stats-blok">' +
+      '<div class="stats-kop">' +
       '<div class="stats-datum">' + fmtDateLang(c.createdAt) + '</div>' +
       '<h2 class="stats-domein">' + escapeHtml(domainOf(c.website)) + '</h2>' +
+      '</div>' +
+      '<div class="stats-url"><div class="stats-url-main">' +
       (c.naam && c.naam !== c.website ? '<p class="stats-bedrijf">' + escapeHtml(c.naam) + '</p>' : '') +
       korteUitleg(c) +
       statBalkenHtml() +
-      '</div>' + siteShotHtml(c) + '</div>';
+      '</div>' + siteShotHtml(c) + '</div></div>';
 
     out += renderGateBanner(engine);
     out += upsellBanner(c);

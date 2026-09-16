@@ -410,6 +410,8 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 .rapport{ display:flex; flex-direction:column; gap:22px; margin-top:18px; }
 
 /* ---------- Stats URL-block ---------- */
+.stats-blok{ display:flex; flex-direction:column; gap:16px; }
+.stats-kop{ display:flex; flex-direction:column; gap:2px; }
 .stats-url{ display:flex; flex-direction:column; gap:24px; }
 .stats-url-main{ display:flex; flex-direction:column; gap:16px; min-width:0; }
 .stats-datum{
