@@ -8,6 +8,7 @@ const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient'
 const { fetchRemoteDocument } = require('./docFetcher');
 const coaStore = require('./coaStore');
 const coaCrawler = require('./coaCrawler');
+const siteShot = require('./siteShot');
 const janoshik = require('./janoshik');
 
 // Versie van de COA-leeslaag. Analyseresultaten worden gecachet op
@@ -811,6 +812,9 @@ async function runSynthesis(caseId, ctx, tier) {
 // voortgang via GET /api/audits/:id.
 async function runFreeTier(caseId, ctx) {
   try {
+    // Schermafdruk van de website, los van de stappen: hij hoort bij het
+    // rapport maar mag de audit niet vertragen of laten vallen.
+    siteShot.ensureShot(ctx.website).catch(() => null);
     for (const key of FREE_STEP_KEYS) {
       await ensureNotStopped(caseId);
       await runResearchStep(caseId, ctx, key);

@@ -1,0 +1,8 @@
+# Chromium is er alleen voor de schermafdruk van de leverancierswebsite
+# (src/siteShot.js). Ontbreekt hij, dan slaat die stap zichzelf over en
+# draait de audit gewoon door; het rapport toont dan de lege plek.
+[phases.setup]
+nixPkgs = ["nodejs_20", "chromium"]
+
+[variables]
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"

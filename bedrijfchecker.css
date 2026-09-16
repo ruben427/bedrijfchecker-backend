@@ -395,52 +395,107 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 @media (prefers-reduced-motion: reduce){ .spinner{ animation:none; } }
 @keyframes spin{ to{ transform:rotate(360deg); } }
 
-/* ---------- Rapport (accordion-rapport, sep 2026, Figma "Rapport" 494:14614) ----------
-   Mobiel 1-op-1 uit Figma; desktop (>=900px) is eigen vormgeving hierboven
-   op voortgebouwd (Ruben: "mag jij de desktop vanuit daar vormgeven"). */
+/* ============================================================
+   Rapport v2 (Figma "Rapport" 494:14614, 15 sep)
+   Header, Stats URL-block, accordion-rapport, upsell en footer.
+   ============================================================ */
+
+/* ---------- header ---------- */
+.site-header{ display:flex; align-items:center; padding:12px 0 16px; }
+.site-logo{ background:none; border:none; padding:0; cursor:pointer; display:inline-flex; line-height:0; }
+.site-logo img{ height:44px; width:auto; display:block; }
+@media (min-width:900px){ .site-logo img{ height:56px; } }
+
 .detail-head-slim{ margin:14px 0 4px; }
 .rapport{ display:flex; flex-direction:column; gap:22px; margin-top:18px; }
 
-.rapport-top{ display:flex; flex-direction:column; gap:16px; }
-.rapport-head{ display:flex; flex-direction:column; gap:10px; padding-inline:2px; }
-.rapport-head .url{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:clamp(1.3rem,4vw,1.6rem); color:var(--heading-2); letter-spacing:-.02em; word-break:break-word; }
-.rapport-head .meta{ display:flex; flex-direction:column; gap:2px; font-size:.85rem; }
-.rapport-head .meta .kvk{ color:var(--text); }
-.rapport-head .meta .created{ color:var(--text-muted); }
-.rapport-head .company{ font-size:1rem; color:var(--text); line-height:1.5; }
+/* ---------- Stats URL-block ---------- */
+.stats-url{ display:flex; flex-direction:column; gap:24px; }
+.stats-url-main{ display:flex; flex-direction:column; gap:16px; min-width:0; }
+.stats-datum{
+  font-size:.78rem; letter-spacing:.35em; text-transform:uppercase; color:var(--text-faint);
+  font-weight:600;
+}
+.stats-domein{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; letter-spacing:-.03em;
+  font-size:clamp(1.5rem, 5vw, 2.1rem); color:var(--heading-2); line-height:1.1; word-break:break-word;
+  margin:2px 0 0;
+}
+.stats-bedrijf{ color:var(--text); line-height:1.5; margin:0; }
+.stats-intro{ color:var(--text); margin:0; }
 
-.rapport-kort{
-  background:var(--accent-soft); border:1px solid var(--accent-light); border-radius:var(--radius-md);
-  padding:24px 16px; display:flex; flex-direction:column; gap:8px;
+.stat-bars{ display:flex; flex-direction:column; gap:20px; }
+.stat-bar-head{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.stat-bar-title{ font-weight:700; }
+.stat-bar-value{ font-weight:600; font-variant-numeric:tabular-nums; }
+.stat-bar-track{
+  position:relative; height:10px; margin:8px 0 6px; border-radius:var(--radius-pill);
+  background:var(--surface-2); border:1px solid var(--border); overflow:hidden;
 }
-.rapport-kort h3{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; color:var(--accent); margin:0; letter-spacing:-.02em; }
-.rapport-kort p{ margin:0; font-size:1rem; color:var(--text); line-height:1.5; }
+.stat-bar-fill{
+  position:absolute; inset:0; border-radius:var(--radius-pill);
+  background:linear-gradient(90deg, #e5265e 0%, #f7931e 42%, #e9c33f 62%, #2eaa63 100%);
+  clip-path:inset(0 100% 0 0);
+  transition:clip-path 1.1s cubic-bezier(.22,.9,.24,1);
+}
+.stat-bar.is-on .stat-bar-fill{ clip-path:inset(0 calc(100% - var(--pct) * 1%) 0 0); }
+.stat-bar-note{ margin:0; color:var(--text); font-size:.95rem; }
+@media (prefers-reduced-motion: reduce){
+  .stat-bar-fill{ transition:none; }
+}
 
-.rapport-upsell{
-  border-radius:var(--radius-md); padding:24px 16px; display:flex; flex-direction:column; gap:16px;
-  background:linear-gradient(120deg, var(--heading) 45%, var(--purple-600) 100%); color:#f9f9f8;
+/* Schermafdruk van de website in een browservenster. Alleen op desktop:
+   op een telefoon kost dit veel hoogte en zegt het weinig. */
+.site-shot{ display:none; }
+@media (min-width:900px){
+  .site-shot{
+    display:block; margin:0; border-radius:var(--radius-md) var(--radius-md) 0 0;
+    overflow:hidden; box-shadow:var(--shadow); background:var(--surface);
+    border:1px solid var(--border); border-bottom:none;
+  }
 }
-.rapport-upsell-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.rapport-upsell-head h3{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; margin:0; letter-spacing:-.02em; color:inherit; }
-.rapport-upsell-head .price{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; flex-shrink:0; }
-.rapport-upsell-body{ font-size:1rem; line-height:1.5; }
-.rapport-upsell-body p{ margin:0 0 12px; }
-.rapport-upsell-body ul{ margin:0 0 12px; padding-left:22px; display:flex; flex-direction:column; gap:6px; }
-.rapport-upsell-actions{ display:flex; flex-direction:column; gap:0; }
-.rapport-upsell-btn{
-  appearance:none; border-radius:48px; height:56px; padding:0 24px; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.05rem;
-  border:1px solid var(--accent-strong); background:linear-gradient(68deg, var(--accent) 50%, var(--accent-light) 100%); color:#f9f9f8;
-  cursor:pointer; display:inline-flex; align-items:center; justify-content:center; width:100%;
+.site-shot-bar{
+  display:flex; align-items:center; gap:8px; padding:10px 12px; background:var(--surface-2);
+  border-bottom:1px solid var(--border);
 }
-.rapport-upsell-btn:hover{ filter:brightness(1.05); }
-.rapport-upsell-btn:disabled{ opacity:.7; cursor:not-allowed; }
-.rapport-upsell-link{
-  background:none; border:none; height:56px; color:#fffdfc; font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.05rem;
-  border-bottom:1px solid #fffdfc; cursor:pointer; align-self:center; padding:0; margin-top:4px;
+.site-shot-bar .dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.site-shot-bar .dot.r{ background:#ff5f57; }
+.site-shot-bar .dot.y{ background:#febc2e; }
+.site-shot-bar .dot.g{ background:#28c840; }
+.site-shot-url{
+  flex:1; text-align:center; font-size:.78rem; color:var(--text-muted);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.rapport-upsell-link:disabled{ opacity:.7; cursor:not-allowed; }
+.site-shot-img{ aspect-ratio:4 / 3; background:var(--surface-2); }
+.site-shot-img img{ width:100%; height:100%; object-fit:cover; object-position:top center; display:block; }
+.site-shot-leeg{
+  display:flex; align-items:center; justify-content:center; height:100%; padding:24px;
+  color:var(--text-faint); font-size:.85rem; text-align:center;
+}
 
-.rapport-group-label{ font-family:"Open Sans", sans-serif; font-weight:700; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-muted); margin:0 0 -8px 4px; }
+/* ---------- upsell-balk ---------- */
+.upsell-banner{
+  background:var(--purple-50); border:1px solid var(--purple-300); border-radius:var(--radius-lg);
+  padding:24px; display:flex; flex-direction:column; gap:16px;
+}
+.upsell-banner h3{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; letter-spacing:-.03em;
+  font-size:clamp(1.3rem, 4vw, 1.75rem); color:var(--heading-2); margin:0;
+}
+.upsell-banner p{ margin:0; color:var(--text); }
+.upsell-prijs{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; color:var(--purple-600);
+  line-height:1; white-space:nowrap;
+}
+.upsell-prijs .klein{ display:block; font-size:1rem; color:var(--text); letter-spacing:0; }
+.upsell-prijs .groot{ font-size:2.6rem; letter-spacing:-.04em; }
+.upsell-prijs .cent{ font-size:1.2rem; vertical-align:super; }
+
+/* ---------- rapportdetails ---------- */
+.rapport-kop{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; letter-spacing:-.03em;
+  font-size:1.6rem; color:var(--heading-2); margin:0 0 -6px 2px;
+}
 
 .accordion{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
 .acc-item + .acc-item{ border-top:1px solid var(--border); }
@@ -449,66 +504,103 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
   gap:12px; padding:16px; font:inherit; color:var(--text); cursor:pointer; text-align:left;
 }
 .acc-header .acc-title{ display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; text-transform:uppercase; letter-spacing:.02em; font-size:.92rem; font-weight:600; }
+.acc-header .acc-title.plain{ text-transform:none; letter-spacing:0; font-size:1rem; }
 .acc-header .acc-sub{ font-size:.78rem; text-transform:none; color:var(--text-muted); font-weight:400; letter-spacing:0; }
 .acc-chevron{ display:inline-flex; flex-shrink:0; width:18px; height:18px; color:var(--text); transition:transform .15s ease; }
 .acc-item[data-open="true"] .acc-chevron{ transform:rotate(180deg); }
 .acc-body{ padding:0 16px 20px; }
 .acc-item[data-open="false"] .acc-body{ display:none; }
 
-.acc-category{ padding-top:16px; border-top:1px solid var(--border); break-inside:avoid; }
+.acc-category{ padding-top:16px; border-top:1px solid var(--border); }
 .acc-category:first-child{ padding-top:0; border-top:none; }
 .acc-category + .acc-category{ margin-top:16px; }
 .acc-category h4{ margin:0 0 8px; font-size:1rem; font-weight:700; color:var(--text); }
 .acc-category .acc-note{ margin:8px 0 0; font-size:.82rem; color:var(--text-muted); }
 .acc-body > div + div{ margin-top:16px; }
 
+/* Vier uitkomsten, met een stip in de kleur van het oordeel. */
 .rapport-label{
-  display:inline-flex; align-items:center; border-radius:var(--radius-pill); border:1px solid var(--border);
+  display:inline-flex; align-items:center; gap:8px; border-radius:var(--radius-pill); border:1px solid var(--border);
   background:var(--surface); color:var(--text); font-size:.72rem; font-weight:600; letter-spacing:.02em;
-  text-transform:uppercase; padding:4px 10px; margin:2px 0 8px;
+  text-transform:uppercase; padding:4px 12px 4px 8px; margin:2px 0 8px;
 }
-.rapport-label.ok{ border-color:var(--ok); color:var(--ok); }
-.rapport-label.warn{ border-color:var(--warn); color:var(--warn); }
-.rapport-label.danger{ border-color:var(--danger); color:var(--danger); }
+.rapport-label::before{ content:""; width:10px; height:10px; border-radius:50%; background:var(--grey); flex-shrink:0; }
+.rapport-label.ok{ border-color:var(--ok); color:var(--ok); background:var(--ok-soft); }
+.rapport-label.ok::before{ background:var(--ok); }
+.rapport-label.warn{ border-color:var(--warn); color:var(--warn); background:var(--warn-soft); }
+.rapport-label.warn::before{ background:var(--warn); }
+.rapport-label.danger{ border-color:var(--danger); color:var(--danger); background:var(--danger-soft); }
+.rapport-label.danger::before{ background:var(--danger); }
 .rapport-label.grey{ border-color:var(--border); color:var(--text); }
 
-.truncate p{ margin:0 0 10px; font-size:1rem; color:var(--text); line-height:1.5; }
-.truncate p:last-child{ margin-bottom:0; }
-.truncate-short p{ margin-bottom:0; }
-.read-more-toggle{
-  background:none; border:none; padding:0; margin-left:2px; color:var(--accent); font-weight:700; font-family:"Open Sans",sans-serif;
-  cursor:pointer; text-decoration:underline; font-size:1rem; display:inline;
+/* ---------- inklappen na een paar regels ---------- */
+/* Echt op regels, niet op tekens: line-clamp knipt op de regel zoals die op
+   dit scherm valt, dus mobiel klopt het net zo goed als op desktop. De knop
+   verschijnt alleen als er daadwerkelijk iets afgekapt wordt (zie JS). */
+.klem{ position:relative; }
+.klem-tekst{
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:var(--regels, 3);
+  overflow:hidden;
 }
-.truncate-full .read-more-toggle{ display:block; margin-top:8px; }
+.klem.open .klem-tekst{ display:block; -webkit-line-clamp:none; overflow:visible; }
+.klem-tekst p{ margin:0 0 10px; }
+.klem-tekst p:last-child{ margin-bottom:0; }
+.lees-meer{
+  background:none; border:none; padding:0; margin-top:6px; color:var(--accent); font-weight:700;
+  font-family:"Open Sans", sans-serif; cursor:pointer; text-decoration:underline; font-size:1rem;
+}
 
+/* ---------- einde gratis rapport ---------- */
+.rapport-einde{ padding-inline:2px; }
+.rapport-einde h3{ font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.3rem; color:var(--heading-2); margin:0 0 4px; letter-spacing:-.02em; }
+.rapport-einde p{ margin:0; color:var(--text); }
+
+/* ---------- voettekst ---------- */
+.rapport-bottom{ display:flex; flex-direction:column; gap:24px; }
 .rapport-plain{ padding-inline:2px; display:flex; flex-direction:column; gap:8px; }
-.rapport-plain h3{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.3rem; color:var(--heading-2); margin:0; letter-spacing:-.02em; }
+.rapport-plain h3{ font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.3rem; color:var(--heading-2); margin:0; letter-spacing:-.02em; }
 .rapport-plain .sources{ gap:8px; margin-top:4px; }
 .rapport-plain .sources a{ color:var(--accent); }
-
 .rapport-footer{ padding-inline:2px; font-size:.875rem; color:var(--text-subtle); line-height:1.5; }
 
 @media (min-width:900px){
-  .rapport{ max-width:960px; }
-  .rapport-top{ flex-direction:row; align-items:stretch; }
-  .rapport-top .rapport-head{ flex:1 0 0; justify-content:center; }
-  .rapport-top-side{ flex:1 0 0; display:flex; flex-direction:column; gap:16px; }
+  .rapport{ max-width:1024px; }
+  .stats-url{ flex-direction:row; align-items:flex-end; gap:40px; }
+  .stats-url-main{ flex:1 1 0; }
+  .site-shot{ flex:0 0 375px; align-self:flex-end; }
+  .upsell-banner{ flex-direction:row; align-items:center; justify-content:space-between; gap:32px; }
+  .upsell-banner-tekst{ flex:1 1 0; display:flex; flex-direction:column; gap:12px; }
+  .upsell-prijs{ text-align:right; }
+  /* Tweede groep uitklappers staat in het design op iets meer dan de helft. */
+  .accordion.smal{ max-width:589px; }
+  .rapport-bottom{ flex-direction:row; gap:40px; align-items:flex-start; }
+  .rapport-bottom > *{ flex:1 1 0; }
+  /* Raster in plaats van kolommen: column-count vult kolom voor kolom, en dan
+     staat C02 onder C01 in plaats van ernaast zoals in het design. */
+  .acc-body.acc-columns{
+    display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:24px 32px; align-items:start;
+  }
+  .acc-body.acc-columns .acc-category{ padding-top:0; margin-top:0; border-top:none; }
+}
+@media (min-width:900px) and (max-width:1199px){
+  .acc-body.acc-columns{ grid-template-columns:repeat(2, minmax(0,1fr)); }
 }
 
 /* ---------- Deep Dive-kaart en informatiepaneel (Figma "Rapport", 15 sep) ---------- */
 
 .deepdive-card{
-  background:var(--surface); border:1px solid var(--purple-300);
-  border-radius:var(--radius-lg); padding:24px; margin-top:30px;
-}
-.deepdive-price{
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
-  font-size:2rem; line-height:1.1; letter-spacing:-.05em; color:var(--heading-2);
+  background:var(--purple-50); border:1px solid var(--purple-300);
+  border-radius:var(--radius-lg); padding:32px 24px;
 }
 .deepdive-title{
   font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
-  font-size:3.5rem; line-height:1.05; letter-spacing:-.05em; color:var(--heading-2);
-  margin:0 0 24px;
+  font-size:clamp(1.5rem, 5vw, 2.25rem); line-height:1.05; letter-spacing:-.04em;
+  color:var(--heading-2); margin:0;
+}
+.deepdive-price{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:clamp(1.15rem, 3.5vw, 1.5rem); line-height:1.2; letter-spacing:-.03em;
+  color:var(--heading-2); margin:0 0 20px;
 }
 .deepdive-card p{ margin:0 0 12px; }
 .deepdive-card ul{ margin:0 0 12px; padding-left:24px; }
@@ -555,8 +647,6 @@ button.textlink{
 /* Mobiel wordt hetzelfde paneel een bottomsheet. Het verschil zit volledig
    hier, zodat er in JavaScript geen breakpoint-logica nodig is. */
 @media (max-width:860px){
-  .deepdive-price{ font-size:1.375rem; }
-  .deepdive-title{ font-size:2.25rem; margin-bottom:16px; }
   .deepdive-actions{ gap:20px; }
   .sheet-overlay{ align-items:flex-end; justify-content:stretch; }
   .sheet-panel{
@@ -574,30 +664,3 @@ body.sheet-open{ overflow:hidden; }
 
 /* Witruimte tussen het afgeronde gratis blok en de Deep Dive-stappen. */
 .run-step-sep{ height:16px; }
-
-/* ---------- Aanvullingen op het accordion-rapport ---------- */
-
-/* De tweede groep uit het design (Free Evidence Score, Executive summary en
-   verder) staat daar in gewone schrijfwijze, niet in kapitalen. */
-.acc-header .acc-title.plain{ text-transform:none; letter-spacing:0; font-size:1rem; }
-
-/* Ingeklapte lopende tekst toont alleen de eerste alinea. */
-.truncate-short p:not(:first-child){ display:none; }
-
-/* Voettekst: mobiel onder elkaar, op desktop disclaimer links en het
-   bronnenregister rechts, zoals in het design. */
-.rapport-bottom{ display:flex; flex-direction:column; gap:16px; }
-@media (min-width:900px){
-  .rapport-bottom{ flex-direction:row; gap:32px; align-items:flex-start; }
-  .rapport-bottom > *{ flex:1 1 0; }
-  /* Raster in plaats van kolommen: column-count vult kolom voor kolom, en dan
-     staat C02 onder C01 in plaats van ernaast zoals in het design. */
-  .acc-body.acc-columns{
-    column-count:initial; display:grid; grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:24px 32px; align-items:start;
-  }
-  .acc-body.acc-columns .acc-category{ padding-top:0; margin-top:0; border-top:none; }
-}
-@media (min-width:900px) and (max-width:1199px){
-  .acc-body.acc-columns{ grid-template-columns:repeat(2,minmax(0,1fr)); }
-}

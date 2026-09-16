@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const coaStore = require('./coaStore');
 const coaCrawler = require('./coaCrawler');
+const siteShot = require('./siteShot');
 const pipeline = require('./pipeline');
 const auth = require('./auth');
 const rl = require('./rateLimit');
@@ -163,6 +164,22 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
   }
 });
 
+// Schermafdruk van de website van een leverancier. Bewust publiek en op
+// hostnaam: het is een foto van een openbare homepage, er zit geen enkel
+// casegegeven in, en een <img>-tag kan geen Authorization-header meesturen.
+// Bestaat er geen afdruk, dan geeft dit 404 en toont de frontend de lege plek.
+app.get('/api/sites/:host/screenshot', rl.read, async (req, res) => {
+  try {
+    const shot = await siteShot.getShot(siteShot.sleutelVanUrl(req.params.host));
+    if (!shot) return res.status(404).json({ error: 'not_found' });
+    res.set('Content-Type', shot.mimetype || 'image/jpeg');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(shot.bytes);
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Metadata van geüploade documenten bij een case (voor een bijlagenlijstje
 // in de UI) — de bytes zelf komen pas via de download-route hieronder.
 app.get('/api/audits/:id/documents', rl.read, auth.requireOwnerToken, caseAccess, async (req, res) => {
@@ -282,6 +299,9 @@ db.initSchema()
   // audit gewoon door - alleen zonder hergebruik en zonder geschiedenis.
   .then(() => coaStore.initCoaSchema().catch((e) => {
     console.error('LET OP: COA-archieftabellen konden niet worden aangemaakt; archief staat uit. Reden:', (e && e.message) || e);
+  }))
+  .then(() => siteShot.initShotSchema().catch((e) => {
+    console.error('LET OP: tabel voor schermafdrukken kon niet worden aangemaakt; het rapport toont dan de lege plek. Reden:', (e && e.message) || e);
   }))
   .then(() => {
     if (!process.env.ADMIN_TOKEN) console.warn('LET OP: ADMIN_TOKEN is niet gezet — bestaande cases van vóór de eigenaarsmigratie zijn niet meer opvraagbaar.');

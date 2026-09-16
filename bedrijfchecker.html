@@ -10,8 +10,10 @@
 
 
 <div class="wrap">
-  <header class="top">
-    <button type="button" class="brand-link" id="brand-home">Bedrijfchecker</button>
+  <header class="site-header">
+    <button type="button" class="site-logo" id="brand-home" aria-label="Naar de startpagina">
+      <img src="PEPPROOF-LOGO.svg" alt="Pep Proof" width="258" height="80">
+    </button>
   </header>
 
   <div id="capability-banner"></div>
@@ -175,6 +177,10 @@
     try { return new Date(ts).toLocaleDateString('nl-NL', {day:'numeric', month:'short', year:'numeric'}); }
     catch(e){ return ''; }
   }
+  function fmtDateLang(ts){
+    try { return new Date(ts).toLocaleDateString('nl-NL', {day:'numeric', month:'long', year:'numeric'}); }
+    catch(e){ return ''; }
+  }
   function fmtDateTime(ts){
     try { return new Date(ts).toLocaleString('nl-NL', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}); }
     catch(e){ return ''; }
@@ -196,7 +202,7 @@
     return 'grey';
   }
   function catColorLabel(color){
-    if (color === 'green') return 'Sterk verifieerbaar';
+    if (color === 'green') return 'Geslaagd';
     if (color === 'orange') return 'Aandachtspunt';
     if (color === 'red') return 'Aangetoond probleem';
     return 'Onvoldoende informatie';
@@ -600,17 +606,28 @@
         var open = item.getAttribute('data-open') !== 'true';
         item.setAttribute('data-open', open ? 'true' : 'false');
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        // Pas nu is de tekst zichtbaar en dus meetbaar.
+        if (open) klemCheck(item);
       });
     });
-    Array.prototype.forEach.call(app.querySelectorAll('.read-more-toggle'), function(btn){
+    Array.prototype.forEach.call(app.querySelectorAll('.lees-meer'), function(btn){
       btn.addEventListener('click', function(){
         var blok = btn.parentNode;
-        var uit = blok.classList.contains('truncate-short');
-        blok.classList.toggle('truncate-short', !uit);
-        blok.classList.toggle('truncate-full', uit);
-        btn.textContent = uit ? 'Lees minder' : 'Lees meer';
+        var open = blok.classList.toggle('open');
+        btn.textContent = open ? 'Lees minder' : 'Lees meer';
       });
     });
+    // Geen schermafdruk op de server? Dan de lege plek laten zien in plaats
+    // van een kapot plaatje.
+    Array.prototype.forEach.call(app.querySelectorAll('.site-shot-foto'), function(img){
+      img.addEventListener('error', function(){
+        img.hidden = true;
+        var leeg = img.parentNode.querySelector('.site-shot-leeg');
+        if (leeg) leeg.hidden = false;
+      });
+    });
+    klemCheck(app);
+    startBalken(app);
     Array.prototype.forEach.call(app.querySelectorAll('.js-deepdive-info'), function(btn){
       btn.addEventListener('click', function(){ openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
     });
@@ -873,10 +890,22 @@
       '<p style="margin-top:8px;color:var(--text-muted);">' + escapeHtml(note) + ' (' + gate.foundCount + ' COA gevonden, ' + gate.usableCount + ' bruikbaar.)</p></div>';
   }
 
-  // ---------- Rapport (Figma "Rapport" 494:14614) ----------
-  // De opmaak staat al in bedrijfchecker.css (.rapport, .accordion, .acc-item,
-  // .rapport-upsell). Deze functies leveren precies de markup die die regels
-  // verwachten; er wordt hier geen losse stijl meer bijgezet.
+  // ---------- Rapport (Figma "Rapport" 494:14614, bijgewerkt 16 sep) ----------
+
+  // De drie balken in het Stats URL-block. Bewust nog los van de engine: de
+  // getallen staan hier, zodat er straks maar een plek is om ze aan een
+  // uitkomst te koppelen.
+  var STAT_BALKEN = [
+    { titel: 'Titel onderdeel', pct: 33, uitleg: 'Korte uitleg over deze score' },
+    { titel: 'Titel onderdeel', pct: 82, uitleg: 'Korte uitleg over deze score' },
+    { titel: 'Titel onderdeel', pct: 66, uitleg: 'Korte uitleg over deze score' }
+  ];
+
+  // Hoeveel regels blijven staan voordat er wordt ingeklapt. In de smalle
+  // COA-kolommen is drie regels bijna niets, in de brede tekstblokken erna is
+  // drie regels juist een flinke lap. Vandaar twee waarden.
+  var KLEM_COA = 4;
+  var KLEM_TEKST = 3;
 
   function accItem(titel, bodyHtml, opties){
     if (!bodyHtml) return '';
@@ -890,15 +919,32 @@
       '<div class="acc-body' + (o.columns ? ' acc-columns' : '') + '">' + bodyHtml + '</div></div>';
   }
 
-  // Lange lopende tekst met "Lees meer". Welke alinea's zichtbaar zijn regelt
-  // de CSS via .truncate-short; hier staan ze allemaal in de markup.
-  function truncateBlok(tekst){
-    var alineas = String(tekst || '').split(/\n\s*\n/).filter(function(t){ return t.trim(); });
-    if (!alineas.length) return '';
-    var html = alineas.map(function(t){ return '<p>' + escapeHtml(t.trim()) + '</p>'; }).join('');
-    if (alineas.length === 1) return '<div class="truncate">' + html + '</div>';
-    return '<div class="truncate truncate-short">' + html +
-      '<button type="button" class="read-more-toggle">Lees meer</button></div>';
+  function alineasHtml(tekst){
+    return String(tekst || '').split(/\n\s*\n/)
+      .filter(function(t){ return t.trim(); })
+      .map(function(t){ return '<p>' + escapeHtml(t.trim()) + '</p>'; }).join('');
+  }
+
+  // Inklappen op regels in plaats van op tekens: -webkit-line-clamp knipt op
+  // de regel zoals die op dit scherm valt, dus het klopt op elke breedte. De
+  // knop staat er alleen als er echt iets wegvalt; dat bepaalt klemCheck().
+  function klemBlok(inhoudHtml, regels){
+    if (!inhoudHtml) return '';
+    return '<div class="klem" style="--regels:' + (regels || KLEM_TEKST) + '">' +
+      '<div class="klem-tekst">' + inhoudHtml + '</div>' +
+      '<button type="button" class="lees-meer" hidden>Lees meer</button></div>';
+  }
+
+  function klemCheck(root){
+    var blokken = (root || document).querySelectorAll('.klem');
+    Array.prototype.forEach.call(blokken, function(blok){
+      var tekst = blok.querySelector('.klem-tekst');
+      var knop = blok.querySelector('.lees-meer');
+      if (!tekst || !knop || blok.classList.contains('open')) return;
+      // Nog ingeklapte uitklapper: hoogte is 0, dus meten heeft geen zin.
+      if (!tekst.clientHeight) return;
+      knop.hidden = tekst.scrollHeight <= tekst.clientHeight + 2;
+    });
   }
 
   function bevindingenLijst(items, cls){
@@ -919,7 +965,7 @@
         : '';
       return '<div class="acc-category"><h4>' + escapeHtml(id + ' - ' + (def ? def.label : id)) + '</h4>' +
         '<span class="rapport-label ' + catColorClass(a.color) + '">' + escapeHtml(catColorLabel(a.color)) + '</span>' +
-        '<p>' + escapeHtml(a.rationale || '') + '</p>' + note + '</div>';
+        klemBlok('<p>' + escapeHtml(a.rationale || '') + '</p>', KLEM_COA) + note + '</div>';
     }).join('');
   }
 
@@ -972,30 +1018,68 @@
       '<tbody>' + rows + '</tbody></table></div>' + note;
   }
 
-  // "In het kort" heeft geen eigen veld in het rapport: de synthese levert wel
-  // een executive summary en de engine een score. Hier staat dus de score plus
-  // de eerste alinea van die samenvatting, geen nieuw verzonnen tekst.
-  function kortBody(c, engine){
-    var r = c.report || {};
-    var delen = [];
-    var es = engine && engine.evidenceScore;
-    if (es && es.published) delen.push('Free Evidence Score: ' + es.value + ' van 100, coverage ' + Math.round(es.coverage) + '%.');
-    else if (es) delen.push('Nog geen Evidence Score: ' + (es.reason || 'onvoldoende bewijsbasis') + '.');
-    var samenvatting = String(r.executiveSummary || '').trim();
+  // Korte uitleg boven de balken. Er is geen apart veld voor in het rapport,
+  // dus dit is de eerste alinea van de executive summary.
+  function korteUitleg(c){
+    var samenvatting = String((c.report || {}).executiveSummary || '').trim();
     var eerste = samenvatting.split(/\n\s*\n/)[0] || samenvatting;
-    if (eerste) delen.push(eerste);
-    if (!delen.length) return '';
-    return '<p>' + escapeHtml(delen.join(' ')) + '</p>';
+    return eerste ? '<p class="stats-intro">' + escapeHtml(eerste) + '</p>' : '';
   }
 
-  function upsellKaart(c){
+  function statBalkenHtml(){
+    return '<div class="stat-bars">' + STAT_BALKEN.map(function(b){
+      return '<div class="stat-bar" data-pct="' + b.pct + '" style="--pct:' + b.pct + '">' +
+        '<div class="stat-bar-head"><span class="stat-bar-title">' + escapeHtml(b.titel) + '</span>' +
+        '<span class="stat-bar-value">0%</span></div>' +
+        '<div class="stat-bar-track"><span class="stat-bar-fill"></span></div>' +
+        '<p class="stat-bar-note">' + escapeHtml(b.uitleg) + '</p></div>';
+    }).join('') + '</div>';
+  }
+
+  // Schermafdruk van de website, in een browservenster. De backend maakt hem
+  // tijdens de run en bewaart hem een maand; is hij er nog niet, dan geeft de
+  // route 404 en zetten we de lege plek neer (zie wiring in renderDetail).
+  function siteShotHtml(c){
+    var host = domainOf(c.website);
+    var url = API_BASE + '/api/sites/' + encodeURIComponent(host) + '/screenshot';
+    return '<figure class="site-shot">' +
+      '<div class="site-shot-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>' +
+      '<span class="site-shot-url">' + escapeHtml(host) + '</span></div>' +
+      '<div class="site-shot-img">' +
+      '<img class="site-shot-foto" src="' + escapeHtml(url) + '" alt="Schermafdruk van ' + escapeHtml(host) + '" loading="lazy">' +
+      '<div class="site-shot-leeg" hidden>Schermafdruk wordt bij de volgende run gemaakt</div>' +
+      '</div></figure>';
+  }
+
+  function upsellBanner(c){
     if (c.tier === 'deep') return '';
-    return '<div class="rapport-upsell">' +
-      '<div class="rapport-upsell-head"><h3>Een deepdive</h3><span class="price">&euro; 3,50</span></div>' +
-      '<div class="rapport-upsell-body"><p>Wil je nog meer weten over deze supplier? Dan kunnen we nog veel meer informatie voor je ophalen</p></div>' +
-      '<div class="rapport-upsell-actions">' +
-      '<button type="button" class="rapport-upsell-link js-deepdive-info">Wat is een Deepdive?</button>' +
-      '</div></div>';
+    return '<div class="upsell-banner">' +
+      '<div class="upsell-banner-tekst">' +
+      '<h3>Nog meer Proof met een deepdive</h3>' +
+      '<p>Wil je nog meer weten over deze leverancier? Dan kunnen we nog veel meer informatie voor je ophalen. Incl KVK handelsregister t.w.v. &euro; 2,95</p>' +
+      '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
+      '</div>' +
+      '<div class="upsell-prijs"><span class="klein">Voor slechts</span>' +
+      '<span class="groot">&euro; 3,<span class="cent">50</span></span></div>' +
+      '</div>';
+  }
+
+  function deepdiveKaart(){
+    return '<section class="deepdive-card">' +
+      '<h3 class="deepdive-title">Nog meer Proof met een deepdive</h3>' +
+      '<p class="deepdive-price">Voor slechts &euro;3,50</p>' +
+      '<p>De <strong>Deep Dive</strong> bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
+      '<ul>' +
+        '<li>Officiële bedrijfsregistratie via de KvK (t.w.v. &euro; 2,95)</li>' +
+        '<li>Upload van eigen foto\'s om je eigen batch te verifiëren</li>' +
+        '<li>Welke onderneming zit daadwerkelijk achter de webshop?</li>' +
+        '<li>Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.</li>' +
+      '</ul>' +
+      '<p>En nog veel meer</p>' +
+      '<div class="deepdive-actions">' +
+        '<button type="button" class="btn-cta" id="continue-deep">Ja, ik wil meer bewijs</button>' +
+        '<button type="button" class="textlink js-deepdive-info">Meer informatie</button>' +
+      '</div></section>';
   }
 
   function renderReport(c){
@@ -1003,26 +1087,22 @@
     var engine = c.engineResult;
     var documents = c.documents || [];
     var coaRecords = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.coaRecords) || [];
-    var kort = kortBody(c, engine);
 
     var out = '<div class="rapport">';
 
-    // Kop, "In het kort" en de upsell. Op desktop zet de CSS deze twee
-    // kolommen naast elkaar.
-    out += '<div class="rapport-top">' +
-      '<div class="rapport-head">' +
-      '<div class="url">' + escapeHtml(c.website) + '</div>' +
-      '<div class="meta"><span class="kvk">KvK-uittreksel: ' + (c.kvkNummer ? escapeHtml(c.kvkNummer) : 'nog niet gekoppeld') + '</span>' +
-      '<span class="created">Aangemaakt: ' + fmtDate(c.createdAt) + '</span></div>' +
-      (c.naam && c.naam !== c.website ? '<div class="company">' + escapeHtml(c.naam) + '</div>' : '') +
-      (kort ? '<div class="rapport-kort"><h3>In het kort</h3>' + kort + '</div>' : '') +
-      renderGateBanner(engine) +
-      '</div>' +
-      '<div class="rapport-top-side">' + upsellKaart(c) + '</div></div>';
+    out += '<div class="stats-url"><div class="stats-url-main">' +
+      '<div class="stats-datum">' + fmtDateLang(c.createdAt) + '</div>' +
+      '<h2 class="stats-domein">' + escapeHtml(domainOf(c.website)) + '</h2>' +
+      (c.naam && c.naam !== c.website ? '<p class="stats-bedrijf">' + escapeHtml(c.naam) + '</p>' : '') +
+      korteUitleg(c) +
+      statBalkenHtml() +
+      '</div>' + siteShotHtml(c) + '</div>';
 
-    // Groep 1: de 17 categorieën, per pijler een uitklapbaar blok.
+    out += renderGateBanner(engine);
+    out += upsellBanner(c);
+
     if (engine && engine.assessments){
-      out += '<p class="rapport-group-label">Pep Proof</p><div class="accordion">' +
+      out += '<h3 class="rapport-kop">Rapport details</h3><div class="accordion">' +
         accItem('COA & productbewijs', pijlerBody(engine, 'COA'), { open:true, columns:true }) +
         accItem('Laboratorium', pijlerBody(engine, 'LAB'), { columns:true }) +
         accItem('Bedrijf', pijlerBody(engine, 'COMPANY'), { columns:true, sub: c.tier === 'deep' ? '' : 'Light versie' }) +
@@ -1030,10 +1110,9 @@
         '</div>';
     }
 
-    // Groep 2: scores en de geschreven onderdelen van het rapport.
     var groep2 = accItem('Free Evidence Score', evidenceScoreBody(engine), { plain:true }) +
       accItem('Supplier Score (Deep Dive)', supplierScoreBody(engine, c.tier), { plain:true }) +
-      accItem('Executive summary', truncateBlok(r.executiveSummary), { plain:true, open:true }) +
+      accItem('Executive summary', klemBlok(alineasHtml(r.executiveSummary)), { plain:true, open:true }) +
       accItem('Sterkste positieve bevindingen', bevindingenLijst(r.sterkstePositieveBevindingen, 'ok'), { plain:true }) +
       accItem('Belangrijkste aandachtspunten', bevindingenLijst(r.belangrijksteAandachtspunten, ''), { plain:true }) +
       accItem('Rode vlaggen', (r.rodeVlaggen && r.rodeVlaggen.length)
@@ -1054,33 +1133,22 @@
       accItem('Geüploade documenten', (documents && documents.length)
         ? '<ul class="findings">' + documents.map(function(d){ return '<li>' + escapeHtml(d.filename) + '</li>'; }).join('') + '</ul>'
         : '', { plain:true }) +
-      accItem('Eindconclusie', truncateBlok(r.eindconclusie), { plain:true });
-    if (groep2) out += '<div class="accordion">' + groep2 + '</div>';
+      accItem('Eindconclusie', klemBlok(alineasHtml(r.eindconclusie)), { plain:true });
+    if (groep2) out += '<div class="accordion smal">' + groep2 + '</div>';
+
+    if (c.tier !== 'deep'){
+      out += '<div class="rapport-einde"><h3>Einde gratis rapport.</h3>' +
+        '<p>Maar we kunnen nog veel verder in de materie duiken met een Deepdive</p></div>';
+    }
+
+    if (c.status === 'gratis_klaar') out += deepdiveKaart();
 
     out += accordionLos('Top vragen aan leverancier', (r.top5Vragen && r.top5Vragen.length)
       ? '<ol class="numbered">' + r.top5Vragen.map(function(q){ return '<li>' + escapeHtml(q) + '</li>'; }).join('') + '</ol>'
       : '');
 
-    // De volledige Deep Dive-kaart met beide acties.
-    if (c.status === 'gratis_klaar'){
-      out += '<section class="deepdive-card">' +
-        '<div class="deepdive-price">Voor slechts &euro;3,50</div>' +
-        '<h3 class="deepdive-title">Een deepdive</h3>' +
-        '<p>De <strong>Deep Dive</strong> bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
-        '<ul>' +
-          '<li>Officiële bedrijfsregistratie via de KvK (t.w.v. &euro; 2,95)</li>' +
-          '<li>Upload van eigen foto\'s om je eigen batch te verifiëren</li>' +
-          '<li>Welke onderneming zit daadwerkelijk achter de webshop?</li>' +
-          '<li>Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.</li>' +
-        '</ul>' +
-        '<p>En nog veel meer</p>' +
-        '<div class="deepdive-actions">' +
-          '<button type="button" class="btn-cta" id="continue-deep">Ja, ik wil meer bewijs</button>' +
-          '<button type="button" class="textlink js-deepdive-info">Meer informatie</button>' +
-        '</div></section>';
-    }
-
-    // Voettekst: disclaimer en bronnenregister, op desktop naast elkaar.
+    // Voettekst: in het design staat het bronnenregister links en de
+    // disclaimer rechts.
     var bronnen = (r.bronnenregister && r.bronnenregister.length)
       ? '<div class="rapport-plain"><h3>Bronnenregister</h3><div class="sources">' +
         r.bronnenregister.map(function(b){
@@ -1091,16 +1159,42 @@
       ? 'Dit rapport is de betaalde Deep Dive, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik.'
       : 'Dit rapport is de gratis Evidence Check, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik. Een ontbrekend KvK-uittreksel verlaagt geen enkele score automatisch.') +
       '</p>';
-    out += '<div class="rapport-bottom">' + disclaimer + bronnen + '</div>';
+    out += '<div class="rapport-bottom">' + bronnen + disclaimer + '</div>';
 
     out += '</div>';
     return out;
   }
 
-  // Een losse uitklapper buiten een groep, zoals "Top vragen aan leverancier".
   function accordionLos(titel, bodyHtml){
     if (!bodyHtml) return '';
     return '<div class="accordion">' + accItem(titel, bodyHtml, { plain:true }) + '</div>';
+  }
+
+  // De balken slaan om de beurt uit en het percentage telt mee omhoog.
+  function startBalken(root){
+    var balken = (root || document).querySelectorAll('.stat-bar');
+    var rustig = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    Array.prototype.forEach.call(balken, function(balk, i){
+      var doel = Number(balk.getAttribute('data-pct')) || 0;
+      var getal = balk.querySelector('.stat-bar-value');
+      if (rustig){
+        balk.classList.add('is-on');
+        if (getal) getal.textContent = doel + '%';
+        return;
+      }
+      setTimeout(function(){
+        balk.classList.add('is-on');
+        var start = null, duur = 1100;
+        function stap(t){
+          if (start === null) start = t;
+          var v = Math.min(1, (t - start) / duur);
+          var e = 1 - Math.pow(1 - v, 3);
+          if (getal) getal.textContent = Math.round(doel * e) + '%';
+          if (v < 1) requestAnimationFrame(stap);
+        }
+        requestAnimationFrame(stap);
+      }, 180 * i);
+    });
   }
 
   // ---------- retry-acties ----------
