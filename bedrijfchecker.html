@@ -605,6 +605,13 @@
       btn.addEventListener('click', function(){
         var item = btn.parentNode;
         var open = item.getAttribute('data-open') !== 'true';
+        // Er staat er altijd maar een open, ook over de groepen heen.
+        Array.prototype.forEach.call(app.querySelectorAll('.acc-item'), function(ander){
+          if (ander === item) return;
+          ander.setAttribute('data-open', 'false');
+          var kop = ander.querySelector('.acc-header');
+          if (kop) kop.setAttribute('aria-expanded', 'false');
+        });
         item.setAttribute('data-open', open ? 'true' : 'false');
         btn.setAttribute('aria-expanded', open ? 'true' : 'false');
         // Pas nu is de tekst zichtbaar en dus meetbaar.
@@ -1122,7 +1129,7 @@
 
     if (engine && engine.assessments){
       out += '<h3 class="rapport-kop">Rapport details</h3><div class="accordion">' +
-        accItem('COA & productbewijs', pijlerBody(engine, 'COA'), { open:true, columns:true }) +
+        accItem('COA & productbewijs', pijlerBody(engine, 'COA'), { columns:true }) +
         accItem('Laboratorium', pijlerBody(engine, 'LAB'), { columns:true }) +
         accItem('Bedrijf', pijlerBody(engine, 'COMPANY'), { columns:true, sub: c.tier === 'deep' ? '' : 'Light versie' }) +
         accItem('Reputatie & commerciële transparantie', pijlerBody(engine, 'REPUTATION'), { columns:true }) +
@@ -1131,7 +1138,7 @@
 
     var groep2 = accItem('Free Evidence Score', evidenceScoreBody(engine), { plain:true }) +
       accItem('Supplier Score (Deep Dive)', supplierScoreBody(engine, c.tier), { plain:true }) +
-      accItem('Executive summary', klemBlok(alineasHtml(r.executiveSummary)), { plain:true, open:true }) +
+      accItem('Executive summary', klemBlok(alineasHtml(r.executiveSummary)), { plain:true }) +
       accItem('Sterkste positieve bevindingen', bevindingenLijst(r.sterkstePositieveBevindingen, 'ok'), { plain:true }) +
       accItem('Belangrijkste aandachtspunten', bevindingenLijst(r.belangrijksteAandachtspunten, ''), { plain:true }) +
       accItem('Rode vlaggen', (r.rodeVlaggen && r.rodeVlaggen.length)
