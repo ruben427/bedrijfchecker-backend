@@ -589,7 +589,7 @@
     }
     if (toontRapport){
       html += renderReport(c);
-      html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';
+      html += '<section class="report-block"><h3>Afgeronde stappen</h3>' + renderProgress(c) + '</section>';
       html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren (nieuwe audit)</button></div>';
     }
 
@@ -639,17 +639,21 @@
     Array.prototype.forEach.call(app.querySelectorAll('.js-deepdive-info'), function(btn){
       btn.addEventListener('click', function(){ openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
     });
-    var continueBtn = app.querySelector('#continue-deep');
-    if (continueBtn) continueBtn.addEventListener('click', function(){
-      continueBtn.disabled = true; continueBtn.textContent = 'Starten…';
-      apiContinueDeep(c.id).then(function(updated){
-        if (state.currentCaseId !== c.id) return;
-        state.currentCase = updated;
-        render();
-        if (updated.status === 'bezig') ensureCasePoller(c.id);
-      }).catch(function(e){
-        continueBtn.disabled = false; continueBtn.textContent = 'Ja, ik wil meer bewijs';
-        alert('Starten van de Deep Dive is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+    // De Deep Dive is vanaf twee plekken te starten: de kaart en de knop
+    // onder de stappenlijst. Beide lopen via dezelfde klasse.
+    Array.prototype.forEach.call(app.querySelectorAll('.js-continue-deep'), function(btn){
+      var oorspronkelijk = btn.textContent;
+      btn.addEventListener('click', function(){
+        btn.disabled = true; btn.textContent = 'Starten…';
+        apiContinueDeep(c.id).then(function(updated){
+          if (state.currentCaseId !== c.id) return;
+          state.currentCase = updated;
+          render();
+          if (updated.status === 'bezig') ensureCasePoller(c.id);
+        }).catch(function(e){
+          btn.disabled = false; btn.textContent = oorspronkelijk;
+          alert('Starten van de Deep Dive is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+        });
       });
     });
     // (De 'bezig'-status heeft een eigen #stop-audit-link + wiring hierboven
@@ -833,7 +837,6 @@
     var progress = c.progress || [];
     var doneMap = {};
     progress.forEach(function(p){ doneMap[p.key] = p; });
-    var steps = STEP_DEFS;
     var allowRetry = c.status !== 'bezig';
     var running = !!state.runningCaseIds[c.id];
     // Bij een retry van één losse stap (runSingleStep) loopt er maar één
@@ -841,7 +844,7 @@
     // zodat hier niet alle stappen "bezig…" tonen terwijl er maar één draait.
     var runningStepKey = state.runningStepKeys[c.id];
 
-    var items = steps.map(function(s){
+    function regel(s){
       var done = doneMap[s.key];
       var isCurrent = c.status === 'bezig' && c.currentStep && c.currentStep.key === s.key;
       var isRetryingThis = running && s.key === runningStepKey;
@@ -856,12 +859,33 @@
           ' &middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span>';
       } else if (stepStats && stepStats[s.key]){
         hint = '<span class="step-hint">gemiddeld ' + fmtDuration(stepStats[s.key].avgMs) + '</span>';
-      } else if (!done && FREE_STEP_KEYS.indexOf(s.key) === -1 && s.key !== 'categorize' && s.key !== 'reportA' && s.key !== 'reportB' && c.status !== 'bezig'){
-        hint = '<span class="step-hint">onderdeel van Deep Dive</span>';
       }
       var retryBtn = (done && allowRetry && !running) ? '<button type="button" class="step-retry btn ghost" data-key="' + s.key + '">opnieuw</button>' : '';
       return '<div class="progress-item ' + cls + '"><span class="dot"></span><span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
-    }).join('');
+    }
+
+    // Eerst wat gedraaid is, in de volgorde waarin het draaide. Daarna pas
+    // wat de Deep Dive nog zou toevoegen; dat door elkaar zetten leest als
+    // een lijst met gaten erin.
+    var gedaan = STEP_DEFS.filter(function(s){
+      return doneMap[s.key] || (c.currentStep && c.currentStep.key === s.key) || s.key === runningStepKey;
+    });
+    var nogTeDoen = c.tier === 'deep' ? [] : STEP_DEFS.filter(function(s){
+      return DEEP_STEP_KEYS.indexOf(s.key) !== -1 && !doneMap[s.key];
+    });
+
+    var uit = '';
+    if (gedaan.length){
+      uit += '<div class="card"><div class="progress-list">' + gedaan.map(regel).join('') + '</div></div>';
+    }
+    if (nogTeDoen.length){
+      uit += '<h4 class="progress-kop">Deepdive check</h4>' +
+        '<div class="card"><div class="progress-list">' +
+        nogTeDoen.map(function(s){
+          return '<div class="progress-item"><span class="dot"></span><span class="step-label">' + escapeHtml(s.label) + '</span></div>';
+        }).join('') + '</div></div>' +
+        '<div class="progress-actie"><button type="button" class="btn-cta js-continue-deep">Start de deepdive check</button></div>';
+    }
 
     var stuckBanner = '';
     if (isStuck(c)){
@@ -870,7 +894,7 @@
         '<button type="button" class="btn ghost" id="retry-stuck" data-key="' + c.currentStep.key + '" style="margin-top:8px;border:1px solid var(--border);border-radius:6px;">Opnieuw proberen vanaf deze stap</button></div>';
     }
 
-    return '<div class="card"><div class="progress-list">' + items + '</div></div>' + stuckBanner;
+    return uit + stuckBanner;
   }
 
   // Exacte UI-state copy uit "Ruben - Webapp Audit Flow v1.0.md" §Concrete
@@ -1098,7 +1122,7 @@
       '</ul>' +
       '<p>En nog veel meer</p>' +
       '<div class="deepdive-actions">' +
-        '<button type="button" class="btn-cta" id="continue-deep">Ja, ik wil meer bewijs</button>' +
+        '<button type="button" class="btn-cta js-continue-deep" id="continue-deep">Ja, ik wil meer bewijs</button>' +
         '<button type="button" class="textlink js-deepdive-info">Meer informatie</button>' +
       '</div></section>';
   }

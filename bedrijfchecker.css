@@ -559,6 +559,12 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 }
 
 /* ---------- einde gratis rapport ---------- */
+.progress-kop{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.15rem;
+  color:var(--heading-2); margin:22px 0 10px 2px; letter-spacing:-.02em;
+}
+.progress-actie{ display:flex; justify-content:center; margin-top:16px; }
+
 .rapport-einde{ padding-inline:2px; }
 .rapport-einde h3{ font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.3rem; color:var(--heading-2); margin:0 0 4px; letter-spacing:-.02em; }
 .rapport-einde p{ margin:0; color:var(--text); }
