@@ -886,8 +886,11 @@
     var note = gate.status === 'PASS'
       ? 'Identity, Purity en Quantity zijn elk door minstens één bruikbare COA gedekt.'
       : 'Sommige kernvelden (Identity, Purity, Quantity) zijn nog niet allemaal door een bruikbare COA gedekt; wat wel bruikbaar is, wordt hieronder beoordeeld.';
-    return '<div class="card" style="margin-bottom:16px;"><span class="chip ' + chip + '">Evidence Gate: ' + escapeHtml(gate.status) + '</span>' +
-      '<p style="margin-top:8px;color:var(--text-muted);">' + escapeHtml(note) + ' (' + gate.foundCount + ' COA gevonden, ' + gate.usableCount + ' bruikbaar.)</p></div>';
+    // Geen eigen paneel meer: dit is een voetnoot bij het rapport, geen
+    // waarschuwing. De twee harde gate-uitkomsten hierboven blijven wel een
+    // banner, want die zeggen dat er iets niet beoordeeld kon worden.
+    return '<p class="rapport-gate">Evidence Gate: ' + escapeHtml(gate.status) + '. ' +
+      escapeHtml(note) + ' (' + gate.foundCount + ' COA gevonden, ' + gate.usableCount + ' bruikbaar.)</p>';
   }
 
   // ---------- Rapport (Figma "Rapport" 494:14614, bijgewerkt 16 sep) ----------
