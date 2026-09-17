@@ -6,6 +6,15 @@ const { Pool } = require('pg');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+// Zonder deze handler gooit pg een fout op een verbinding die stilletjes
+// wegvalt (herstart van de database, time-out van de proxy) als een
+// uncaught exception, en dan valt het hele proces om — midden in een lopende
+// audit. Loggen is genoeg: pg zet de kapotte verbinding zelf uit de pool en
+// de volgende query krijgt een nieuwe.
+pool.on('error', (err) => {
+  console.error('Postgres-verbinding viel weg (pool blijft draaien):', (err && err.message) || err);
+});
+
 async function initSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS cases (
