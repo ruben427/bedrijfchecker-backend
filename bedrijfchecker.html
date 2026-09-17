@@ -1100,6 +1100,26 @@
       '</div></figure>';
   }
 
+  // Wat er hergebruikt is uit het archief. Een leverancier die stil een
+  // rapport vervangt of weghaalt is een bevinding, geen technisch detail,
+  // dus dat hoort in het rapport te staan en niet alleen in de logs.
+  function archiefRegel(c){
+    var crawl = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.crawl) || null;
+    var a = crawl && crawl.archief;
+    if (!a) return '';
+    var gelezen = (a.hergebruikt || 0) + (a.opnieuwGelezen || 0);
+    if (!gelezen && !a.verdwenen && !a.terug) return '';
+    var delen = [];
+    if (gelezen){
+      delen.push(gelezen + (gelezen === 1 ? ' certificaat' : ' certificaten') + ' verwerkt: ' +
+        (a.hergebruikt || 0) + ' uit het archief, ' + (a.opnieuwGelezen || 0) + ' nu opnieuw gelezen');
+    }
+    if (a.vervangen) delen.push(a.vervangen + ' rapport' + (a.vervangen === 1 ? ' is' : 'en zijn') + ' sinds de vorige controle vervangen door een ander bestand op dezelfde plek');
+    if (a.verdwenen) delen.push(a.verdwenen + ' rapport' + (a.verdwenen === 1 ? ' stond' : 'en stonden') + ' er eerder wel en nu niet meer');
+    if (a.terug) delen.push(a.terug + ' eerder verdwenen rapport' + (a.terug === 1 ? ' staat' : 'en staan') + ' er weer');
+    return '<p class="rapport-voetnoot">' + escapeHtml(delen.join('. ') + '.') + '</p>';
+  }
+
   function upsellBanner(c){
     if (c.tier === 'deep') return '';
     return '<div class="upsell-banner">' +
@@ -1161,7 +1181,7 @@
         accItem('Laboratorium', pijlerBody(engine, 'LAB'), { columns:true }) +
         accItem('Bedrijf', pijlerBody(engine, 'COMPANY'), { columns:true, sub: c.tier === 'deep' ? '' : 'Light versie' }) +
         accItem('Reputatie & commerciële transparantie', pijlerBody(engine, 'REPUTATION'), { columns:true }) +
-        '</div>';
+        '</div>' + archiefRegel(c);
     }
 
     var groep2 = accItem('Free Evidence Score', evidenceScoreBody(engine), { plain:true }) +

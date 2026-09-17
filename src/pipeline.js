@@ -449,6 +449,10 @@ async function runResearchStep(caseId, ctx, key) {
     });
     const supplierKey = coaStore.supplierKeyFromUrl(ctx.website || ctx.naam);
     const archiveNotes = [];
+    // Wat er deze run uit het archief kwam en wat opnieuw gelezen moest
+    // worden. Stond alleen in de losse notities; zo is het ook op te tellen
+    // en in het rapport te tonen.
+    const archiefTelling = { hergebruikt: 0, opnieuwGelezen: 0, vervangen: 0, verdwenen: 0, terug: 0 };
     // Volgorde bepaalt welke documenten binnen de limiet vallen, en dat is
     // geen detail. Documenten van de eigen site van de leverancier gaan voor
     // op zoekmachinevondsten: dat volgt de bronhierarchie uit het protocol
@@ -499,6 +503,7 @@ async function runResearchStep(caseId, ctx, key) {
             // Ander bestand op dezelfde URL. Dit is een bevinding, geen
             // technisch detail: een stil vervangen rapport.
             archiveNotes.push({ url, status: 'vervangen', reden: 'zelfde URL, andere inhoud dan bij de vorige controle' });
+            archiefTelling.vervangen++;
           } else if (observation.change === 'moved') {
             archiveNotes.push({ url, status: 'gedeeld rapport', reden: 'zelfde document stond eerder op ' + observation.alsoSeenAt });
           }
@@ -512,6 +517,7 @@ async function runResearchStep(caseId, ctx, key) {
       }
 
       if (cached) {
+        archiefTelling.hergebruikt++;
         noteer(url, 'uit archief');
         const cachedRecords = ((cached && cached.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'archief' }));
         if (cachedRecords.length) {
@@ -540,6 +546,7 @@ async function runResearchStep(caseId, ctx, key) {
         if (autofetchRecords.length) {
           records[idx] = autofetchRecords[0];
           if (autofetchRecords.length > 1) records = records.concat(autofetchRecords.slice(1));
+          archiefTelling.opnieuwGelezen++;
           noteer(url, 'gelezen: ' + autofetchRecords.length + ' record(s)');
         } else if (records[idx] && records[idx].uit === 'crawl') {
           records[idx] = Object.assign({}, records[idx], { accessStatus: 'unreadable' });
@@ -669,6 +676,8 @@ async function runResearchStep(caseId, ctx, key) {
     const reconciled = await coaStore.reconcileSupplierIndex(supplierKey, seenUrls).catch(() => ({ gone: [], reappeared: [] }));
     (reconciled.gone || []).forEach((u) => archiveNotes.push({ url: u, status: 'verdwenen', reden: 'stond bij een eerdere controle wel op de site, nu niet meer' }));
     (reconciled.reappeared || []).forEach((u) => archiveNotes.push({ url: u, status: 'terug', reden: 'was eerder verdwenen, staat er nu weer' }));
+    archiefTelling.verdwenen = (reconciled.gone || []).length;
+    archiefTelling.terug = (reconciled.reappeared || []).length;
     const nietGeprobeerd = records.filter((r) => r && r.uit === 'crawl' && r.accessStatus === 'pending').length;
     const crawlInfo = {
       indexPaginas: (crawl && crawl.indexPages) || [],
@@ -678,6 +687,7 @@ async function runResearchStep(caseId, ctx, key) {
       maximaalOpgehaald: COA_AUTOFETCH_MAX,
       nietGeprobeerdWegensLimiet: nietGeprobeerd,
       lus: lusLog,
+      archief: archiefTelling,
       beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
       diagnose: (crawl && crawl.diagnose) || []
     };

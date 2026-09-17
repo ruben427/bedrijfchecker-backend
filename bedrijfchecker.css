@@ -495,10 +495,11 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 .upsell-prijs .cent{ font-size:1.1rem; vertical-align:super; }
 
 /* ---------- rapportdetails ---------- */
-.rapport-gate{
+.rapport-gate, .rapport-voetnoot{
   margin:0; padding-inline:2px; font-size:14px; font-style:italic;
   color:var(--text-muted); line-height:1.5;
 }
+.rapport-voetnoot{ margin-top:-12px; }
 
 .rapport-kop{
   font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; letter-spacing:-.03em;
