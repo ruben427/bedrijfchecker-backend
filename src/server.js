@@ -111,7 +111,7 @@ app.post('/api/diagnostics/crawl', rl.caseAction, auth.requireOwnerToken, async 
 // zodat het niet per ongeluk blijft staan. Geen invoer van buiten - de
 // lijst zit in labProbe.js - dus dit is geen SSRF-oppervlak.
 app.get('/api/diagnostics/labs', rl.caseAction, auth.requireOwnerToken, async (req, res) => {
-  if (process.env.LAB_PROBE !== 'on') {
+  if (String(process.env.LAB_PROBE || '').trim().toLowerCase() !== 'on') {
     return res.status(404).json({ error: 'not_enabled', message: 'Zet LAB_PROBE=on om deze meting aan te zetten.' });
   }
   try {

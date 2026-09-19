@@ -13,7 +13,11 @@
 // Geen gebruikersinvoer: de lijst hieronder is hardcoded, dus dit is geen
 // SSRF-oppervlak. Wie een lab wil toevoegen, doet dat hier.
 
-const TIMEOUT_MS = Number(process.env.LAB_PROBE_TIMEOUT_MS) || 15000;
+// 8 seconden, niet 15. Railway kapt een inkomend verzoek af voordat een
+// trage meting klaar is, en dan krijg je een lege reactie in plaats van een
+// uitkomst. Een lab dat na 8 seconden nog niets heeft gezegd, is voor ons
+// doel net zo goed onbereikbaar.
+const TIMEOUT_MS = Number(process.env.LAB_PROBE_TIMEOUT_MS) || 8000;
 
 const LABS = [
   // Janoshik: de echte referentie uit de validatieset. Die test twee dingen
@@ -127,14 +131,14 @@ async function probeOne(item) {
   }
 }
 
-// Rustig aan: drie tegelijk. We meten of iets open staat, niet hoe hard het
+// Vijf tegelijk: drie golven, dus ruim binnen de 30 seconden. We meten of iets open staat, niet hoe hard het
 // kan. Een reeks snelle verzoeken vanaf hetzelfde IP is precies wat een
 // botmuur wil zien.
 async function probeAll(labs) {
   const lijst = labs || LABS;
   const uit = [];
-  for (let i = 0; i < lijst.length; i += 3) {
-    const groep = lijst.slice(i, i + 3);
+  for (let i = 0; i < lijst.length; i += 5) {
+    const groep = lijst.slice(i, i + 5);
     const res = await Promise.all(groep.map(probeOne));
     res.forEach((r) => uit.push(r));
   }
