@@ -327,8 +327,177 @@ async function supplierHistory(supplierKey, limit) {
   }
 }
 
+
+// --- Kruisverband tussen leveranciers ------------------------------------
+// Het archief is content-addressed: publiceren twee shops hetzelfde bestand,
+// dan levert dat hetzelfde sha256 op. Dat signaal zat al in de data, maar was
+// nergens op te vragen - getDocumentsBySupplier stelt de vraag per
+// leverancier. Hieronder staat de vraag andersom: bij hoeveel leveranciers
+// komt dit document voor, en welke shops wijzen naar hetzelfde lab?
+//
+// LET OP: het veld "lijst" hieronder is een werklijst, GEEN methodiek-
+// uitspraak. Het stuurt geen enkele score aan en verschijnt alleen in het
+// interne overzicht, zodat zichtbaar is wanneer meerdere shops naar een lab
+// wijzen waar twijfel over bestaat. De beoordeling van een lab zelf hoort in
+// categorie L01 en komt niet uit deze tabel.
+const BEKENDE_LABS = [
+  { naam: 'Janoshik', lijst: 'betrouwbaar', patronen: ['janoshik'] },
+  { naam: 'Uzorak', lijst: 'betrouwbaar', patronen: ['uzorak'] },
+  { naam: 'BT Lab Testing', lijst: 'betrouwbaar', patronen: ['btlabtesting', 'btlab'] },
+  { naam: 'Sterigenix Analytical', lijst: 'betrouwbaar', patronen: ['sterigenix'] },
+  { naam: 'Freedom Diagnostics', lijst: 'betrouwbaar', patronen: ['freedomdiagnostics', 'freedomdiagnostic'] },
+  { naam: 'Vanguard Laboratory', lijst: 'betrouwbaar', patronen: ['vanguardlab', 'vanguardlaboratory'] },
+  { naam: 'Chromate', lijst: 'betrouwbaar', patronen: ['chromate'] },
+  { naam: 'Krause Labs', lijst: 'betrouwbaar', patronen: ['krause'] },
+  { naam: 'Kovera Labs', lijst: 'nieuw', patronen: ['kovera'] },
+  { naam: 'Brown Institute of Biomolecular Research', lijst: 'twijfel', patronen: ['browninstitute', 'brownbiomolecular'] },
+  { naam: 'ILS', lijst: 'twijfel', patronen: ['ilslab', 'ils'] },
+  { naam: 'Axiom Analytics', lijst: 'twijfel', patronen: ['axiomanalytics', 'axiom'] },
+  { naam: 'Finnrick', lijst: 'twijfel', patronen: ['finnrick'] }
+];
+
+function normaliseerLab(ruw) {
+  const plat = String(ruw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!plat) return { naam: 'onbekend', lijst: 'geen labnaam gelezen' };
+  for (const l of BEKENDE_LABS) {
+    if (l.patronen.some((p) => plat.indexOf(p) !== -1)) return { naam: l.naam, lijst: l.lijst };
+  }
+  return { naam: String(ruw).trim(), lijst: 'niet op de werklijst' };
+}
+
+function klasseVan(rij) {
+  const v = rij.verification;
+  return (v && v.class) || rij.authenticity_class || null;
+}
+
+// Alle documenten met hun bronnen in een keer; de aantallen blijven klein
+// (honderden), dus het groeperen gebeurt hier in JS. Dat houdt de
+// labnormalisatie op een plek in plaats van in SQL.
+async function crossSupplierOverview() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT d.sha256, d.lab, d.task_number, d.sample_number, d.authenticity_class,
+              d.verification, d.first_analyzed_at,
+              d.extraction->'coaRecords'->0->>'product'          AS product,
+              d.extraction->'coaRecords'->0->>'batchnummer'      AS batchnummer,
+              d.extraction->'coaRecords'->0->>'verificationKey'  AS sleutel,
+              s.supplier_key, s.url, s.status
+       FROM coa_documents d JOIN coa_sources s ON s.sha256 = d.sha256
+       ORDER BY d.first_analyzed_at DESC NULLS LAST`
+    );
+
+    const docs = new Map();
+    rows.forEach((r) => {
+      let d = docs.get(r.sha256);
+      if (!d) {
+        const lab = normaliseerLab(r.lab);
+        d = {
+          sha256: r.sha256, product: r.product || null, batchnummer: r.batchnummer || null,
+          lab: lab.naam, labRuw: r.lab || null, labLijst: lab.lijst,
+          taskNumber: r.task_number || null, sampleNumber: r.sample_number || null,
+          sleutel: r.sleutel || null, klasse: klasseVan(r), bronnen: []
+        };
+        docs.set(r.sha256, d);
+      }
+      d.bronnen.push({ supplierKey: r.supplier_key, url: r.url, status: r.status });
+    });
+
+    const alle = Array.from(docs.values());
+    alle.forEach((d) => {
+      d.leveranciers = Array.from(new Set(d.bronnen.map((b) => b.supplierKey))).sort();
+    });
+
+    // 1. Exact hetzelfde bestand bij meer dan een shop. Sterkste signaal:
+    //    byte-voor-byte identiek, dus doorverkocht of gekopieerd bewijs.
+    const gedeeldeDocumenten = alle
+      .filter((d) => d.leveranciers.length > 1)
+      .sort((a, b) => b.leveranciers.length - a.leveranciers.length);
+
+    // 2. Zelfde task-/rapportnummer bij meer dan een shop, maar andere
+    //    bestanden. Dat kan hergebruik zijn, maar ook een bewerkt document -
+    //    dit hoort altijd met de hand bij het lab nagetrokken te worden.
+    const perTask = new Map();
+    alle.forEach((d) => {
+      if (!d.taskNumber) return;
+      const sleutel = d.lab + '|' + String(d.taskNumber).trim().toLowerCase();
+      if (!perTask.has(sleutel)) perTask.set(sleutel, { lab: d.lab, taskNumber: d.taskNumber, documenten: [] });
+      perTask.get(sleutel).documenten.push(d);
+    });
+    const gedeeldeTasknummers = [];
+    perTask.forEach((t) => {
+      const leveranciers = Array.from(new Set(t.documenten.reduce((a, d) => a.concat(d.leveranciers), []))).sort();
+      if (leveranciers.length < 2) return;
+      gedeeldeTasknummers.push({
+        lab: t.lab, taskNumber: t.taskNumber, leveranciers,
+        bestanden: t.documenten.map((d) => ({ sha256: d.sha256, product: d.product, batchnummer: d.batchnummer })),
+        identiek: t.documenten.length === 1
+      });
+    });
+    gedeeldeTasknummers.sort((a, b) => b.leveranciers.length - a.leveranciers.length);
+
+    // 3. Per lab: welke shops wijzen ernaar, hoeveel documenten, hoeveel
+    //    daarvan al met de hand geverifieerd. Dit is de lijst waarop je ziet
+    //    waar een handmatige controle het meeste oplevert.
+    const perLab = new Map();
+    alle.forEach((d) => {
+      if (!perLab.has(d.lab)) perLab.set(d.lab, { lab: d.lab, lijst: d.labLijst, leveranciers: new Set(), documenten: 0, geverifieerd: 0, labnamenRuw: new Set() });
+      const l = perLab.get(d.lab);
+      d.leveranciers.forEach((s) => l.leveranciers.add(s));
+      if (d.labRuw) l.labnamenRuw.add(d.labRuw);
+      l.documenten += 1;
+      if (d.klasse) l.geverifieerd += 1;
+    });
+    const labs = Array.from(perLab.values()).map((l) => ({
+      lab: l.lab, lijst: l.lijst, labnamenRuw: Array.from(l.labnamenRuw),
+      leveranciers: Array.from(l.leveranciers).sort(),
+      aantalLeveranciers: l.leveranciers.size, documenten: l.documenten, geverifieerd: l.geverifieerd
+    })).sort((a, b) => b.aantalLeveranciers - a.aantalLeveranciers || b.documenten - a.documenten);
+
+    const alleLeveranciers = new Set();
+    alle.forEach((d) => d.leveranciers.forEach((s) => alleLeveranciers.add(s)));
+
+    return {
+      totalen: {
+        leveranciers: alleLeveranciers.size,
+        documenten: alle.length,
+        geverifieerd: alle.filter((d) => d.klasse).length,
+        gedeeldeDocumenten: gedeeldeDocumenten.length,
+        gedeeldeTasknummers: gedeeldeTasknummers.length
+      },
+      labs, gedeeldeDocumenten, gedeeldeTasknummers
+    };
+  } catch (e) {
+    console.error('coaStore.crossSupplierOverview:', (e && e.message) || e);
+    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0 }, labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [] };
+  }
+}
+
+// Bij welke andere leveranciers staat dit document nog meer? Bewust een losse
+// functie: getDocumentsBySupplier draait ook in de pipeline en mag geen extra
+// query per audit krijgen.
+async function andereLeveranciersVoor(shaList) {
+  const lijst = (shaList || []).filter(Boolean);
+  if (!lijst.length) return {};
+  try {
+    const { rows } = await pool.query(
+      'SELECT sha256, supplier_key FROM coa_sources WHERE sha256 = ANY($1::text[])', [lijst]
+    );
+    const uit = {};
+    rows.forEach((r) => {
+      if (!uit[r.sha256]) uit[r.sha256] = new Set();
+      uit[r.sha256].add(r.supplier_key);
+    });
+    Object.keys(uit).forEach((k) => { uit[k] = Array.from(uit[k]).sort(); });
+    return uit;
+  } catch (e) {
+    console.error('coaStore.andereLeveranciersVoor:', (e && e.message) || e);
+    return {};
+  }
+}
+
 module.exports = {
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation,
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
-  saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier
+  saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
+  crossSupplierOverview, andereLeveranciersVoor, normaliseerLab
 };

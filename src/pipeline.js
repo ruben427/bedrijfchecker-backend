@@ -684,7 +684,14 @@ async function runResearchStep(caseId, ctx, key) {
         externalVerification: klasseNaarVerificatie[d.authenticity_class] || 'pending',
         accessStatus: 'readable',
         bronUrl: publiekeUrl,
-        uit: 'staff-verified'
+        // Methodegebonden herkomstlabel (M34): wie het natrok, wanneer, welke
+        // officiele bron is geopend en welke velden zijn vergeleken. Zonder
+        // die vier is een handmatige verificatie niet na te lopen.
+        uit: 'external_verification_manual',
+        verified_by: v.checkedBy || null,
+        verified_at: v.checkedAt || d.verification_checked_at || null,
+        officieleBron: v.resolvedUrl || null,
+        matchvelden: { lab: v.lab || null, task: v.task || null, sample: v.sample || null, key: v.key || null }
       }));
     });
     if (geverifieerdeDocs.length) archiefTelling.handmatigGeverifieerd = geverifieerdeDocs.length;

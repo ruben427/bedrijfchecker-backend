@@ -56,6 +56,20 @@
   .leeg{color:var(--text-subtle);font-size:.9rem;padding:8px 0}
   a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
   hr.sep{border:0;border-top:1px solid var(--border);margin:18px 0}
+  table.kv{width:100%;border-collapse:collapse;font-size:.86rem;margin-top:10px}
+  table.kv th{text-align:left;font-size:.76rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);
+    border-bottom:1px solid var(--border);padding:6px 10px 6px 0;font-weight:700}
+  table.kv td{padding:8px 10px 8px 0;border-bottom:1px solid var(--border);vertical-align:top}
+  table.kv td.num{font-family:"IBM Plex Mono",ui-monospace,monospace;text-align:right;padding-right:16px}
+  .shops{color:var(--text-muted);font-size:.82rem;line-height:1.5}
+  .totalen{display:flex;gap:22px;flex-wrap:wrap;margin:4px 0 2px}
+  .totalen div{font-size:.84rem;color:var(--text-muted)}
+  .totalen b{display:block;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:1.3rem;color:var(--text);font-weight:600}
+  .vondst{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--radius-md,12px) var(--radius-md,12px) 0;
+    background:var(--surface-2);padding:12px 16px;margin:10px 0}
+  .vondst h4{margin:0 0 4px;font-family:"Baloo 2",system-ui,sans-serif;font-size:.98rem;color:var(--heading-2)}
+  .sub-kop{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);font-size:1rem;margin:22px 0 2px}
+  .ook-bij{margin:0 0 12px;font-size:.86rem}
 </style>
 
 <div class="wrap">
@@ -89,7 +103,17 @@
   </section>
 
   <section class="panel">
-    <h2>4. COA handmatig toevoegen</h2>
+    <h2>4. Kruisverband tussen shops</h2>
+    <p class="hint">Over alle leveranciers heen: welke shops publiceren hetzelfde bestand, welke delen een task-nummer, en welke labs worden door meerdere shops genoemd.</p>
+    <div class="actions" style="margin-top:0">
+      <button type="button" id="kv-knop">Overzicht ophalen</button>
+    </div>
+    <div class="melding" id="kv-melding"></div>
+    <div id="kv"></div>
+  </section>
+
+  <section class="panel">
+    <h2>5. COA handmatig toevoegen</h2>
     <p class="hint">Voor een COA die de crawl niet vindt — bijvoorbeeld uit een bestelling, een chat met de leverancier of een download achter een login.</p>
     <label for="up-leverancier">Leverancier (website of domein)</label>
     <input type="text" id="up-leverancier" placeholder="bijv. nextgenpeptides.com" spellcheck="false">
@@ -239,6 +263,12 @@
             '<dt>sha256</dt><dd style="word-break:break-all">' + escape(doc.sha256) + '</dd>' +
           '</dl>' +
 
+          (doc.andere_leveranciers && doc.andere_leveranciers.length
+            ? '<p class="ook-bij"><span class="pill warn">ook bij ' + doc.andere_leveranciers.length + ' andere shop' +
+              (doc.andere_leveranciers.length > 1 ? 's' : '') + '</span> ' +
+              escape(doc.andere_leveranciers.join(', ')) + ' \u2014 byte-voor-byte hetzelfde bestand.</p>'
+            : '') +
+
           '<div class="let-op"><b>LET OP:</b> deze velden zijn door het model uit het document gelezen, niet gecontroleerd. ' +
             'Lees ze na in het document zelf voordat je ze gebruikt.</div>' +
 
@@ -382,6 +412,89 @@
       .catch(function (e) { zeg(e.message, 'fout'); })
       .then(function () { knop.disabled = false; });
   }
+
+  var LIJST_PILL = { betrouwbaar: 'ok', nieuw: 'warn', twijfel: 'bad' };
+
+  function shopLijst(namen) {
+    return '<span class="shops">' + namen.map(escape).join(' &middot; ') + '</span>';
+  }
+
+  function kruisverbandHtml(d) {
+    var t = d.totalen || {};
+    var uit = '' +
+      '<div class="totalen">' +
+        '<div><b>' + t.leveranciers + '</b>leveranciers</div>' +
+        '<div><b>' + t.documenten + '</b>documenten</div>' +
+        '<div><b>' + t.geverifieerd + '</b>gecontroleerd</div>' +
+        '<div><b>' + t.gedeeldeDocumenten + '</b>gedeelde bestanden</div>' +
+        '<div><b>' + t.gedeeldeTasknummers + '</b>gedeelde task-nummers</div>' +
+      '</div>';
+
+    uit += '<h3 class="sub-kop">Labs</h3>';
+    if (!d.labs.length) {
+      uit += '<p class="leeg">Nog geen labnamen in het archief.</p>';
+    } else {
+      uit += '<table class="kv"><thead><tr><th>Lab</th><th>Werklijst</th><th class="num">Shops</th><th class="num">Docs</th><th class="num">Gecontroleerd</th></tr></thead><tbody>';
+      d.labs.forEach(function (l) {
+        uit += '<tr>' +
+          '<td><b>' + escape(l.lab) + '</b><br>' + shopLijst(l.leveranciers) + '</td>' +
+          '<td><span class="pill ' + (LIJST_PILL[l.lijst] || 'neutral') + '">' + escape(l.lijst) + '</span></td>' +
+          '<td class="num">' + l.aantalLeveranciers + '</td>' +
+          '<td class="num">' + l.documenten + '</td>' +
+          '<td class="num">' + l.geverifieerd + '</td>' +
+        '</tr>';
+      });
+      uit += '</tbody></table>';
+      uit += '<p class="hint" style="margin-top:8px"><b>LET OP:</b> de kolom Werklijst is een intern hulplabel, geen methodiek-uitspraak. Het stuurt geen score aan; de beoordeling van een lab hoort in L01.</p>';
+    }
+
+    uit += '<h3 class="sub-kop">Zelfde bestand bij meerdere shops</h3>';
+    if (!d.gedeeldeDocumenten.length) {
+      uit += '<p class="leeg">Nog geen enkel bestand dat bij meer dan een shop staat.</p>';
+    } else {
+      d.gedeeldeDocumenten.forEach(function (x) {
+        uit += '<div class="vondst">' +
+          '<h4>' + escape(tekst(x.product)) + '</h4>' +
+          '<div class="shops">' + escape(x.lab) + (x.taskNumber ? (' &middot; task ' + escape(x.taskNumber)) : '') +
+            (x.batchnummer ? (' &middot; batch ' + escape(x.batchnummer)) : '') + '</div>' +
+          '<p style="margin:6px 0 2px;font-size:.88rem"><b>' + x.leveranciers.length + ' shops:</b> ' + escape(x.leveranciers.join(', ')) + '</p>' +
+          '<div class="mono" style="color:var(--text-subtle);word-break:break-all">' + escape(x.sha256) + '</div>' +
+        '</div>';
+      });
+      uit += '<p class="hint">Byte-voor-byte identiek. Dat is geen toeval: of het bewijs is gedeeld, of de shops zitten aan dezelfde bron.</p>';
+    }
+
+    uit += '<h3 class="sub-kop">Zelfde task-nummer bij meerdere shops</h3>';
+    if (!d.gedeeldeTasknummers.length) {
+      uit += '<p class="leeg">Nog geen gedeelde task-nummers.</p>';
+    } else {
+      d.gedeeldeTasknummers.forEach(function (x) {
+        uit += '<div class="vondst">' +
+          '<h4>' + escape(x.lab) + ' &middot; task ' + escape(x.taskNumber) + '</h4>' +
+          '<p style="margin:6px 0 2px;font-size:.88rem"><b>' + x.leveranciers.length + ' shops:</b> ' + escape(x.leveranciers.join(', ')) + '</p>' +
+          '<div class="shops">' + x.bestanden.length + ' verschillend(e) bestand(en)' +
+            (x.bestanden.length > 1 ? ' &mdash; zelfde rapportnummer, andere inhoud. Dit hoort met de hand bij het lab nagetrokken.' : '') + '</div>' +
+        '</div>';
+      });
+    }
+
+    return uit;
+  }
+
+  function kruisverband() {
+    if (!token()) { melding('kv-melding', 'Vul eerst het beheerderstoken in.', 'fout'); return; }
+    melding('kv-melding', 'Bezig met ophalen\u2026', 'bezig');
+    el('kv-knop').disabled = true;
+    api('/api/admin/coa/kruisverband')
+      .then(function (d) {
+        meldingWeg('kv-melding');
+        el('kv').innerHTML = kruisverbandHtml(d);
+      })
+      .catch(function (e) { melding('kv-melding', e.message, 'fout'); })
+      .then(function () { el('kv-knop').disabled = false; });
+  }
+
+  el('kv-knop').addEventListener('click', kruisverband);
 
   el('zoek').addEventListener('click', ophalen);
   el('leverancier').addEventListener('keydown', function (e) { if (e.key === 'Enter') ophalen(); });

@@ -344,13 +344,31 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Kruisverband over alle leveranciers heen: hetzelfde bestand of hetzelfde
+// task-nummer bij meer dan een shop, en per lab welke shops ernaar wijzen.
+// LET OP: deze route MOET boven /api/admin/coa/:supplierKey blijven staan,
+// anders vangt die parameter-route het pad "kruisverband" op.
+app.get('/api/admin/coa/kruisverband', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    res.json(await coaStore.crossSupplierOverview());
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Overzicht van alle bekende documenten (crawl/auto-fetch/handmatig) en hun
 // eventuele verificatiestatus voor één leverancier. De leverancier-ID is de
 // genormaliseerde hostnaam, zie coaStore.supplierKeyFromUrl.
 app.get('/api/admin/coa/:supplierKey', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
   try {
     const documents = await coaStore.getDocumentsBySupplier(req.params.supplierKey);
-    res.json({ supplierKey: req.params.supplierKey, documents });
+    // Bij welke andere shops staat hetzelfde bestand nog meer? Dat is precies
+    // het signaal waarvoor het archief content-addressed is.
+    const spreiding = await coaStore.andereLeveranciersVoor(documents.map((d) => d.sha256));
+    const verrijkt = documents.map((d) => Object.assign({}, d, {
+      andere_leveranciers: (spreiding[d.sha256] || []).filter((k) => k !== req.params.supplierKey)
+    }));
+    res.json({ supplierKey: req.params.supplierKey, documents: verrijkt });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
