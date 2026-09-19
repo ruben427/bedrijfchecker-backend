@@ -285,6 +285,22 @@ async function runPhase(ctx, opts) {
   return { key: opts.key, title: opts.title, data };
 }
 
+// Voor de admin-COA-pagina: dezelfde uitleesstap als de autofetch verderop,
+// maar dan voor een document dat een staflid met de hand heeft geupload,
+// voordat de menselijke labverificatie plaatsvindt. Geeft alleen terug wat er
+// letterlijk in het document staat. De authenticiteitsklasse komt hier
+// nadrukkelijk niet uit - die mag alleen van een mens komen, via
+// coaStore.saveVerification. Zie correctie 3 in het Janoshik-protocol.
+async function extractCoaFromUpload(naam, doc) {
+  const prompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, handmatig geupload door een staflid, dat een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is.\n\n' +
+    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}]}]}';
+  const isPdf = /pdf/i.test(doc.mediaType || '');
+  const opts = { label: 'admin-coa-upload' };
+  if (isPdf) opts.documents = [{ data: doc.data, mediaType: doc.mediaType }];
+  else opts.images = [{ data: doc.data, mediaType: doc.mediaType }];
+  return sampleJsonSafe(prompt, opts);
+}
+
 function stepOpts(key, ctx, waarneming) {
   const domain = domainOf(ctx.website);
   switch (key) {
@@ -647,6 +663,32 @@ async function runResearchStep(caseId, ctx, key) {
       });
     }
 
+    // Menselijk geverifieerde COA's van deze leverancier altijd meenemen,
+    // ongeacht of de crawl ze deze keer opnieuw vond. Dat is het hele punt van
+    // de admin-pagina: wat een staflid een keer met de hand bij het lab heeft
+    // nagetrokken, moet elke volgende audit van dezelfde leverancier blijven
+    // verrijken - niet alleen de run waarin het is toegevoegd.
+    const bekendeBronUrls = new Set(records.map((r) => r && r.bronUrl).filter(Boolean));
+    const geverifieerdeDocs = await coaStore.listVerifiedDocumentsForSupplier(supplierKey).catch(() => []);
+    const klasseNaarVerificatie = { A: 'verified', B: 'contradicted', C: 'unavailable', D: 'failed' };
+    geverifieerdeDocs.forEach((d) => {
+      const publiekeUrl = d.url && /^https?:\/\//i.test(d.url) ? d.url : null;
+      if (publiekeUrl && bekendeBronUrls.has(publiekeUrl)) return;
+      const ext = (d.extraction && d.extraction.coaRecords && d.extraction.coaRecords[0]) || {};
+      const v = d.verification || {};
+      records.push(Object.assign({}, ext, {
+        laboratorium: ext.laboratorium || d.lab || null,
+        reportId: ext.reportId || d.task_number || null,
+        authenticiteitsklasse: d.authenticity_class || null,
+        authenticiteitsonderbouwing: v.note || ('Handmatig geverifieerd bij het lab door ' + (v.checkedBy || 'een staflid') + '.'),
+        externalVerification: klasseNaarVerificatie[d.authenticity_class] || 'pending',
+        accessStatus: 'readable',
+        bronUrl: publiekeUrl,
+        uit: 'staff-verified'
+      }));
+    });
+    if (geverifieerdeDocs.length) archiefTelling.handmatigGeverifieerd = geverifieerdeDocs.length;
+
     records = records.map((r) => {
       const q = computeQuantity(
         typeof r.claimedQuantity === 'number' ? r.claimedQuantity : null,
@@ -873,5 +915,6 @@ async function runDeepTier(caseId, ctx) {
 
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
-  ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS
+  ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
+  extractCoaFromUpload, COA_EXTRACTOR_VERSION
 };

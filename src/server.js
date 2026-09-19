@@ -15,6 +15,7 @@ const { caseSummary, ownerCase, publicCase, sanitizeError } = require('./seriali
 const { isValidWebUrl, normalizeUrl } = require('./validate');
 const { checkPeptideSupplierRelevance } = require('./relevanceCheck');
 const labProbe = require('./labProbe');
+const mcpCoaServer = require('./mcpCoaServer');
 
 const app = express();
 
@@ -41,6 +42,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Owner-Token'],
   exposedHeaders: ['Retry-After']
 }));
+// Voór de globale JSON-parser hieronder: deze route heeft zijn eigen, ruimere
+// bodylimiet nodig (base64-COA's) en zijn eigen auth (COA_STAFF_TOKEN, niet
+// het owner-token-systeem) — zie src/mcpCoaServer.js.
+mcpCoaServer.mount(app);
+
 app.use(express.json({ limit: '2mb' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
@@ -321,6 +327,85 @@ app.post('/api/audits/:id/retry-step', rl.caseAction, auth.requireOwnerToken, ca
     res.json({ case: ownerCase(await db.getCase(req.params.id)) });
   } catch (e) {
     await db.updateCase(req.params.id, { status: 'fout', error: 'Er ging iets mis tijdens deze stap.' }).catch(() => {});
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Los kanaal naast de geautomatiseerde coaDataset-stap: de server kan
+// verify.janoshik.com zelf niet bereiken (403, zie projectdoc "COA
+// Authenticiteitsverificatie - Janoshik v2.0" §5), dus hier kan een staflid
+// een COA uploaden, zelf bij het lab natrekken en het resultaat vastleggen —
+// dat telt daarna automatisch mee in elk rapport van diezelfde leverancier
+// (coaStore.listVerifiedDocumentsForSupplier, gebruikt in pipeline.js).
+const uploadCoa = upload.single('coaFile');
+
+function requireAdmin(req, res, next) {
+  if (!req.isAdmin) return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders.' });
+  next();
+}
+
+// Overzicht van alle bekende documenten (crawl/auto-fetch/handmatig) en hun
+// eventuele verificatiestatus voor één leverancier. De leverancier-ID is de
+// genormaliseerde hostnaam, zie coaStore.supplierKeyFromUrl.
+app.get('/api/admin/coa/:supplierKey', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const documents = await coaStore.getDocumentsBySupplier(req.params.supplierKey);
+    res.json({ supplierKey: req.params.supplierKey, documents });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Eén COA handmatig uploaden voor een leverancier: de bytes gaan in hetzelfde
+// archief als de automatische crawl (met een niet-http bronsleutel, zodat die
+// nooit als kapotte link in het Bronnenregister belandt — zie pipeline.js) en
+// worden meteen door dezelfde uitleesstap gehaald als de automatische route.
+app.post('/api/admin/coa/:supplierKey/upload', rl.caseAction, auth.requireOwnerToken, requireAdmin, uploadCoa, async (req, res) => {
+  try {
+    const supplierKey = req.params.supplierKey;
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: 'geen_bestand', message: 'Voeg een COA-bestand toe (veld coaFile).' });
+    const naam = (req.body && req.body.naam) || supplierKey;
+    const sha256 = coaStore.sha256Of(file.buffer);
+    // Synthetische, niet-http bron-URL: alleen nodig om aan de UNIQUE-
+    // constraint van coa_sources.url te voldoen.
+    const syntheticUrl = 'admin-upload://' + supplierKey + '/' + sha256;
+    const observation = await coaStore.recordObservation({
+      url: syntheticUrl, supplierKey, buffer: file.buffer, mimetype: file.mimetype
+    });
+    let extraction = await coaStore.getExtraction(sha256, pipeline.COA_EXTRACTOR_VERSION);
+    if (!extraction) {
+      extraction = await pipeline.extractCoaFromUpload(naam, { data: file.buffer.toString('base64'), mediaType: file.mimetype });
+      const first = (extraction && extraction.coaRecords && extraction.coaRecords[0]) || {};
+      await coaStore.saveExtraction(sha256, pipeline.COA_EXTRACTOR_VERSION, extraction || { coaRecords: [] }, {
+        lab: first.laboratorium || null,
+        taskNumber: first.reportId || null,
+        keyHash: first.verificationKey ? coaStore.sha256Of(Buffer.from(String(first.verificationKey))) : null
+      });
+    }
+    res.status(201).json({ sha256, change: observation && observation.change, extraction });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Resultaat van de handmatige labverificatie vastleggen. Alleen een mens (deze
+// route) mag klasse D zetten (referentie aanwezig, resolvet niet) — het
+// AI-model in extractCoaFromUpload zet zelf nooit een authenticiteitsklasse.
+app.post('/api/admin/coa/:supplierKey/documents/:sha256/verify', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const { class: klasse, method, lab, task, sample, key, resolvedUrl, note, checkedBy } = req.body || {};
+    if (!['A', 'B', 'C', 'D'].includes(klasse)) {
+      return res.status(400).json({ error: 'ongeldige_klasse', message: 'class moet A, B, C of D zijn.' });
+    }
+    const verification = {
+      class: klasse, method: method || 'janoshik', lab: lab || null, task: task || null,
+      sample: sample || null, key: key || null, resolvedUrl: resolvedUrl || null,
+      note: note || null, checkedBy: checkedBy || null, checkedAt: Date.now()
+    };
+    await coaStore.saveVerification(req.params.sha256, verification);
+    res.json({ ok: true, verification });
+  } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
 });

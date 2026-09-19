@@ -258,6 +258,61 @@ async function getExtraction(sha256, extractorVersion) {
   }
 }
 
+// Menselijke verificatie-uitslag opslaan (Werkbord/admin-COA-pagina, 19 sep).
+// Los van saveExtraction(): dat legt vast WAT het document zegt, dit legt vast
+// OF een mens dat heeft nagetrokken bij het lab. verification/authenticity_class/
+// verification_checked_at stonden al in het schema (Janoshik-adapter v1.0) maar
+// werden nooit beschreven — de server kan verify.janoshik.com niet zelf bereiken
+// (403, zie "COA Authenticiteitsverificatie - Janoshik v2.0" §5), dus die
+// resolutie gebeurt nu bewust in de browser van een staflid, met deze functie
+// als opslagpunt achteraf.
+//
+// verification-vorm: { class:'A'|'B'|'C'|'D', method, lab, task, sample, key,
+//   resolvedUrl, note, checkedBy, checkedAt }.
+async function saveVerification(sha256, verification) {
+  const v = verification || {};
+  try {
+    await pool.query(
+      `UPDATE coa_documents SET verification = $2, authenticity_class = $3, verification_checked_at = $4 WHERE sha256 = $1`,
+      [sha256, JSON.stringify(v), v.class || null, v.checkedAt || Date.now()]
+    );
+  } catch (e) {
+    console.error('coaStore.saveVerification:', (e && e.message) || e);
+    throw e;
+  }
+}
+
+// Alle bekende documenten van één leverancier, incl. bron (url/status) en
+// eventuele verificatie — voor de admin-COA-pagina (overzicht + historie).
+async function getDocumentsBySupplier(supplierKey) {
+  if (!supplierKey) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.url, s.status, s.first_seen_at, s.last_checked_at,
+              d.sha256, d.mimetype, d.byte_size, d.lab, d.task_number, d.sample_number,
+              d.extraction, d.extractor_version, d.verification, d.authenticity_class,
+              d.verification_checked_at, d.first_analyzed_at
+       FROM coa_sources s JOIN coa_documents d ON d.sha256 = s.sha256
+       WHERE s.supplier_key = $1
+       ORDER BY s.first_seen_at DESC`,
+      [supplierKey]
+    );
+    return rows;
+  } catch (e) {
+    console.error('coaStore.getDocumentsBySupplier:', (e && e.message) || e);
+    return [];
+  }
+}
+
+// Alleen de documenten die al menselijk geverifieerd zijn — dit is wat de
+// pipeline (coaDataset-stap) meeneemt in een nieuwe/toekomstige audit van
+// dezelfde leverancier, zodat het handwerk van een staflid daadwerkelijk een
+// beter rapport oplevert i.p.v. passief in het archief te blijven liggen.
+async function listVerifiedDocumentsForSupplier(supplierKey) {
+  const rows = await getDocumentsBySupplier(supplierKey);
+  return rows.filter((r) => r.authenticity_class);
+}
+
 // Overzicht per leverancier, voor de audit en later voor de UI.
 async function supplierHistory(supplierKey, limit) {
   try {
@@ -274,5 +329,6 @@ async function supplierHistory(supplierKey, limit) {
 
 module.exports = {
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation,
-  reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument
+  reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
+  saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier
 };

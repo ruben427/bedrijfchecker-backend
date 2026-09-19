@@ -86,4 +86,4 @@ function requireCaseAccess(db) {
   };
 }
 
-module.exports = { hashToken, readToken, isAdmin, isPlausibleToken, requireOwnerToken, requireCaseAccess };
+module.exports = { hashToken, readToken, isAdmin, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual };
