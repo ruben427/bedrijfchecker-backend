@@ -91,7 +91,30 @@ function lijktOpFoutpagina(kandidaat, fout) {
   return lengteLijkt && kandidaat.begin.slice(0, 200) === fout.begin.slice(0, 200);
 }
 
-const LAB_VERIFICATIELINK = /^https:\/\/verify\.janoshik\.com\/tests\/\d+-[^/?#]*_[A-Za-z0-9]+$/i;
+// Verificatielinks van laboratoria. Dit was tot 19 september alleen Janoshik,
+// en dat bleek een blinde vlek: lumopeptides.com publiceert 71 van deze links,
+// waarvan er 45 naar Bridge Analytical gaan. Die zagen we dus geen van alle.
+//
+// Voorwaarde om hier op te mogen staan: de URL moet een identificator van het
+// rapport zelf bevatten. Een linkje naar een algemene "verify"-pagina zonder
+// referentie zegt niets en hoort hier niet.
+const LAB_VERIFICATIELINKS = [
+  { lab: 'Janoshik', patroon: /^https:\/\/verify\.janoshik\.com\/tests\/\d+-[^/?#]*_[A-Za-z0-9]+$/i },
+  { lab: 'Bridge Analytical', patroon: /^https:\/\/(?:www\.)?bridgeanalytical\.com\/verify\/?\?key=[A-Za-z0-9][A-Za-z0-9-]{4,}$/i },
+  { lab: 'Vanguard Laboratory', patroon: /^https:\/\/(?:www\.)?verifiedbyvanguard\.com\/verify\/[A-Za-z0-9-]{8,}$/i },
+  { lab: 'ILS Laboratories', patroon: /^https:\/\/portal\.ils-lab\.com\/[^?#]*[A-Za-z0-9-]{6,}$/i }
+];
+
+function labVanVerificatielink(url) {
+  for (const l of LAB_VERIFICATIELINKS) {
+    if (l.patroon.test(url)) return l.lab;
+  }
+  return null;
+}
+
+// Blijft bestaan omdat andere modules hem importeren; betekent nu "is dit een
+// verificatielink van een lab dat we herkennen".
+const LAB_VERIFICATIELINK = { test: (url) => labVanVerificatielink(url) !== null };
 
 function withTimeout() {
   const controller = new AbortController();
@@ -306,8 +329,9 @@ async function crawlCoaIndex(website) {
     const links = extractLinks(page.html, page.finalUrl);
     for (const l of links) {
       if (verificatieLinks.size >= MAX_DOCUMENTS) break;
-      if (LAB_VERIFICATIELINK.test(l.url) && !verificatieLinks.has(l.url)) {
-        verificatieLinks.set(l.url, { url: l.url, context: (l.text || '').slice(0, 200), gevondenOp: page.finalUrl });
+      const labVanLink = labVanVerificatielink(l.url);
+      if (labVanLink && !verificatieLinks.has(l.url)) {
+        verificatieLinks.set(l.url, { url: l.url, lab: labVanLink, context: (l.text || '').slice(0, 200), gevondenOp: page.finalUrl });
       }
     }
     const bruikbaar = links.filter((l) => DOC_EXT.test(l.url) && !THUMBNAIL.test(l.url) &&
@@ -359,4 +383,4 @@ async function crawlCoaIndex(website) {
   return { indexPages, documents: Array.from(documents.values()), verificatieLinks: Array.from(verificatieLinks.values()), notes, diagnose };
 }
 
-module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, vingerafdruk, lijktOpFoutpagina, pakBeeldproxyUit, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, INDEX_HINT };
+module.exports = { crawlCoaIndex, extractLinks, rowContextFor, stripTags, absolutise, sameSite, vingerafdruk, lijktOpFoutpagina, pakBeeldproxyUit, DOC_EXT, THUMBNAIL, SITE_INRICHTING, INRICHTING_NAAM, RAPPORT_NAAM, LAB_VERIFICATIELINK, LAB_VERIFICATIELINKS, labVanVerificatielink, INDEX_HINT };

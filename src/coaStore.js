@@ -383,6 +383,28 @@ async function supplierHistory(supplierKey, limit) {
 // hetzelfde rapport wijzen met een tekstvergelijking te vinden zijn - daar is
 // geen enkele call naar het lab voor nodig, wat maar goed is ook, want
 // Janoshik laat onze server er niet in (zie de labmeting).
+// Elke lab heeft zijn eigen vorm van referentie in de URL. Janoshik zet task,
+// sample en sleutel in het pad; Bridge Analytical gebruikt ?key=; anderen een
+// id in het laatste padsegment. Zonder deze splitsing zouden alleen
+// Janoshik-verwijzingen te matchen zijn, en dat was precies de blinde vlek.
+function referentieUitUrl(lab, url) {
+  if (/janoshik/i.test(lab || '')) {
+    const p = janoshik.parseReferentie(url);
+    if (p) return { referentie: p.referentie, taskNumber: p.taskNumber, sample: p.sample || null, key: p.key };
+  }
+  try {
+    const u = new URL(url);
+    const uitQuery = u.searchParams.get('key') || u.searchParams.get('code') || u.searchParams.get('id');
+    if (uitQuery) return { referentie: uitQuery.trim(), taskNumber: null, sample: null, key: uitQuery.trim() };
+    const laatste = u.pathname.split('/').filter(Boolean).pop();
+    if (laatste && laatste.length >= 6 && !/^(verify|verification|tests?|coa|report)$/i.test(laatste)) {
+      const schoon = decodeURIComponent(laatste);
+      return { referentie: schoon, taskNumber: null, sample: null, key: schoon };
+    }
+  } catch (e) { /* geen bruikbare URL */ }
+  return null;
+}
+
 async function recordReferences(supplierKey, lijst) {
   const items = (lijst || []).filter((v) => v && v.url);
   if (!supplierKey || !items.length) return { opgeslagen: 0, onleesbaar: 0 };
@@ -390,14 +412,15 @@ async function recordReferences(supplierKey, lijst) {
   let opgeslagen = 0;
   let onleesbaar = 0;
   for (const v of items) {
-    const p = janoshik.parseReferentie(v.url);
+    const lab = v.lab || 'Janoshik';
+    const p = referentieUitUrl(lab, v.url);
     if (!p) { onleesbaar++; continue; }
     try {
       await pool.query(
         `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
          ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
-        [uuidv4(), supplierKey, v.lab || 'Janoshik', p.referentie, p.taskNumber, p.sample || null, p.key,
+        [uuidv4(), supplierKey, lab, p.referentie, p.taskNumber, p.sample || null, p.key,
          v.url, (v.context || '').slice(0, 300) || null, v.gevondenOp || null, now]
       );
       opgeslagen++;
@@ -730,5 +753,6 @@ module.exports = {
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
   crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
-  recordReferences, listReferences, saveReferenceCheck, listReferenceChecks
+  recordReferences, listReferences, saveReferenceCheck, listReferenceChecks,
+  referentieUitUrl
 };

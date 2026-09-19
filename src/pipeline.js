@@ -452,7 +452,7 @@ async function runResearchStep(caseId, ctx, key) {
     // deze gaan rechtstreeks door naar de resolver. Sterker bewijs dan een
     // gehoste kopie, want er valt niets aan te bewerken.
     const verwijzingRecords = ((crawl && crawl.verificatieLinks) || []).map((v) => ({
-      product: v.context || null, batchnummer: null, purityPercent: null, laboratorium: 'Janoshik',
+      product: v.context || null, batchnummer: null, purityPercent: null, laboratorium: v.lab || 'Janoshik',
       reportId: null, verificationKey: null, authenticiteitsklasse: null,
       verificationUrl: v.url,
       bronUrl: null,
@@ -470,7 +470,7 @@ async function runResearchStep(caseId, ctx, key) {
     const refSupplierKey = coaStore.supplierKeyFromUrl(ctx.website || ctx.naam);
     const refOpslag = await coaStore.recordReferences(
       refSupplierKey,
-      ((crawl && crawl.verificatieLinks) || []).map((v) => Object.assign({ lab: 'Janoshik' }, v))
+      ((crawl && crawl.verificatieLinks) || []).map((v) => Object.assign({}, v, { lab: v.lab || 'Janoshik' }))
     ).catch(() => ({ opgeslagen: 0, onleesbaar: 0 }));
     if (ctx.images && ctx.images.length) {
       const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
