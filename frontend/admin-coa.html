@@ -68,6 +68,12 @@
   .vondst{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--radius-md,12px) var(--radius-md,12px) 0;
     background:var(--surface-2);padding:12px 16px;margin:10px 0}
   .vondst h4{margin:0 0 4px;font-family:"Baloo 2",system-ui,sans-serif;font-size:.98rem;color:var(--heading-2)}
+  details.vondst.ref{padding:0}
+  details.vondst.ref > summary{cursor:pointer;list-style:none;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  details.vondst.ref > summary::-webkit-details-marker{display:none}
+  details.vondst.ref[open] > summary{border-bottom:1px solid var(--border)}
+  details.vondst.ref .titel{font-weight:700;flex:1 1 240px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem}
+  details.vondst.ref .body{padding:16px}
   .sub-kop{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);font-size:1rem;margin:22px 0 2px}
   .ook-bij{margin:0 0 12px;font-size:.86rem}
 </style>
@@ -430,6 +436,7 @@
         '<div><b>' + t.gedeeldeTasknummers + '</b>gedeelde task-nummers</div>' +
         '<div><b>' + (t.verwijzingen || 0) + '</b>labverwijzingen</div>' +
         '<div><b>' + (t.gedeeldeReferenties || 0) + '</b>gedeelde referenties</div>' +
+        '<div><b>' + (t.referentiesGecontroleerd || 0) + '</b>referenties gecontroleerd</div>' +
       '</div>';
 
     // Diagnose eerst: zonder te weten hoeveel documenten uberhaupt een
@@ -476,11 +483,63 @@
       uit += '<p class="leeg">Geen enkele labreferentie komt bij meer dan een shop voor.</p>';
     } else {
       d.gedeeldeReferenties.forEach(function (x) {
-        uit += '<div class="vondst">' +
-          '<h4>' + escape(x.lab) + ' &middot; ' + escape(x.referentie) + '</h4>' +
-          '<p style="margin:6px 0 2px;font-size:.88rem"><b>' + x.leveranciers.length + ' shops:</b> ' + escape(x.leveranciers.join(', ')) + '</p>' +
-          (x.url ? '<div class="shops"><a href="' + escape(x.url) + '" target="_blank" rel="noopener noreferrer">' + escape(x.url) + '</a></div>' : '') +
-        '</div>';
+        var c = x.controle;
+        uit += '<details class="vondst ref" data-ref="' + escape(x.referentie) + '" data-lab="' + escape(x.lab) + '">' +
+          '<summary>' +
+            '<span class="titel">' + escape(x.lab) + ' &middot; ' + escape(x.referentie) + '</span>' +
+            (c
+              ? '<span class="pill ' + (c.klasse === 'A' ? 'ok' : (c.klasse === 'D' || c.klasse === 'B' ? 'bad' : 'neutral')) + '">' +
+                (c.client ? ('opdrachtgever: ' + escape(c.client)) : ('klasse ' + escape(c.klasse || '?'))) + '</span>'
+              : '<span class="pill neutral">nog niet gecontroleerd</span>') +
+            '<span class="shops">' + x.leveranciers.length + ' shops</span>' +
+          '</summary>' +
+          '<div class="body">' +
+            '<p style="margin:0 0 8px;font-size:.88rem"><b>Shops:</b> ' + escape(x.leveranciers.join(', ')) + '</p>' +
+            (x.url ? '<p style="font-size:.88rem;margin:0 0 12px">Open deze pagina zelf: <a href="' + escape(x.url) + '" target="_blank" rel="noopener noreferrer">' + escape(x.url) + '</a></p>' : '') +
+            (c
+              ? '<div class="melding tonen goed" style="margin:0 0 14px">Gecontroleerd door ' + escape(c.checkedBy || 'onbekend') + ' op ' +
+                escape(new Date(c.checkedAt || Date.now()).toLocaleString('nl-NL')) + '. ' +
+                (c.resolvet === false ? 'Pagina gaf geen rapport terug. ' : '') +
+                (c.client ? ('Opdrachtgever: ' + escape(c.client) + '. ') : '') +
+                (c.notitie ? escape(c.notitie) : '') + ' Opnieuw vastleggen vervangt dit.</div>'
+              : '') +
+
+            '<div class="let-op"><b>LET OP:</b> vul alleen in wat je met eigen ogen op die pagina hebt gezien. Het veld opdrachtgever is het belangrijkste \u2014 staat daar de shop zelf of een andere partij?</div>' +
+
+            '<label>Gaf de pagina een rapport terug?</label>' +
+            '<select data-veld="resolvet">' +
+              '<option value="">\u2014 kies \u2014</option>' +
+              '<option value="ja">Ja, er kwam een rapport</option>' +
+              '<option value="nee">Nee, geen rapport (klasse D)</option>' +
+            '</select>' +
+
+            '<label>Opdrachtgever (veld Client op het rapport)</label>' +
+            '<input type="text" data-veld="client" placeholder="letterlijk overnemen">' +
+
+            '<div class="row">' +
+              '<div><label>Product</label><input type="text" data-veld="product"></div>' +
+              '<div><label>Batchnummer</label><input type="text" data-veld="batchnummer"></div>' +
+            '</div>' +
+
+            '<label>Uitkomst</label>' +
+            '<select data-veld="klasse">' +
+              '<option value="">\u2014 kies \u2014</option>' +
+              '<option value="A">A \u2014 lost op en komt overeen</option>' +
+              '<option value="B">B \u2014 lost op maar velden wijken af</option>' +
+              '<option value="C">C \u2014 geen bruikbare referentie</option>' +
+              '<option value="D">D \u2014 referentie aanwezig, lost niet op</option>' +
+            '</select>' +
+
+            '<label>Wat stond er op de pagina?</label>' +
+            '<textarea data-veld="notitie" placeholder="Bijv.: rapport van Janoshik, client Uther Peptide, retatrutide 20 mg, batch RE200804."></textarea>' +
+
+            '<label>Gecontroleerd door</label>' +
+            '<input type="text" data-veld="checkedBy" placeholder="je naam">' +
+
+            '<div class="actions"><button type="button" data-actie="verifieer-ref">Vastleggen</button></div>' +
+            '<div class="melding" data-rol="melding"></div>' +
+          '</div>' +
+        '</details>';
       });
       uit += '<p class="hint">Deze shops wijzen publiekelijk naar hetzelfde labrapport. Dat is vast te stellen zonder het lab te benaderen \u2014 de referentie staat in de link.</p>';
     }
@@ -530,6 +589,57 @@
       .catch(function (e) { melding('kv-melding', e.message, 'fout'); })
       .then(function () { el('kv-knop').disabled = false; });
   }
+
+  function referentieVastleggen(blok, knop) {
+    var meldNode = blok.querySelector('[data-rol="melding"]');
+    function zeg(t, s) { meldNode.textContent = t; meldNode.className = 'melding tonen ' + s; }
+    function veld(naam) {
+      var n = blok.querySelector('[data-veld="' + naam + '"]');
+      return n ? (n.value || '').trim() : '';
+    }
+
+    var resolvet = veld('resolvet');
+    var door = veld('checkedBy');
+    if (!resolvet) { zeg('Geef eerst aan of de pagina een rapport teruggaf.', 'fout'); return; }
+    if (!door) { zeg('Vul in wie de controle heeft uitgevoerd.', 'fout'); return; }
+    if (!veld('notitie')) { zeg('Beschrijf kort wat je op de pagina zag \u2014 dat is de onderbouwing.', 'fout'); return; }
+
+    var lichaam = {
+      lab: blok.getAttribute('data-lab'),
+      referentie: blok.getAttribute('data-ref'),
+      resolvet: resolvet === 'ja',
+      klasse: veld('klasse') || null,
+      client: veld('client') || null,
+      product: veld('product') || null,
+      batchnummer: veld('batchnummer') || null,
+      notitie: veld('notitie'),
+      checkedBy: door
+    };
+
+    knop.disabled = true;
+    zeg('Bezig met opslaan\u2026', 'bezig');
+    api('/api/admin/coa/references/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lichaam)
+    })
+      .then(function () {
+        zeg('Vastgelegd. Dit geldt nu voor elke shop die naar dit rapport verwijst.', 'goed');
+        var pill = blok.querySelector('summary .pill');
+        if (pill) {
+          pill.className = 'pill ' + (lichaam.klasse === 'A' ? 'ok' : (lichaam.klasse === 'B' || lichaam.klasse === 'D' ? 'bad' : 'neutral'));
+          pill.textContent = lichaam.client ? ('opdrachtgever: ' + lichaam.client) : ('klasse ' + (lichaam.klasse || '?'));
+        }
+      })
+      .catch(function (e) { zeg(e.message, 'fout'); })
+      .then(function () { knop.disabled = false; });
+  }
+
+  el('kv').addEventListener('click', function (e) {
+    var knop = e.target.closest('[data-actie="verifieer-ref"]');
+    if (!knop) return;
+    referentieVastleggen(knop.closest('.ref'), knop);
+  });
 
   el('kv-knop').addEventListener('click', kruisverband);
 

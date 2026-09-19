@@ -145,6 +145,46 @@ async function buildServer() {
     }
   );
 
+  // Vierde tool, 19 sep. Aanleiding: astralabs en pyroxlabs bleken 55
+  // identieke Janoshik-referenties te publiceren. Die referenties hebben geen
+  // bestand, dus verifieer_coa (dat op sha256 werkt) kon er niets mee.
+  server.registerTool(
+    'verifieer_labreferentie',
+    {
+      title: 'Leg vast wat je op de verificatiepagina van het lab zag',
+      description: 'Bewaart het resultaat van een handmatige controle van een labreferentie (een link als https://verify.janoshik.com/tests/221439-reta20_RE200804_P3C3N2UBW4YL). Gebruik dit nadat je die pagina ZELF in een browser hebt geopend. Het belangrijkste veld is client: de opdrachtgever zoals het lab die noemt - staat daar de shop zelf of een derde partij? De controle hangt aan de referentie, niet aan een shop, en telt dus meteen voor elke shop die naar hetzelfde rapport verwijst. Vul nooit iets in wat je niet met eigen ogen op die pagina hebt gezien; klasse D (referentie bestaat maar lost niet op) mag alleen na een echte controle.',
+      inputSchema: z.object({
+        referentie: z.string().min(3).describe('De referentie of de volledige verificatie-URL'),
+        lab: z.string().optional().describe('Standaard Janoshik'),
+        resolvet: z.boolean().describe('Gaf de pagina een echt rapport terug? true of false'),
+        klasse: z.enum(['A', 'B', 'C', 'D']).optional().describe('A = lost op en komt overeen, B = lost op maar velden wijken af, C = geen bruikbare referentie, D = referentie aanwezig maar lost niet op'),
+        client: z.string().optional().describe('De opdrachtgever zoals letterlijk op het rapport vermeld'),
+        product: z.string().optional(),
+        batchnummer: z.string().optional(),
+        notitie: z.string().optional().describe('Wat er verder op de pagina te zien was'),
+        gecontroleerdDoor: z.string().min(1).describe('Naam van de persoon die de controle heeft uitgevoerd')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ referentie, lab, resolvet, klasse, client, product, batchnummer, notitie, gecontroleerdDoor }) => {
+      const p = require('./janoshik').parseReferentie(referentie);
+      const ref = p ? p.referentie : String(referentie).trim();
+      const opgeslagen = await coaStore.saveReferenceCheck(lab || 'Janoshik', ref, {
+        taskNumber: p ? p.taskNumber : null,
+        resolvet, klasse: klasse || null, client: client || null,
+        product: product || null, batchnummer: batchnummer || null,
+        resolvedUrl: /^https?:\/\//i.test(String(referentie)) ? String(referentie) : janoshikLinkFrom(p && p.taskNumber, p && p.sample, p && p.key),
+        notitie: notitie || null, checkedBy: gecontroleerdDoor
+      });
+      return {
+        content: [{ type: 'text', text: opgeslagen
+          ? ('Vastgelegd voor ' + ref + (client ? (' - opdrachtgever: ' + client) : '') + '. Dit telt voor elke shop die naar dit rapport verwijst.')
+          : 'Opslaan mislukt.' }],
+        structuredContent: { referentie: ref, opgeslagen: !!opgeslagen }
+      };
+    }
+  );
+
   return server;
 }
 

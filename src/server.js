@@ -356,6 +356,39 @@ app.get('/api/admin/coa/kruisverband', rl.read, auth.requireOwnerToken, requireA
   }
 });
 
+// Vastleggen wat een mens op de verificatiepagina van het lab heeft gezien.
+// Hangt aan de referentie, niet aan een leverancier: of rapport 221439
+// bestaat en wie de opdrachtgever is, verandert niet per shop. Een controle
+// telt dus meteen voor elke shop die naar datzelfde rapport verwijst.
+// Staat bewust boven /api/admin/coa/:supplierKey.
+app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const lab = (b.lab || 'Janoshik').trim();
+    const referentie = (b.referentie || '').trim();
+    if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee (bijv. 221439-reta20_RE200804_P3C3N2UBW4YL).' });
+    if (b.klasse && !['A', 'B', 'C', 'D'].includes(b.klasse)) {
+      return res.status(400).json({ error: 'ongeldige_klasse', message: 'klasse moet A, B, C of D zijn.' });
+    }
+    if (!b.checkedBy) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie de controle heeft uitgevoerd.' });
+    const opgeslagen = await coaStore.saveReferenceCheck(lab, referentie, {
+      taskNumber: b.taskNumber || null,
+      resolvet: typeof b.resolvet === 'boolean' ? b.resolvet : null,
+      klasse: b.klasse || null,
+      client: b.client || null,
+      product: b.product || null,
+      batchnummer: b.batchnummer || null,
+      resolvedUrl: b.resolvedUrl || null,
+      notitie: b.notitie || null,
+      checkedBy: b.checkedBy
+    });
+    if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'De controle kon niet worden opgeslagen.' });
+    res.json({ ok: true, controle: opgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Overzicht van alle bekende documenten (crawl/auto-fetch/handmatig) en hun
 // eventuele verificatiestatus voor één leverancier. De leverancier-ID is de
 // genormaliseerde hostnaam, zie coaStore.supplierKeyFromUrl.

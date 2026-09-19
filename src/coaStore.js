@@ -94,6 +94,29 @@ async function initCoaSchema() {
       UNIQUE (supplier_key, url)
     );
   `);
+  // De controle van een labreferentie hangt aan de REFERENTIE, niet aan de
+  // leverancier. Of rapport 221439 bestaat en wie er als opdrachtgever op
+  // staat, is een eigenschap van dat rapport - dat verandert niet per shop.
+  // Een mens controleert het dus een keer, en elke shop die ernaar verwijst
+  // profiteert ervan. Dat is dezelfde gedachte als het documentarchief.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coa_reference_checks (
+      id TEXT PRIMARY KEY,
+      lab TEXT NOT NULL,
+      referentie TEXT NOT NULL,
+      task_number TEXT,
+      resolvet BOOLEAN,
+      klasse TEXT,
+      client TEXT,
+      product TEXT,
+      batchnummer TEXT,
+      resolved_url TEXT,
+      notitie TEXT,
+      checked_by TEXT,
+      checked_at BIGINT NOT NULL,
+      UNIQUE (lab, referentie)
+    );
+  `);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
@@ -385,6 +408,50 @@ async function recordReferences(supplierKey, lijst) {
   return { opgeslagen, onleesbaar };
 }
 
+// Vastleggen wat een mens op de verificatiepagina van het lab heeft gezien.
+// Het veld 'client' is hier het belangrijkste: staat daar de shop zelf, of een
+// derde partij? Dat is precies wat wij niet kunnen zien en een mens in twee
+// seconden wel.
+//
+// LET OP: alleen deze route mag klasse D zetten (referentie bestaat, maar
+// lost niet op). Het model doet dat nooit zelf - zelfde regel als bij de
+// documenten.
+async function saveReferenceCheck(lab, referentie, check) {
+  if (!lab || !referentie || !check) return null;
+  const c = check;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO coa_reference_checks
+         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, checked_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT (lab, referentie) DO UPDATE SET
+         resolvet = EXCLUDED.resolvet, klasse = EXCLUDED.klasse, client = EXCLUDED.client,
+         product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
+         resolved_url = EXCLUDED.resolved_url, notitie = EXCLUDED.notitie,
+         checked_by = EXCLUDED.checked_by, checked_at = EXCLUDED.checked_at
+       RETURNING *`,
+      [uuidv4(), lab, referentie, c.taskNumber || null,
+       typeof c.resolvet === 'boolean' ? c.resolvet : null,
+       c.klasse || null, c.client || null, c.product || null, c.batchnummer || null,
+       c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, Date.now()]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    console.error('coaStore.saveReferenceCheck:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function listReferenceChecks() {
+  try {
+    const { rows } = await pool.query('SELECT * FROM coa_reference_checks');
+    return rows;
+  } catch (e) {
+    console.error('coaStore.listReferenceChecks:', (e && e.message) || e);
+    return [];
+  }
+}
+
 async function listReferences() {
   try {
     const { rows } = await pool.query(
@@ -495,6 +562,14 @@ async function crossSupplierOverview() {
     // overzicht: een shop die alleen doorlinkt naar het lab hoort onder dat
     // lab te staan, niet te ontbreken.
     const refRijen = await listReferences();
+    const checkRijen = await listReferenceChecks();
+    const checkOp = new Map();
+    checkRijen.forEach((c) => {
+      checkOp.set(normaliseerLab(c.lab).sleutel + '|' + String(c.referentie).toLowerCase(), {
+        klasse: c.klasse, resolvet: c.resolvet, client: c.client, product: c.product,
+        batchnummer: c.batchnummer, notitie: c.notitie, checkedBy: c.checked_by, checkedAt: c.checked_at
+      });
+    });
     const refs = refRijen.map((r) => {
       const lab = normaliseerLab(r.lab);
       return {
@@ -542,7 +617,7 @@ async function crossSupplierOverview() {
     const perRef = new Map();
     refs.forEach((r) => {
       const k = r.labSleutel + '|' + r.referentie.toLowerCase();
-      if (!perRef.has(k)) perRef.set(k, { lab: r.lab, referentie: r.referentie, taskNumber: r.taskNumber, sample: r.sample, leveranciers: new Set(), url: r.url });
+      if (!perRef.has(k)) perRef.set(k, { lab: r.lab, labSleutel: r.labSleutel, referentie: r.referentie, taskNumber: r.taskNumber, sample: r.sample, leveranciers: new Set(), url: r.url });
       perRef.get(k).leveranciers.add(r.leverancier);
     });
     const gedeeldeReferenties = [];
@@ -550,7 +625,8 @@ async function crossSupplierOverview() {
       if (r.leveranciers.size < 2) return;
       gedeeldeReferenties.push({
         lab: r.lab, referentie: r.referentie, taskNumber: r.taskNumber, sample: r.sample,
-        url: r.url, leveranciers: Array.from(r.leveranciers).sort()
+        url: r.url, leveranciers: Array.from(r.leveranciers).sort(),
+        controle: checkOp.get(r.labSleutel + '|' + r.referentie.toLowerCase()) || null
       });
     });
     gedeeldeReferenties.sort((a, b) => b.leveranciers.length - a.leveranciers.length);
@@ -596,6 +672,7 @@ async function crossSupplierOverview() {
         gedeeldeTasknummers: gedeeldeTasknummers.length,
         verwijzingen: refs.length,
         gedeeldeReferenties: gedeeldeReferenties.length,
+        referentiesGecontroleerd: checkRijen.length,
         // Diagnose: hoeveel documenten hebben uberhaupt de velden waarop het
         // kruisverband draait? Zonder deze cijfers is "0 gedeelde
         // task-nummers" niet te onderscheiden van "de uitleesstap leest geen
@@ -621,7 +698,7 @@ async function crossSupplierOverview() {
     };
   } catch (e) {
     console.error('coaStore.crossSupplierOverview:', (e && e.message) || e);
-    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0, metLabnaam: 0, metTasknummer: 0, metSleutel: 0, metProduct: 0, verwijzingen: 0, gedeeldeReferenties: 0 }, perLeverancier: [], labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [], gedeeldeReferenties: [] };
+    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0, metLabnaam: 0, metTasknummer: 0, metSleutel: 0, metProduct: 0, verwijzingen: 0, gedeeldeReferenties: 0, referentiesGecontroleerd: 0 }, perLeverancier: [], labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [], gedeeldeReferenties: [] };
   }
 }
 
@@ -653,5 +730,5 @@ module.exports = {
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
   crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
-  recordReferences, listReferences
+  recordReferences, listReferences, saveReferenceCheck, listReferenceChecks
 };
