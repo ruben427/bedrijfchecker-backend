@@ -365,6 +365,13 @@ textarea{ min-height:80px; resize:vertical; }
 .progress-item.active .dot{ background:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
 .progress-item.done{ color:var(--text-muted); }
 .progress-item.active{ color:var(--text); font-weight:600; }
+/* Retry van een losse stap: de stap die draait krijgt een loader in plaats
+   van een bolletje, en alles wat daarna sowieso opnieuw wordt berekend gaat
+   van groen naar geel. Groen zou hier liegen - dat resultaat hoort bij de
+   vorige run en wordt zo overschreven. */
+.progress-item .spinner{ width:11px; height:11px; border-width:2px; flex-shrink:0; }
+.progress-item.stale .dot{ background:var(--warn); }
+.progress-item.stale{ color:var(--text-muted); }
 .step-label{ flex:1; }
 .step-hint{ color:var(--text-muted); font-size:.78rem; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .step-retry{ padding:2px 9px; font-size:.72rem; font-weight:600; border:1px solid var(--border); border-radius:6px; flex-shrink:0; }

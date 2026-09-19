@@ -41,7 +41,17 @@ const LABS = [
 
   { lab: 'BT Labs', soort: 'homepage', url: 'https://btlabtesting.com/' },
   { lab: 'Sterigenix', soort: 'homepage', url: 'https://sterigenixanalytical.com/' },
-  { lab: 'Kovera', soort: 'homepage', url: 'https://koveralabs.com/' }
+  { lab: 'Kovera', soort: 'homepage', url: 'https://koveralabs.com/' },
+
+  // ILS: toegevoegd 19 sep. Twee redenen om dit te meten. (1) ILS host de
+  // COA's van zijn klanten op zijn eigen domein (files.ils-lab.com), dus een
+  // shop die netjes naar het lab linkt valt buiten onze site-crawl - we
+  // moeten weten of we daar uberhaupt bij kunnen. (2) ILS staat op de
+  // twijfellijst, terwijl de eigen site ISO/IEC 17025 claimt; die claim is
+  // pas iets waard als het portaal bereikbaar en controleerbaar is.
+  { lab: 'ILS Laboratories', soort: 'portaal', url: 'https://portal.ils-lab.com/' },
+  { lab: 'ILS Laboratories', soort: 'bestanden', url: 'https://files.ils-lab.com/' },
+  { lab: 'ILS Laboratories', soort: 'homepage', url: 'https://ils-lab.com/' }
 ];
 
 // Cloudflare en vergelijkbare diensten geven lang niet altijd een nette 403.
