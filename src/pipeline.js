@@ -440,6 +440,17 @@ async function runResearchStep(caseId, ctx, key) {
       gevondenOp: v.gevondenOp || null
     }));
     records = records.concat(crawlRecords).concat(verwijzingRecords);
+
+    // Verwijzingen naar de labverificatiepagina vastleggen in het archief.
+    // Tot 19 sep gingen deze alleen het rapport in en verdwenen ze daarna:
+    // bij astralabs en pyroxlabs vond de crawl er elk 80 en bleef er nul van
+    // over. Juist deze zijn nodig om te zien of twee shops naar hetzelfde
+    // labrapport wijzen - en daar is geen contact met het lab voor nodig.
+    const refSupplierKey = coaStore.supplierKeyFromUrl(ctx.website || ctx.naam);
+    const refOpslag = await coaStore.recordReferences(
+      refSupplierKey,
+      ((crawl && crawl.verificatieLinks) || []).map((v) => Object.assign({ lab: 'Janoshik' }, v))
+    ).catch(() => ({ opgeslagen: 0, onleesbaar: 0 }));
     if (ctx.images && ctx.images.length) {
       const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
@@ -732,6 +743,8 @@ async function runResearchStep(caseId, ctx, key) {
       indexPaginas: (crawl && crawl.indexPages) || [],
       documentenGevonden: ((crawl && crawl.documents) || []).length,
       directeLabverwijzingen: ((crawl && crawl.verificatieLinks) || []).length,
+      verwijzingenVastgelegd: refOpslag.opgeslagen,
+      verwijzingenOnleesbaar: refOpslag.onleesbaar,
       nieuwTenOpzichteVanZoekstap: crawlRecords.length,
       maximaalOpgehaald: COA_AUTOFETCH_MAX,
       nietGeprobeerdWegensLimiet: nietGeprobeerd,

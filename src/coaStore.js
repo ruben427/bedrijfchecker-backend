@@ -19,6 +19,7 @@
 const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('./db');
+const janoshik = require('./janoshik');
 
 const HEAD_TIMEOUT_MS = Number(process.env.COA_HEAD_TIMEOUT_MS) || 10000;
 
@@ -69,6 +70,32 @@ async function initCoaSchema() {
       created_at BIGINT NOT NULL
     );
   `);
+  // Verwijzingen naar de verificatiepagina van het lab. Bewust een eigen
+  // tabel: coa_documents is content-addressed op de bytes van een bestand, en
+  // een verwijzing heeft geen bestand. Toch is dit vaak het sterkere bewijs -
+  // aan een zelf gehoste PDF valt te sleutelen, aan een referentie bij het lab
+  // niet. Gemeten 19 sep: astralabs en pyroxlabs publiceren elk 80 van deze
+  // verwijzingen en nul bruikbare bestanden; zonder deze tabel zien we van die
+  // shops dus helemaal niets.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coa_references (
+      id TEXT PRIMARY KEY,
+      supplier_key TEXT NOT NULL,
+      lab TEXT NOT NULL,
+      referentie TEXT NOT NULL,
+      task_number TEXT,
+      sample TEXT,
+      ref_key TEXT,
+      url TEXT NOT NULL,
+      context TEXT,
+      gevonden_op TEXT,
+      first_seen_at BIGINT NOT NULL,
+      last_seen_at BIGINT NOT NULL,
+      UNIQUE (supplier_key, url)
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_sha_idx ON coa_sources (sha256);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_events_supplier_idx ON coa_source_events (supplier_key, created_at DESC);`);
@@ -328,6 +355,48 @@ async function supplierHistory(supplierKey, limit) {
 }
 
 
+// Verwijzingen naar een labverificatiepagina vastleggen. De referentie wordt
+// uit de URL geparsed (task, sample, sleutel) zodat twee shops die naar
+// hetzelfde rapport wijzen met een tekstvergelijking te vinden zijn - daar is
+// geen enkele call naar het lab voor nodig, wat maar goed is ook, want
+// Janoshik laat onze server er niet in (zie de labmeting).
+async function recordReferences(supplierKey, lijst) {
+  const items = (lijst || []).filter((v) => v && v.url);
+  if (!supplierKey || !items.length) return { opgeslagen: 0, onleesbaar: 0 };
+  const now = Date.now();
+  let opgeslagen = 0;
+  let onleesbaar = 0;
+  for (const v of items) {
+    const p = janoshik.parseReferentie(v.url);
+    if (!p) { onleesbaar++; continue; }
+    try {
+      await pool.query(
+        `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
+         ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+        [uuidv4(), supplierKey, v.lab || 'Janoshik', p.referentie, p.taskNumber, p.sample || null, p.key,
+         v.url, (v.context || '').slice(0, 300) || null, v.gevondenOp || null, now]
+      );
+      opgeslagen++;
+    } catch (e) {
+      console.error('coaStore.recordReferences:', (e && e.message) || e);
+    }
+  }
+  return { opgeslagen, onleesbaar };
+}
+
+async function listReferences() {
+  try {
+    const { rows } = await pool.query(
+      'SELECT supplier_key, lab, referentie, task_number, sample, ref_key, url, first_seen_at FROM coa_references'
+    );
+    return rows;
+  } catch (e) {
+    console.error('coaStore.listReferences:', (e && e.message) || e);
+    return [];
+  }
+}
+
 // --- Kruisverband tussen leveranciers ------------------------------------
 // Het archief is content-addressed: publiceren twee shops hetzelfde bestand,
 // dan levert dat hetzelfde sha256 op. Dat signaal zat al in de data, maar was
@@ -422,6 +491,18 @@ async function crossSupplierOverview() {
       d.bronnen.push({ supplierKey: r.supplier_key, url: r.url, status: r.status });
     });
 
+    // Verwijzingen staan los van de documenten, maar horen in hetzelfde
+    // overzicht: een shop die alleen doorlinkt naar het lab hoort onder dat
+    // lab te staan, niet te ontbreken.
+    const refRijen = await listReferences();
+    const refs = refRijen.map((r) => {
+      const lab = normaliseerLab(r.lab);
+      return {
+        leverancier: r.supplier_key, lab: lab.naam, labLijst: lab.lijst, labSleutel: lab.sleutel,
+        referentie: r.referentie, taskNumber: r.task_number, sample: r.sample, sleutel: r.ref_key, url: r.url
+      };
+    });
+
     const alle = Array.from(docs.values());
     alle.forEach((d) => {
       d.leveranciers = Array.from(new Set(d.bronnen.map((b) => b.supplierKey))).sort();
@@ -455,6 +536,25 @@ async function crossSupplierOverview() {
     });
     gedeeldeTasknummers.sort((a, b) => b.leveranciers.length - a.leveranciers.length);
 
+    // 2b. Zelfde labreferentie bij meer dan een shop. Dit is het sterkste
+    //     signaal dat we zonder het lab zelf kunnen vaststellen: twee shops
+    //     die publiekelijk naar exact hetzelfde labrapport wijzen.
+    const perRef = new Map();
+    refs.forEach((r) => {
+      const k = r.labSleutel + '|' + r.referentie.toLowerCase();
+      if (!perRef.has(k)) perRef.set(k, { lab: r.lab, referentie: r.referentie, taskNumber: r.taskNumber, sample: r.sample, leveranciers: new Set(), url: r.url });
+      perRef.get(k).leveranciers.add(r.leverancier);
+    });
+    const gedeeldeReferenties = [];
+    perRef.forEach((r) => {
+      if (r.leveranciers.size < 2) return;
+      gedeeldeReferenties.push({
+        lab: r.lab, referentie: r.referentie, taskNumber: r.taskNumber, sample: r.sample,
+        url: r.url, leveranciers: Array.from(r.leveranciers).sort()
+      });
+    });
+    gedeeldeReferenties.sort((a, b) => b.leveranciers.length - a.leveranciers.length);
+
     // 3. Per lab: welke shops wijzen ernaar, hoeveel documenten, hoeveel
     //    daarvan al met de hand geverifieerd. Dit is de lijst waarop je ziet
     //    waar een handmatige controle het meeste oplevert.
@@ -467,14 +567,25 @@ async function crossSupplierOverview() {
       l.documenten += 1;
       if (d.klasse) l.geverifieerd += 1;
     });
+    // Een shop die alleen doorlinkt heeft nul documenten bij dit lab, maar
+    // hoort er wel bij te staan - anders verdwijnt juist de shop die het
+    // netjes doet uit het overzicht.
+    refs.forEach((r) => {
+      if (!perLab.has(r.labSleutel)) perLab.set(r.labSleutel, { lab: r.lab, lijst: r.labLijst, leveranciers: new Set(), documenten: 0, geverifieerd: 0, labnamenRuw: new Set(), verwijzingen: 0 });
+      const l = perLab.get(r.labSleutel);
+      l.leveranciers.add(r.leverancier);
+      l.verwijzingen = (l.verwijzingen || 0) + 1;
+    });
     const labs = Array.from(perLab.values()).map((l) => ({
       lab: l.lab, lijst: l.lijst, labnamenRuw: Array.from(l.labnamenRuw),
       leveranciers: Array.from(l.leveranciers).sort(),
-      aantalLeveranciers: l.leveranciers.size, documenten: l.documenten, geverifieerd: l.geverifieerd
+      aantalLeveranciers: l.leveranciers.size, documenten: l.documenten,
+      verwijzingen: l.verwijzingen || 0, geverifieerd: l.geverifieerd
     })).sort((a, b) => b.aantalLeveranciers - a.aantalLeveranciers || b.documenten - a.documenten);
 
     const alleLeveranciers = new Set();
     alle.forEach((d) => d.leveranciers.forEach((s) => alleLeveranciers.add(s)));
+    refs.forEach((r) => alleLeveranciers.add(r.leverancier));
 
     return {
       totalen: {
@@ -483,6 +594,8 @@ async function crossSupplierOverview() {
         geverifieerd: alle.filter((d) => d.klasse).length,
         gedeeldeDocumenten: gedeeldeDocumenten.length,
         gedeeldeTasknummers: gedeeldeTasknummers.length,
+        verwijzingen: refs.length,
+        gedeeldeReferenties: gedeeldeReferenties.length,
         // Diagnose: hoeveel documenten hebben uberhaupt de velden waarop het
         // kruisverband draait? Zonder deze cijfers is "0 gedeelde
         // task-nummers" niet te onderscheiden van "de uitleesstap leest geen
@@ -500,14 +613,15 @@ async function crossSupplierOverview() {
           leverancier: sk, documenten: mijne.length,
           metLabnaam: mijne.filter((d) => d.labRuw).length,
           metTasknummer: mijne.filter((d) => d.taskNumber).length,
-          metSleutel: mijne.filter((d) => d.sleutel).length
+          metSleutel: mijne.filter((d) => d.sleutel).length,
+          verwijzingen: refs.filter((r) => r.leverancier === sk).length
         };
       }),
-      labs, gedeeldeDocumenten, gedeeldeTasknummers
+      labs, gedeeldeDocumenten, gedeeldeTasknummers, gedeeldeReferenties
     };
   } catch (e) {
     console.error('coaStore.crossSupplierOverview:', (e && e.message) || e);
-    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0, metLabnaam: 0, metTasknummer: 0, metSleutel: 0, metProduct: 0 }, perLeverancier: [], labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [] };
+    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0, metLabnaam: 0, metTasknummer: 0, metSleutel: 0, metProduct: 0, verwijzingen: 0, gedeeldeReferenties: 0 }, perLeverancier: [], labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [], gedeeldeReferenties: [] };
   }
 }
 
@@ -538,5 +652,6 @@ module.exports = {
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation,
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
-  crossSupplierOverview, andereLeveranciersVoor, normaliseerLab
+  crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
+  recordReferences, listReferences
 };

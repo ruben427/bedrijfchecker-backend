@@ -428,19 +428,22 @@
         '<div><b>' + t.geverifieerd + '</b>gecontroleerd</div>' +
         '<div><b>' + t.gedeeldeDocumenten + '</b>gedeelde bestanden</div>' +
         '<div><b>' + t.gedeeldeTasknummers + '</b>gedeelde task-nummers</div>' +
+        '<div><b>' + (t.verwijzingen || 0) + '</b>labverwijzingen</div>' +
+        '<div><b>' + (t.gedeeldeReferenties || 0) + '</b>gedeelde referenties</div>' +
       '</div>';
 
     // Diagnose eerst: zonder te weten hoeveel documenten uberhaupt een
     // task-nummer hebben, zegt "0 gedeelde task-nummers" niets.
     var zonderTask = t.documenten - (t.metTasknummer || 0);
     uit += '<h3 class="sub-kop">Uitleeskwaliteit</h3>' +
-      '<table class="kv"><thead><tr><th>Leverancier</th><th class="num">Docs</th><th class="num">Labnaam</th><th class="num">Task</th><th class="num">Sleutel</th></tr></thead><tbody>';
+      '<table class="kv"><thead><tr><th>Leverancier</th><th class="num">Docs</th><th class="num">Labnaam</th><th class="num">Task</th><th class="num">Sleutel</th><th class="num">Verwijz.</th></tr></thead><tbody>';
     (d.perLeverancier || []).forEach(function (r) {
       uit += '<tr><td>' + escape(r.leverancier) + '</td>' +
         '<td class="num">' + r.documenten + '</td>' +
         '<td class="num">' + r.metLabnaam + '</td>' +
         '<td class="num">' + r.metTasknummer + '</td>' +
-        '<td class="num">' + r.metSleutel + '</td></tr>';
+        '<td class="num">' + r.metSleutel + '</td>' +
+        '<td class="num">' + (r.verwijzingen || 0) + '</td></tr>';
     });
     uit += '</tbody></table>';
     if (zonderTask > 0) {
@@ -453,18 +456,33 @@
     if (!d.labs.length) {
       uit += '<p class="leeg">Nog geen labnamen in het archief.</p>';
     } else {
-      uit += '<table class="kv"><thead><tr><th>Lab</th><th>Werklijst</th><th class="num">Shops</th><th class="num">Docs</th><th class="num">Gecontroleerd</th></tr></thead><tbody>';
+      uit += '<table class="kv"><thead><tr><th>Lab</th><th>Werklijst</th><th class="num">Shops</th><th class="num">Docs</th><th class="num">Verwijz.</th><th class="num">Gecontroleerd</th></tr></thead><tbody>';
       d.labs.forEach(function (l) {
         uit += '<tr>' +
           '<td><b>' + escape(l.lab) + '</b><br>' + shopLijst(l.leveranciers) + '</td>' +
           '<td><span class="pill ' + (LIJST_PILL[l.lijst] || 'neutral') + '">' + escape(l.lijst) + '</span></td>' +
           '<td class="num">' + l.aantalLeveranciers + '</td>' +
           '<td class="num">' + l.documenten + '</td>' +
+          '<td class="num">' + (l.verwijzingen || 0) + '</td>' +
           '<td class="num">' + l.geverifieerd + '</td>' +
         '</tr>';
       });
       uit += '</tbody></table>';
       uit += '<p class="hint" style="margin-top:8px"><b>LET OP:</b> de kolom Werklijst is een intern hulplabel, geen methodiek-uitspraak. Het stuurt geen score aan; de beoordeling van een lab hoort in L01.</p>';
+    }
+
+    uit += '<h3 class="sub-kop">Zelfde labreferentie bij meerdere shops</h3>';
+    if (!(d.gedeeldeReferenties || []).length) {
+      uit += '<p class="leeg">Geen enkele labreferentie komt bij meer dan een shop voor.</p>';
+    } else {
+      d.gedeeldeReferenties.forEach(function (x) {
+        uit += '<div class="vondst">' +
+          '<h4>' + escape(x.lab) + ' &middot; ' + escape(x.referentie) + '</h4>' +
+          '<p style="margin:6px 0 2px;font-size:.88rem"><b>' + x.leveranciers.length + ' shops:</b> ' + escape(x.leveranciers.join(', ')) + '</p>' +
+          (x.url ? '<div class="shops"><a href="' + escape(x.url) + '" target="_blank" rel="noopener noreferrer">' + escape(x.url) + '</a></div>' : '') +
+        '</div>';
+      });
+      uit += '<p class="hint">Deze shops wijzen publiekelijk naar hetzelfde labrapport. Dat is vast te stellen zonder het lab te benaderen \u2014 de referentie staat in de link.</p>';
     }
 
     uit += '<h3 class="sub-kop">Zelfde bestand bij meerdere shops</h3>';
