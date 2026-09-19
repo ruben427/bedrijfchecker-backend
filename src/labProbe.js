@@ -51,7 +51,15 @@ const LABS = [
   // pas iets waard als het portaal bereikbaar en controleerbaar is.
   { lab: 'ILS Laboratories', soort: 'portaal', url: 'https://portal.ils-lab.com/' },
   { lab: 'ILS Laboratories', soort: 'bestanden', url: 'https://files.ils-lab.com/' },
-  { lab: 'ILS Laboratories', soort: 'homepage', url: 'https://ils-lab.com/' }
+  { lab: 'ILS Laboratories', soort: 'homepage', url: 'https://ils-lab.com/' },
+
+  // Bridge Analytical: toegevoegd 19 sep, gevonden bij lumopeptides.com (45
+  // van hun 71 verwijzingen). In een browser lost deze link zonder botmuur
+  // direct op naar het PDF-rapport. Als dat ook vanaf de server werkt, is dit
+  // het eerste lab waarvan we de verificatie kunnen automatiseren - en dat is
+  // precies wat er bij Janoshik niet kan.
+  { lab: 'Bridge Analytical', soort: 'verificatie', url: 'https://bridgeanalytical.com/verify/?key=360B-9TWT-5E76' },
+  { lab: 'Bridge Analytical', soort: 'homepage', url: 'https://bridgeanalytical.com/' }
 ];
 
 // Cloudflare en vergelijkbare diensten geven lang niet altijd een nette 403.
