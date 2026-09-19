@@ -356,13 +356,33 @@ const BEKENDE_LABS = [
   { naam: 'Finnrick', lijst: 'twijfel', patronen: ['finnrick'] }
 ];
 
+// De uitleesstap zet in het labveld alles wat er op het briefhoofd staat:
+// "MZ Biolabs", "MZ Biolabs, 2102 N Country Club Rd, Tucson, AZ 85716" en
+// een variant met e-mailadres en een markdown-link kwamen alle drie voorbij
+// als aparte laboratoria. Daarom eerst terug naar de kale naam: markdown-
+// links uitpakken en alles vanaf de eerste komma (adres, contactgegevens)
+// weglaten.
+function korteLabnaam(ruw) {
+  let t = String(ruw || '');
+  t = t.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
+  t = t.split(/[,;|\n]/)[0];
+  t = t.replace(/\s+/g, ' ').trim().replace(/[.\-\u2013\u2014]+$/, '').trim();
+  return t;
+}
+
+// Geeft naast de weergavenaam een groepeersleutel terug. Zonder die sleutel
+// telt elke schrijfwijze als een eigen lab en klopt "bij hoeveel shops komt
+// dit lab voor" simpelweg niet.
 function normaliseerLab(ruw) {
-  const plat = String(ruw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!plat) return { naam: 'onbekend', lijst: 'geen labnaam gelezen' };
+  const kort = korteLabnaam(ruw);
+  const plat = kort.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!plat) return { naam: 'onbekend', lijst: 'geen labnaam gelezen', sleutel: '' };
   for (const l of BEKENDE_LABS) {
-    if (l.patronen.some((p) => plat.indexOf(p) !== -1)) return { naam: l.naam, lijst: l.lijst };
+    if (l.patronen.some((p) => plat.indexOf(p) !== -1)) {
+      return { naam: l.naam, lijst: l.lijst, sleutel: l.naam.toLowerCase().replace(/[^a-z0-9]/g, '') };
+    }
   }
-  return { naam: String(ruw).trim(), lijst: 'niet op de werklijst' };
+  return { naam: kort, lijst: 'niet op de werklijst', sleutel: plat };
 }
 
 function klasseVan(rij) {
@@ -393,7 +413,7 @@ async function crossSupplierOverview() {
         const lab = normaliseerLab(r.lab);
         d = {
           sha256: r.sha256, product: r.product || null, batchnummer: r.batchnummer || null,
-          lab: lab.naam, labRuw: r.lab || null, labLijst: lab.lijst,
+          lab: lab.naam, labRuw: r.lab || null, labLijst: lab.lijst, labSleutel: lab.sleutel,
           taskNumber: r.task_number || null, sampleNumber: r.sample_number || null,
           sleutel: r.sleutel || null, klasse: klasseVan(r), bronnen: []
         };
@@ -419,7 +439,7 @@ async function crossSupplierOverview() {
     const perTask = new Map();
     alle.forEach((d) => {
       if (!d.taskNumber) return;
-      const sleutel = d.lab + '|' + String(d.taskNumber).trim().toLowerCase();
+      const sleutel = d.labSleutel + '|' + String(d.taskNumber).trim().toLowerCase();
       if (!perTask.has(sleutel)) perTask.set(sleutel, { lab: d.lab, taskNumber: d.taskNumber, documenten: [] });
       perTask.get(sleutel).documenten.push(d);
     });
@@ -440,8 +460,8 @@ async function crossSupplierOverview() {
     //    waar een handmatige controle het meeste oplevert.
     const perLab = new Map();
     alle.forEach((d) => {
-      if (!perLab.has(d.lab)) perLab.set(d.lab, { lab: d.lab, lijst: d.labLijst, leveranciers: new Set(), documenten: 0, geverifieerd: 0, labnamenRuw: new Set() });
-      const l = perLab.get(d.lab);
+      if (!perLab.has(d.labSleutel)) perLab.set(d.labSleutel, { lab: d.lab, lijst: d.labLijst, leveranciers: new Set(), documenten: 0, geverifieerd: 0, labnamenRuw: new Set() });
+      const l = perLab.get(d.labSleutel);
       d.leveranciers.forEach((s) => l.leveranciers.add(s));
       if (d.labRuw) l.labnamenRuw.add(d.labRuw);
       l.documenten += 1;
