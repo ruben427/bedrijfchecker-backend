@@ -430,6 +430,25 @@
         '<div><b>' + t.gedeeldeTasknummers + '</b>gedeelde task-nummers</div>' +
       '</div>';
 
+    // Diagnose eerst: zonder te weten hoeveel documenten uberhaupt een
+    // task-nummer hebben, zegt "0 gedeelde task-nummers" niets.
+    var zonderTask = t.documenten - (t.metTasknummer || 0);
+    uit += '<h3 class="sub-kop">Uitleeskwaliteit</h3>' +
+      '<table class="kv"><thead><tr><th>Leverancier</th><th class="num">Docs</th><th class="num">Labnaam</th><th class="num">Task</th><th class="num">Sleutel</th></tr></thead><tbody>';
+    (d.perLeverancier || []).forEach(function (r) {
+      uit += '<tr><td>' + escape(r.leverancier) + '</td>' +
+        '<td class="num">' + r.documenten + '</td>' +
+        '<td class="num">' + r.metLabnaam + '</td>' +
+        '<td class="num">' + r.metTasknummer + '</td>' +
+        '<td class="num">' + r.metSleutel + '</td></tr>';
+    });
+    uit += '</tbody></table>';
+    if (zonderTask > 0) {
+      uit += '<div class="let-op"><b>LET OP:</b> ' + zonderTask + ' van de ' + t.documenten +
+        ' documenten heeft geen task-nummer. Voor die documenten kan het kruisverband niets vinden, ' +
+        'ook niet als er wel degelijk iets te vinden is. Lees dit overzicht dus als een ondergrens, niet als een uitslag.</div>';
+    }
+
     uit += '<h3 class="sub-kop">Labs</h3>';
     if (!d.labs.length) {
       uit += '<p class="leeg">Nog geen labnamen in het archief.</p>';

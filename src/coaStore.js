@@ -351,7 +351,7 @@ const BEKENDE_LABS = [
   { naam: 'Krause Labs', lijst: 'betrouwbaar', patronen: ['krause'] },
   { naam: 'Kovera Labs', lijst: 'nieuw', patronen: ['kovera'] },
   { naam: 'Brown Institute of Biomolecular Research', lijst: 'twijfel', patronen: ['browninstitute', 'brownbiomolecular'] },
-  { naam: 'ILS', lijst: 'twijfel', patronen: ['ilslab', 'ils'] },
+  { naam: 'ILS Laboratories', lijst: 'twijfel', patronen: ['ilslab', 'ilslaboratories', 'ilslaboratory'] },
   { naam: 'Axiom Analytics', lijst: 'twijfel', patronen: ['axiomanalytics', 'axiom'] },
   { naam: 'Finnrick', lijst: 'twijfel', patronen: ['finnrick'] }
 ];
@@ -462,13 +462,32 @@ async function crossSupplierOverview() {
         documenten: alle.length,
         geverifieerd: alle.filter((d) => d.klasse).length,
         gedeeldeDocumenten: gedeeldeDocumenten.length,
-        gedeeldeTasknummers: gedeeldeTasknummers.length
+        gedeeldeTasknummers: gedeeldeTasknummers.length,
+        // Diagnose: hoeveel documenten hebben uberhaupt de velden waarop het
+        // kruisverband draait? Zonder deze cijfers is "0 gedeelde
+        // task-nummers" niet te onderscheiden van "de uitleesstap leest geen
+        // task-nummers" - het verschil tussen een bevinding en een meetfout.
+        metLabnaam: alle.filter((d) => d.labRuw).length,
+        metTasknummer: alle.filter((d) => d.taskNumber).length,
+        metSleutel: alle.filter((d) => d.sleutel).length,
+        metProduct: alle.filter((d) => d.product).length
       },
+      // Per leverancier dezelfde diagnose, zodat zichtbaar is of het uitlezen
+      // bij een bepaalde shop faalt of over de hele linie.
+      perLeverancier: Array.from(alleLeveranciers).sort().map((sk) => {
+        const mijne = alle.filter((d) => d.leveranciers.indexOf(sk) !== -1);
+        return {
+          leverancier: sk, documenten: mijne.length,
+          metLabnaam: mijne.filter((d) => d.labRuw).length,
+          metTasknummer: mijne.filter((d) => d.taskNumber).length,
+          metSleutel: mijne.filter((d) => d.sleutel).length
+        };
+      }),
       labs, gedeeldeDocumenten, gedeeldeTasknummers
     };
   } catch (e) {
     console.error('coaStore.crossSupplierOverview:', (e && e.message) || e);
-    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0 }, labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [] };
+    return { totalen: { leveranciers: 0, documenten: 0, geverifieerd: 0, gedeeldeDocumenten: 0, gedeeldeTasknummers: 0, metLabnaam: 0, metTasknummer: 0, metSleutel: 0, metProduct: 0 }, perLeverancier: [], labs: [], gedeeldeDocumenten: [], gedeeldeTasknummers: [] };
   }
 }
 
