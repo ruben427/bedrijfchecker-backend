@@ -47,7 +47,12 @@ async function fetchRemoteDocument(url) {
       }
     });
     if (!res.ok) return null;
-    const mediaType = guessMediaType(url, res.headers.get('content-type'));
+    // Na een doorstuur zegt de oorspronkelijke URL niets meer over het type:
+    // Bridge Analytical stuurt /verify/?key=... door naar een PDF zonder
+    // extensie in het eerste pad. Daarom eerst de eind-URL proberen.
+    const eindUrl = res.url || url;
+    const mediaType = guessMediaType(eindUrl, res.headers.get('content-type')) ||
+                      guessMediaType(url, res.headers.get('content-type'));
     if (!mediaType) return null;
     const contentLength = Number(res.headers.get('content-length') || 0);
     if (contentLength && contentLength > MAX_BYTES) return null;
@@ -62,7 +67,11 @@ async function fetchRemoteDocument(url) {
       mediaType,
       buffer: buf,
       etag: res.headers.get('etag') || null,
-      lastModified: res.headers.get('last-modified') || null
+      lastModified: res.headers.get('last-modified') || null,
+      // De URL waar we werkelijk uitkwamen. Bij een verificatielink is dat het
+      // rapport zelf, en dat is wat je wil vastleggen als bron.
+      finalUrl: eindUrl,
+      doorgestuurd: eindUrl !== url
     };
   } catch (e) {
     return null;

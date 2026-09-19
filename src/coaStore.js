@@ -113,10 +113,12 @@ async function initCoaSchema() {
       resolved_url TEXT,
       notitie TEXT,
       checked_by TEXT,
+      methode TEXT NOT NULL DEFAULT 'handmatig',
       checked_at BIGINT NOT NULL,
       UNIQUE (lab, referentie)
     );
   `);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS methode TEXT NOT NULL DEFAULT 'handmatig';`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
@@ -445,23 +447,48 @@ async function saveReferenceCheck(lab, referentie, check) {
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
-         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, checked_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (lab, referentie) DO UPDATE SET
-         resolvet = EXCLUDED.resolvet, klasse = EXCLUDED.klasse, client = EXCLUDED.client,
+         resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
          resolved_url = EXCLUDED.resolved_url, notitie = EXCLUDED.notitie,
-         checked_by = EXCLUDED.checked_by, checked_at = EXCLUDED.checked_at
+         checked_by = EXCLUDED.checked_by, checked_at = EXCLUDED.checked_at,
+         methode = EXCLUDED.methode,
+         -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
+         klasse = CASE WHEN EXCLUDED.methode = 'resolver'
+                       THEN coa_reference_checks.klasse
+                       ELSE EXCLUDED.klasse END
        RETURNING *`,
       [uuidv4(), lab, referentie, c.taskNumber || null,
        typeof c.resolvet === 'boolean' ? c.resolvet : null,
        c.klasse || null, c.client || null, c.product || null, c.batchnummer || null,
-       c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, Date.now()]
+       c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, c.methode || 'handmatig', Date.now()]
     );
     return rows[0] || null;
   } catch (e) {
     console.error('coaStore.saveReferenceCheck:', (e && e.message) || e);
     return null;
+  }
+}
+
+// Welke referenties van dit lab zijn nog niet opgelost? Dit is de werkvoorraad
+// van de resolver.
+async function openstaandeReferenties(lab, max) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT r.lab, r.referentie, r.url
+       FROM coa_references r
+       LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       WHERE r.lab = $1 AND c.id IS NULL
+       ORDER BY r.referentie
+       LIMIT $2`,
+      [lab, Math.max(1, Math.min(Number(max) || 10, 100))]
+    );
+    return rows;
+  } catch (e) {
+    console.error('coaStore.openstaandeReferenties:', (e && e.message) || e);
+    return [];
   }
 }
 
@@ -590,7 +617,8 @@ async function crossSupplierOverview() {
     checkRijen.forEach((c) => {
       checkOp.set(normaliseerLab(c.lab).sleutel + '|' + String(c.referentie).toLowerCase(), {
         klasse: c.klasse, resolvet: c.resolvet, client: c.client, product: c.product,
-        batchnummer: c.batchnummer, notitie: c.notitie, checkedBy: c.checked_by, checkedAt: c.checked_at
+        batchnummer: c.batchnummer, notitie: c.notitie, checkedBy: c.checked_by, checkedAt: c.checked_at,
+        methode: c.methode || 'handmatig'
       });
     });
     const refs = refRijen.map((r) => {
@@ -753,6 +781,6 @@ module.exports = {
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
   crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
-  recordReferences, listReferences, saveReferenceCheck, listReferenceChecks,
+  recordReferences, listReferences, saveReferenceCheck, listReferenceChecks, openstaandeReferenties,
   referentieUitUrl
 };

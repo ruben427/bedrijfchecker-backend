@@ -418,6 +418,91 @@ function heeftIdentiteitsbepaling(r) {
   return /(^|[^a-z])ms([^a-z]|$)|mass spec|massaspec|lc-?ms|ms\/ms|moleculair|molecular weight|aminozuur|amino acid|referentiestandaard|reference standard/.test(m);
 }
 
+// ---------------------------------------------------------------------------
+// LABRESOLVER (19 september 2026)
+//
+// Haalt een labreferentie op bij het laboratorium zelf, leest het rapport uit
+// en legt vast wat erop staat. Gemeten op dezelfde dag: van de zeven
+// verificatiesystemen die we kennen laat alleen Janoshik onze server niet
+// binnen. Bij Bridge Analytical lost de link direct door naar de PDF.
+//
+// HARDE GRENS: deze resolver kent NOOIT een authenticiteitsklasse toe.
+// Hij stelt vast dat het rapport bestaat en wat erop staat. Of dat een
+// leverancier iets waard is, hangt af van A13 en A14 en is aan Annemarie.
+// De controletabel is gebouwd op "een mens heeft dit gezien"; daarom krijgt
+// een resolverregel methode 'resolver' en blijft klasse leeg. Een eerder door
+// een mens gezette klasse wordt door een resolverrun nooit overschreven.
+// ---------------------------------------------------------------------------
+
+const LAB_RESOLVER_MAX = Number(process.env.LAB_RESOLVER_MAX) || 10;
+
+async function resolveerLabReferenties(lab, max) {
+  const labNaam = lab || 'Bridge Analytical';
+  const openstaand = await coaStore.openstaandeReferenties(labNaam, max || LAB_RESOLVER_MAX);
+  const uitkomsten = [];
+
+  for (const r of openstaand) {
+    const doc = await fetchRemoteDocument(r.url);
+    if (!doc) {
+      await coaStore.saveReferenceCheck(labNaam, r.referentie, {
+        resolvet: false, notitie: 'Resolver kon het rapport niet ophalen op ' + r.url,
+        resolvedUrl: r.url, checkedBy: 'resolver', methode: 'resolver'
+      });
+      uitkomsten.push({ referentie: r.referentie, resolvet: false, reden: 'niet op te halen' });
+      continue;
+    }
+
+    // Door hetzelfde archief als alle andere documenten: een labrapport is ook
+    // maar een document en hoeft maar een keer door de dure leesstap.
+    const obs = await coaStore.recordObservation({
+      url: r.url, supplierKey: 'lab:' + labNaam.toLowerCase().replace(/[^a-z0-9]/g, ''),
+      buffer: doc.buffer, mimetype: doc.mediaType, etag: doc.etag, lastModified: doc.lastModified
+    }).catch(() => null);
+
+    let data = obs ? await coaStore.getExtraction(obs.sha256, COA_EXTRACTOR_VERSION) : null;
+    if (!data) {
+      const prompt = EVIDENCE_RULES + '\n\nDit is het originele testrapport zoals laboratorium ' + labNaam +
+        ' het zelf teruggeeft op zijn verificatiepagina (' + r.url + '). Lees uitsluitend letterlijk wat er staat; ' +
+        'gebruik null waar een veld niet vermeld of onleesbaar is. Neem het veld Client over zoals het er staat, ' +
+        'ook als dat een andere partij is dan de verkopende shop.\n\n' +
+        'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,' +
+        '"client":string,"manufacturer":string,"laboratorium":string,"purityPercent":number|null,' +
+        '"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,' +
+        '"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,' +
+        '"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string,"status":string}]}]}';
+      data = await sampleJsonSafe(prompt, { documents: [doc], label: 'labresolver' });
+      if (obs && data) {
+        const eerste = (data.coaRecords || [])[0] || {};
+        await coaStore.saveExtraction(obs.sha256, COA_EXTRACTOR_VERSION, data, {
+          lab: labNaam, taskNumber: eerste.reportId || null
+        }).catch(() => {});
+      }
+    }
+
+    const rec = (data && data.coaRecords && data.coaRecords[0]) || null;
+    const tests = (rec && rec.resultaten || []).map((x) => x && x.parameter).filter(Boolean);
+    await coaStore.saveReferenceCheck(labNaam, r.referentie, {
+      resolvet: true,
+      client: (rec && rec.client) || null,
+      product: (rec && rec.product) || null,
+      batchnummer: (rec && rec.batchnummer) || null,
+      resolvedUrl: doc.finalUrl || r.url,
+      notitie: rec
+        ? ('Automatisch opgehaald bij het lab. ' + (tests.length ? ('Getest op: ' + tests.join(', ') + '. ') : '') +
+           (rec.manufacturer ? ('Manufacturer: ' + rec.manufacturer + '. ') : '') +
+           'Geen klasse toegekend - dat vraagt een menselijk oordeel.')
+        : 'Rapport opgehaald maar niet uit te lezen.',
+      checkedBy: 'resolver', methode: 'resolver'
+    });
+    uitkomsten.push({
+      referentie: r.referentie, resolvet: true,
+      client: (rec && rec.client) || null, product: (rec && rec.product) || null, tests
+    });
+  }
+
+  return { lab: labNaam, behandeld: openstaand.length, uitkomsten };
+}
+
 async function runResearchStep(caseId, ctx, key) {
   const startedAt = Date.now();
   await beginStep(caseId, key);
@@ -963,5 +1048,5 @@ async function runDeepTier(caseId, ctx) {
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
-  extractCoaFromUpload, COA_EXTRACTOR_VERSION
+  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties
 };

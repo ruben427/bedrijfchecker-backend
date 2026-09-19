@@ -371,19 +371,40 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
       return res.status(400).json({ error: 'ongeldige_klasse', message: 'klasse moet A, B, C of D zijn.' });
     }
     if (!b.checkedBy) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie de controle heeft uitgevoerd.' });
+    // Task, sample en sleutel zitten al in de referentie; die hoeft de
+    // aanroeper niet los mee te sturen. Wat wel wordt meegegeven wint.
+    const ontleed = coaStore.referentieUitUrl(lab, referentie) || {};
     const opgeslagen = await coaStore.saveReferenceCheck(lab, referentie, {
-      taskNumber: b.taskNumber || null,
+      taskNumber: b.taskNumber || ontleed.taskNumber || null,
       resolvet: typeof b.resolvet === 'boolean' ? b.resolvet : null,
       klasse: b.klasse || null,
       client: b.client || null,
       product: b.product || null,
       batchnummer: b.batchnummer || null,
-      resolvedUrl: b.resolvedUrl || null,
+      resolvedUrl: b.resolvedUrl || (/^https?:\/\//i.test(referentie) ? referentie : null) ||
+        (/janoshik/i.test(lab) && ontleed.referentie ? 'https://verify.janoshik.com/tests/' + encodeURIComponent(ontleed.referentie) : null),
       notitie: b.notitie || null,
       checkedBy: b.checkedBy
     });
     if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'De controle kon niet worden opgeslagen.' });
     res.json({ ok: true, controle: opgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Labreferenties automatisch oplossen bij het laboratorium. Alleen zinvol bij
+// labs die onze server binnenlaten; Janoshik doet dat niet (403, Cloudflare).
+// Bewust met een expliciete aanroep en een maximum per keer: elk opgehaald
+// rapport gaat door de dure leesstap, dus dit is geen achtergrondproces dat
+// ongemerkt kosten maakt.
+app.post('/api/admin/coa/references/resolve', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const lab = (b.lab || 'Bridge Analytical').trim();
+    const max = Number(b.max) || 5;
+    const r = await pipeline.resolveerLabReferenties(lab, max);
+    res.json(r);
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
