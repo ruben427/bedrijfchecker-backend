@@ -35,6 +35,7 @@ const EVIDENCE_RULES = [
   '5. Ontbrekende informatie is geen bewijs van afwezigheid; zeg dat iets niet gevonden is in plaats van te concluderen dat het niet bestaat.',
   '6. Geef bij elke individuele claim de bron-URL waar die vandaan komt. Geen bron beschikbaar betekent classificatie ONBEKEND.',
   '7. Schrijf beknopt, zakelijk Nederlands zonder em-dashes.',
+  "8. Over de identiteitsvelden in een COA-schema, als die gevraagd worden. identiteitsmethode is de methode waarmee het rapport vaststelt WELKE stof is aangetroffen, bijvoorbeeld MS, LC-MS, MS/MS, moleculair gewicht, aminozuuranalyse of vergelijking met een referentiestandaard. Neem die letterlijk over of gebruik null. identiteitBevestigd is alleen true wanneer het rapport zelf de aangetroffen stof benoemt op grond van zo een methode; een productnaam op het etiket of een zuiverheidspercentage is GEEN identiteitsbepaling. blindTest is true wanneer het rapport vermeldt dat het lab vooraf niet wist welke stof het moest aantreffen. Bij twijfel null.",
   'Antwoord UITSLUITEND met geldige JSON volgens het gevraagde schema hieronder. Geen andere tekst, geen markdown-codeblok.'
 ].join('\n');
 
@@ -293,7 +294,7 @@ async function runPhase(ctx, opts) {
 // coaStore.saveVerification. Zie correctie 3 in het Janoshik-protocol.
 async function extractCoaFromUpload(naam, doc) {
   const prompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, handmatig geupload door een staflid, dat een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is.\n\n' +
-    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}]}]}';
+    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}]}]}';
   const isPdf = /pdf/i.test(doc.mediaType || '');
   const opts = { label: 'admin-coa-upload' };
   if (isPdf) opts.documents = [{ data: doc.data, mediaType: doc.mediaType }];
@@ -341,7 +342,7 @@ function stepOpts(key, ctx, waarneming) {
       key: 'coaDataset', title: 'COA-dataset en -authenticiteit',
       searchQueries: [ctx.naam + ' COA certificate of analysis', ctx.naam + ' COA verification lab report number', ctx.naam + ' lab results batch'],
       researchQuery: 'Zoek alle publiek vindbare COA\'s (certificates of analysis) van leverancier "' + ctx.naam + '" (website: ' + ctx.website + '). Verzamel per COA: product, geclaimde en gemeten hoeveelheid met eenheid, purity-percentage en meetmethode, batchnummer, report/task-ID, verification key, laboratoriumnaam, order/ontvangst/analyse/rapportdatum, sterility- en endotoxin-testresultaten indien vermeld, overige contaminantentests, en of het rapport extern controleerbaar is (bijv. via een verification key of publiek opzoeksysteem bij het lab).',
-      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted","accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Gebruik authenticiteitsklasse A (authentiek + goede batchtraceerbaarheid), B (authentiek maar koppeling beperkt), C (niet onafhankelijk verifieerbaar) of D (concreet bewijs van afwijking) exact per het hoofdprotocol; gebruik D alleen met overtuigend bewijs.'
+      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted","accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Gebruik authenticiteitsklasse A (authentiek + goede batchtraceerbaarheid), B (authentiek maar koppeling beperkt), C (niet onafhankelijk verifieerbaar) of D (concreet bewijs van afwijking) exact per het hoofdprotocol; gebruik D alleen met overtuigend bewijs.'
     };
     case 'socialAffiliates': return {
       key: 'socialAffiliates', title: 'Social media, affiliates en commerciële relaties',
@@ -395,6 +396,26 @@ async function finishStep(caseId, key, startedAt) {
   const entry = { key, label: stepLabel(key), ts: Date.now(), durationMs };
   await db.updateCase(caseId, { progress: withoutKey.concat([entry]) });
   await db.updateStepStats(key, durationMs);
+}
+
+// Telt dit COA als identiteitsbepaling (C02)? Uitsluitend op grond van wat er
+// expliciet in het document staat. Een productnaam op het etiket en een
+// zuiverheidspercentage zeggen niets over WELKE stof is aangetroffen.
+//
+// Bewust streng: zonder expliciet bewijs telt identity niet mee. Dat levert
+// PARTIAL in plaats van PASS, en beide mogen publiceren - dit verandert dus
+// geen score, alleen de eerlijkheid van het label.
+//
+// LET OP: wat precies als identiteitsbepaling mag gelden is een methodische
+// vraag die bij Annemarie ligt (A14). Tot die beantwoord is staat hier de
+// conservatieve variant.
+function heeftIdentiteitsbepaling(r) {
+  if (!r) return false;
+  if (r.identiteitBevestigd === true) return true;
+  if (r.blindTest === true && r.product) return true;
+  const m = r.identiteitsmethode ? String(r.identiteitsmethode).toLowerCase() : '';
+  if (!m) return false;
+  return /(^|[^a-z])ms([^a-z]|$)|mass spec|massaspec|lc-?ms|ms\/ms|moleculair|molecular weight|aminozuur|amino acid|referentiestandaard|reference standard/.test(m);
 }
 
 async function runResearchStep(caseId, ctx, key) {
@@ -452,7 +473,7 @@ async function runResearchStep(caseId, ctx, key) {
       ((crawl && crawl.verificatieLinks) || []).map((v) => Object.assign({ lab: 'Janoshik' }, v))
     ).catch(() => ({ opgeslagen: 0, onleesbaar: 0 }));
     if (ctx.images && ctx.images.length) {
-      const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
+      const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
       const uploadedRecords = ((docData && docData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: null, uit: 'upload' }));
       records = records.concat(uploadedRecords);
@@ -558,7 +579,7 @@ async function runResearchStep(caseId, ctx, key) {
         continue;
       }
       try {
-        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
+        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
         noteer(url, 'wordt gelezen');
         const autofetchData = await sampleJsonSafe(autofetchPrompt, { documents: [doc], label: 'coaDataset-autofetch' });
         const autofetchRecords = ((autofetchData && autofetchData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'auto-fetch' }));
@@ -718,7 +739,13 @@ async function runResearchStep(caseId, ctx, key) {
       const fields = [];
       if (r.purityPercent != null) fields.push('purity');
       if (r.quantity && r.quantity.deviationPct != null) fields.push('quantity');
-      if (r.authenticiteitsklasse) fields.push('identity');
+      // M7 / A8, hersteld 19 september. Hier stond:
+      //   if (r.authenticiteitsklasse) fields.push('identity');
+      // Dat is fout. De authenticiteitsklasse zegt of het RAPPORT echt is
+      // (C01). Identity is de vraag of de juiste stof is aangetroffen (C02).
+      // Door die koppeling kon de Evidence Gate op PASS komen zonder dat er
+      // ooit een identiteitsbepaling was gelezen.
+      if (heeftIdentiteitsbepaling(r)) fields.push('identity');
       if (r.sterility && r.sterility.tested) fields.push('sterility');
       if (r.endotoxin && r.endotoxin.tested) fields.push('endotoxin');
       if (r.overigeContaminanten && r.overigeContaminanten.length) fields.push('other');
