@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>COA-verificatie — Bedrijfchecker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
+
+<style>
+  .wrap{max-width:960px;margin:0 auto;padding:24px 16px 80px}
+  .top{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
+  .top h1{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading);margin:0;font-size:1.6rem}
+  .top .sub{color:var(--text-muted);font-size:.9rem}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg,24px);padding:20px;margin:16px 0;box-shadow:var(--shadow)}
+  .panel > h2{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);margin:0 0 4px;font-size:1.15rem}
+  .panel > .hint{color:var(--text-muted);font-size:.88rem;margin:0 0 14px}
+  label{display:block;font-weight:600;font-size:.85rem;margin:10px 0 4px}
+  input[type=text],input[type=password],input[type=file],select,textarea{
+    width:100%;box-sizing:border-box;padding:10px 12px;font:inherit;font-size:.92rem;
+    background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm,8px)}
+  textarea{min-height:70px;resize:vertical}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row > *{flex:1 1 160px;min-width:0}
+  button{font:inherit;font-weight:600;font-size:.92rem;padding:10px 18px;border:0;cursor:pointer;
+    border-radius:var(--radius-pill,999px);background:var(--accent);color:#fff}
+  button:hover{background:var(--accent-strong)}
+  button[disabled]{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--accent);border:1px solid var(--border)}
+  button.ghost:hover{background:var(--accent-soft)}
+  .actions{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem}
+  .doc{border:1px solid var(--border);border-radius:var(--radius-md,12px);background:var(--surface-2);margin:12px 0;overflow:hidden}
+  .doc > summary{cursor:pointer;padding:14px 16px;list-style:none;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .doc > summary::-webkit-details-marker{display:none}
+  .doc[open] > summary{border-bottom:1px solid var(--border)}
+  .doc .body{padding:16px}
+  .doc .titel{font-weight:700;flex:1 1 220px}
+  .pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.74rem;font-weight:700;letter-spacing:.02em}
+  .pill.ok{background:var(--ok-soft);color:var(--ok)}
+  .pill.warn{background:var(--warn-soft);color:var(--warn)}
+  .pill.bad{background:var(--danger-soft);color:var(--danger)}
+  .pill.neutral{background:var(--grey-soft);color:var(--grey)}
+  dl.velden{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 4px;font-size:.88rem}
+  dl.velden dt{color:var(--text-muted)}
+  dl.velden dd{margin:0;font-family:"IBM Plex Mono",ui-monospace,monospace}
+  .let-op{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 var(--radius-sm,8px) var(--radius-sm,8px) 0;font-size:.86rem;margin:12px 0}
+  .let-op b{color:var(--accent-strong)}
+  .melding{padding:10px 14px;border-radius:var(--radius-sm,8px);font-size:.88rem;margin-top:12px;display:none}
+  .melding.tonen{display:block}
+  .melding.goed{background:var(--ok-soft);color:var(--ok)}
+  .melding.fout{background:var(--danger-soft);color:var(--danger)}
+  .melding.bezig{background:var(--grey-soft);color:var(--text-muted)}
+  .leeg{color:var(--text-subtle);font-size:.9rem;padding:8px 0}
+  a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+  hr.sep{border:0;border-top:1px solid var(--border);margin:18px 0}
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <h1>COA-verificatie</h1>
+    <span class="sub">interne pagina — niet publiek delen</span>
+  </header>
+
+  <section class="panel">
+    <h2>1. Toegang</h2>
+    <p class="hint">Plak het beheerderstoken. Het blijft alleen in dit tabblad staan en is na verversen weg.</p>
+    <label for="token">Beheerderstoken</label>
+    <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="ADMIN_TOKEN">
+  </section>
+
+  <section class="panel">
+    <h2>2. Leverancier opzoeken</h2>
+    <p class="hint">Vul de website of het domein in. Je krijgt alles wat er al bekend is: automatisch gevonden COA's én eerder handmatig toegevoegde.</p>
+    <div class="row">
+      <input type="text" id="leverancier" placeholder="bijv. nextgenpeptides.com" spellcheck="false">
+      <button type="button" id="zoek" style="flex:0 0 auto">Ophalen</button>
+    </div>
+    <div class="melding" id="zoek-melding"></div>
+  </section>
+
+  <section class="panel" id="paneel-docs" style="display:none">
+    <h2>3. Documenten</h2>
+    <p class="hint" id="docs-hint"></p>
+    <div id="docs"></div>
+  </section>
+
+  <section class="panel">
+    <h2>4. COA handmatig toevoegen</h2>
+    <p class="hint">Voor een COA die de crawl niet vindt — bijvoorbeeld uit een bestelling, een chat met de leverancier of een download achter een login.</p>
+    <label for="up-leverancier">Leverancier (website of domein)</label>
+    <input type="text" id="up-leverancier" placeholder="bijv. nextgenpeptides.com" spellcheck="false">
+    <label for="up-naam">Naam van de leverancier <span style="font-weight:400;color:var(--text-subtle)">(optioneel)</span></label>
+    <input type="text" id="up-naam" placeholder="bijv. NextGen Peptides">
+    <label for="up-bestand">Bestand (PDF of afbeelding, max 15 MB)</label>
+    <input type="file" id="up-bestand" accept="application/pdf,image/*">
+    <div class="actions">
+      <button type="button" id="upload">Toevoegen en uitlezen</button>
+    </div>
+    <div class="melding" id="upload-melding"></div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
+
+  var huidigeSupplierKey = null;
+
+  function el(id) { return document.getElementById(id); }
+  function token() { return (el('token').value || '').trim(); }
+
+  function melding(id, tekst, soort) {
+    var n = el(id);
+    n.textContent = tekst;
+    n.className = 'melding tonen ' + (soort || 'bezig');
+  }
+  function meldingWeg(id) { el(id).className = 'melding'; }
+
+  // De leverancier-ID moet exact hetzelfde genormaliseerd worden als op de
+  // server (coaStore.supplierKeyFromUrl), anders vind je niets terug.
+  function supplierKeyVan(invoer) {
+    var s = String(invoer || '').trim();
+    if (!s) return null;
+    try {
+      var u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s);
+      return u.hostname.replace(/^www\./i, '').toLowerCase();
+    } catch (e) {
+      return s.toLowerCase();
+    }
+  }
+
+  function api(pad, opties) {
+    var o = opties || {};
+    var headers = Object.assign({}, o.headers || {}, { 'X-Owner-Token': token() });
+    return fetch(API_BASE + pad, Object.assign({}, o, { headers: headers })).then(function (r) {
+      return r.text().then(function (tekst) {
+        var data = null;
+        try { data = tekst ? JSON.parse(tekst) : null; } catch (e) { data = null; }
+        if (!r.ok) {
+          var m = (data && data.message) || (data && data.error) || ('Server gaf status ' + r.status + '.');
+          if (r.status === 401 || r.status === 403) m = 'Geen toegang. Controleer het beheerderstoken bovenaan.';
+          throw new Error(m);
+        }
+        return data;
+      });
+    });
+  }
+
+  function tekst(v) { return (v === null || v === undefined || v === '') ? '—' : String(v); }
+
+  function escape(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function eersteRecord(doc) {
+    var ext = doc && doc.extraction;
+    if (typeof ext === 'string') { try { ext = JSON.parse(ext); } catch (e) { ext = null; } }
+    return (ext && ext.coaRecords && ext.coaRecords[0]) || {};
+  }
+
+  // Alleen een hulplink om de controle te kunnen starten. De task, sample en
+  // sleutel komen uit een AI-lezing van het document; controleer ze altijd
+  // eerst tegen het document zelf voordat je hier iets aan ophangt.
+  function janoshikLink(task, sample, sleutel) {
+    if (!task || !sleutel) return null;
+    var ref = sample ? (task + '-' + sample + '_' + sleutel) : (task + '_' + sleutel);
+    return 'https://verify.janoshik.com/tests/' + encodeURIComponent(ref);
+  }
+
+  var KLASSE_TEKST = {
+    A: 'A — extern geverifieerd, velden komen overeen',
+    B: 'B — resolvet, maar velden wijken af',
+    C: 'C — geen bruikbare referentie',
+    D: 'D — referentie aanwezig, maar resolvet niet'
+  };
+  var KLASSE_PILL = { A: 'ok', B: 'warn', C: 'neutral', D: 'bad' };
+
+  function statusPill(doc) {
+    var v = doc.verification;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+    var klasse = (v && v.class) || doc.authenticity_class || null;
+    if (!klasse) return '<span class="pill neutral">nog niet gecontroleerd</span>';
+    return '<span class="pill ' + (KLASSE_PILL[klasse] || 'neutral') + '">klasse ' + escape(klasse) + '</span>';
+  }
+
+  function bronOmschrijving(url) {
+    if (!url) return 'onbekende bron';
+    if (url.indexOf('admin-upload://') === 0) return 'handmatig toegevoegd';
+    return url;
+  }
+
+  function documentBlok(doc) {
+    var r = eersteRecord(doc);
+    var v = doc.verification;
+    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = null; } }
+
+    var task = r.reportId || doc.task_number || '';
+    var sample = r.sample || doc.sample_number || '';
+    var sleutel = r.verificationKey || '';
+    var link = janoshikLink(task, sample, sleutel);
+    var bron = bronOmschrijving(doc.url);
+    var bronHtml = (doc.url && doc.url.indexOf('http') === 0)
+      ? '<a href="' + escape(doc.url) + '" target="_blank" rel="noopener noreferrer">' + escape(bron) + '</a>'
+      : escape(bron);
+
+    var alGedaan = v
+      ? '<div class="melding tonen goed" style="margin-bottom:14px">Al vastgelegd op ' +
+        escape(new Date(v.checkedAt || Date.now()).toLocaleString('nl-NL')) + ' door ' + escape(v.checkedBy || 'onbekend') +
+        ': ' + escape(KLASSE_TEKST[v.class] || v.class) + (v.note ? ('. ' + escape(v.note)) : '') +
+        ' Een nieuwe vastlegging vervangt deze.</div>'
+      : '';
+
+    return '' +
+      '<details class="doc" data-sha="' + escape(doc.sha256) + '">' +
+        '<summary>' +
+          '<span class="titel">' + escape(tekst(r.product)) + '</span>' +
+          statusPill(doc) +
+          '<span class="mono" style="color:var(--text-subtle)">' + escape(String(doc.sha256).slice(0, 12)) + '…</span>' +
+        '</summary>' +
+        '<div class="body">' +
+
+          '<dl class="velden">' +
+            '<dt>Bron</dt><dd style="font-family:inherit">' + bronHtml + '</dd>' +
+            '<dt>Laboratorium</dt><dd>' + escape(tekst(r.laboratorium || doc.lab)) + '</dd>' +
+            '<dt>Batchnummer</dt><dd>' + escape(tekst(r.batchnummer)) + '</dd>' +
+            '<dt>Task / report-ID</dt><dd>' + escape(tekst(task)) + '</dd>' +
+            '<dt>Sample</dt><dd>' + escape(tekst(sample)) + '</dd>' +
+            '<dt>Verificatiesleutel</dt><dd>' + escape(tekst(sleutel)) + '</dd>' +
+            '<dt>Rapportdatum</dt><dd>' + escape(tekst(r.reportDate)) + '</dd>' +
+            '<dt>sha256</dt><dd style="word-break:break-all">' + escape(doc.sha256) + '</dd>' +
+          '</dl>' +
+
+          '<div class="let-op"><b>LET OP:</b> deze velden zijn door het model uit het document gelezen, niet gecontroleerd. ' +
+            'Lees ze na in het document zelf voordat je ze gebruikt.</div>' +
+
+          (link
+            ? '<p style="font-size:.9rem">Controlelink: <a href="' + escape(link) + '" target="_blank" rel="noopener noreferrer">' + escape(link) + '</a></p>'
+            : '<p style="font-size:.9rem;color:var(--text-muted)">Geen task-ID en sleutel herkend — zoek de verificatiereferentie zelf in het document. Staat die er niet in, dan is dit klasse C.</p>') +
+
+          '<hr class="sep">' +
+
+          '<h3 style="font-family:\'Baloo 2\',sans-serif;color:var(--heading-2);font-size:1rem;margin:0 0 4px">Uitslag vastleggen</h3>' +
+          '<p class="hint" style="margin:0 0 10px">Vul dit pas in nadat je de controlepagina zelf in je browser hebt geopend en bekeken.</p>' +
+
+          '<label>Uitkomst</label>' +
+          '<select data-veld="klasse">' +
+            '<option value="">— kies —</option>' +
+            '<option value="A">' + KLASSE_TEKST.A + '</option>' +
+            '<option value="B">' + KLASSE_TEKST.B + '</option>' +
+            '<option value="C">' + KLASSE_TEKST.C + '</option>' +
+            '<option value="D">' + KLASSE_TEKST.D + '</option>' +
+          '</select>' +
+
+          '<div class="row">' +
+            '<div><label>Laboratorium</label><input type="text" data-veld="lab" value="' + escape(r.laboratorium || doc.lab || '') + '"></div>' +
+            '<div><label>Task</label><input type="text" data-veld="task" value="' + escape(task) + '"></div>' +
+            '<div><label>Sample</label><input type="text" data-veld="sample" value="' + escape(sample) + '"></div>' +
+          '</div>' +
+          '<div class="row">' +
+            '<div><label>Sleutel</label><input type="text" data-veld="key" value="' + escape(sleutel) + '"></div>' +
+            '<div><label>Geopende URL</label><input type="text" data-veld="resolvedUrl" value="' + escape(link || '') + '"></div>' +
+          '</div>' +
+
+          '<label>Wat stond er op de controlepagina?</label>' +
+          '<textarea data-veld="note" placeholder="Bijv.: pagina opende op /tests/164849-selank_10mg, product en batch komen overeen met het document."></textarea>' +
+
+          '<label>Gecontroleerd door</label>' +
+          '<input type="text" data-veld="checkedBy" placeholder="je naam">' +
+
+          '<div class="actions"><button type="button" data-actie="verifieer">Vastleggen</button></div>' +
+          '<div class="melding" data-rol="melding"></div>' +
+
+          alGedaan +
+        '</div>' +
+      '</details>';
+  }
+
+  function toonDocumenten(supplierKey, documenten) {
+    huidigeSupplierKey = supplierKey;
+    el('paneel-docs').style.display = '';
+    el('docs-hint').textContent = documenten.length
+      ? documenten.length + ' document(en) bekend voor ' + supplierKey + '.'
+      : 'Nog geen documenten bekend voor ' + supplierKey + '.';
+    el('docs').innerHTML = documenten.length
+      ? documenten.map(documentBlok).join('')
+      : '<p class="leeg">Er staat nog niets in het archief. Draai eerst een controle op deze leverancier, of voeg hieronder handmatig een COA toe.</p>';
+  }
+
+  function ophalen() {
+    var key = supplierKeyVan(el('leverancier').value);
+    if (!token()) { melding('zoek-melding', 'Vul eerst het beheerderstoken in.', 'fout'); return; }
+    if (!key) { melding('zoek-melding', 'Vul een website of domein in.', 'fout'); return; }
+    melding('zoek-melding', 'Bezig met ophalen…', 'bezig');
+    api('/api/admin/coa/' + encodeURIComponent(key))
+      .then(function (data) {
+        meldingWeg('zoek-melding');
+        toonDocumenten(key, (data && data.documents) || []);
+      })
+      .catch(function (e) { melding('zoek-melding', e.message, 'fout'); });
+  }
+
+  function uploaden() {
+    var key = supplierKeyVan(el('up-leverancier').value);
+    var bestand = el('up-bestand').files[0];
+    if (!token()) { melding('upload-melding', 'Vul eerst het beheerderstoken in.', 'fout'); return; }
+    if (!key) { melding('upload-melding', 'Vul de website of het domein van de leverancier in.', 'fout'); return; }
+    if (!bestand) { melding('upload-melding', 'Kies een bestand.', 'fout'); return; }
+
+    var fd = new FormData();
+    fd.append('coaFile', bestand);
+    var naam = (el('up-naam').value || '').trim();
+    if (naam) fd.append('naam', naam);
+
+    el('upload').disabled = true;
+    melding('upload-melding', 'Bezig met opslaan en uitlezen — dit duurt een halve minuut…', 'bezig');
+    api('/api/admin/coa/' + encodeURIComponent(key) + '/upload', { method: 'POST', body: fd })
+      .then(function () {
+        melding('upload-melding', 'Toegevoegd en uitgelezen. Het document staat nu in het overzicht hierboven.', 'goed');
+        el('up-bestand').value = '';
+        el('leverancier').value = key;
+        return api('/api/admin/coa/' + encodeURIComponent(key)).then(function (data) {
+          toonDocumenten(key, (data && data.documents) || []);
+          el('paneel-docs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      })
+      .catch(function (e) { melding('upload-melding', e.message, 'fout'); })
+      .then(function () { el('upload').disabled = false; });
+  }
+
+  function vastleggen(blok, knop) {
+    var sha = blok.getAttribute('data-sha');
+    var meldNode = blok.querySelector('[data-rol="melding"]');
+    function zeg(t, s) { meldNode.textContent = t; meldNode.className = 'melding tonen ' + s; }
+
+    function veld(naam) {
+      var n = blok.querySelector('[data-veld="' + naam + '"]');
+      return n ? (n.value || '').trim() : '';
+    }
+
+    var klasse = veld('klasse');
+    var door = veld('checkedBy');
+    if (!klasse) { zeg('Kies eerst een uitkomst.', 'fout'); return; }
+    if (!door) { zeg('Vul in wie de controle heeft uitgevoerd.', 'fout'); return; }
+    if (!veld('note')) { zeg('Beschrijf kort wat je op de controlepagina zag — dat is de onderbouwing.', 'fout'); return; }
+
+    var lichaam = {
+      class: klasse,
+      method: 'handmatig',
+      lab: veld('lab') || null,
+      task: veld('task') || null,
+      sample: veld('sample') || null,
+      key: veld('key') || null,
+      resolvedUrl: veld('resolvedUrl') || null,
+      note: veld('note') || null,
+      checkedBy: door
+    };
+
+    knop.disabled = true;
+    zeg('Bezig met opslaan…', 'bezig');
+    api('/api/admin/coa/' + encodeURIComponent(huidigeSupplierKey) + '/documents/' + encodeURIComponent(sha) + '/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(lichaam)
+    })
+      .then(function () {
+        zeg('Vastgelegd. Dit telt vanaf nu mee in elk rapport van deze leverancier.', 'goed');
+        var pill = blok.querySelector('summary .pill');
+        if (pill) {
+          pill.className = 'pill ' + (KLASSE_PILL[klasse] || 'neutral');
+          pill.textContent = 'klasse ' + klasse;
+        }
+      })
+      .catch(function (e) { zeg(e.message, 'fout'); })
+      .then(function () { knop.disabled = false; });
+  }
+
+  el('zoek').addEventListener('click', ophalen);
+  el('leverancier').addEventListener('keydown', function (e) { if (e.key === 'Enter') ophalen(); });
+  el('upload').addEventListener('click', uploaden);
+
+  el('docs').addEventListener('click', function (e) {
+    var knop = e.target.closest('[data-actie="verifieer"]');
+    if (!knop) return;
+    vastleggen(knop.closest('.doc'), knop);
+  });
+})();
+</script>
