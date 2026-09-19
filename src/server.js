@@ -14,6 +14,7 @@ const rl = require('./rateLimit');
 const { caseSummary, ownerCase, publicCase, sanitizeError } = require('./serialize');
 const { isValidWebUrl, normalizeUrl } = require('./validate');
 const { checkPeptideSupplierRelevance } = require('./relevanceCheck');
+const labProbe = require('./labProbe');
 
 const app = express();
 
@@ -105,6 +106,22 @@ app.post('/api/diagnostics/crawl', rl.caseAction, auth.requireOwnerToken, async 
 // Volgorde van de middleware is hier niet vrijblijvend: de relevantiecheck
 // hieronder is een betaalde AI-call die draait VOORDAT er een case bestaat.
 // Rate limiting en tokencontrole moeten daar dus vóór staan, niet erin.
+// Labmeting: welke verificatiediensten van laboratoria laten deze server
+// binnen? Zet LAB_PROBE=on om dit endpoint aan te zetten; standaard uit,
+// zodat het niet per ongeluk blijft staan. Geen invoer van buiten - de
+// lijst zit in labProbe.js - dus dit is geen SSRF-oppervlak.
+app.get('/api/diagnostics/labs', rl.caseAction, auth.requireOwnerToken, async (req, res) => {
+  if (process.env.LAB_PROBE !== 'on') {
+    return res.status(404).json({ error: 'not_enabled', message: 'Zet LAB_PROBE=on om deze meting aan te zetten.' });
+  }
+  try {
+    const r = await labProbe.probeAll();
+    res.json(r);
+  } catch (e) {
+    res.status(500).json({ error: 'probe_failed', message: (e && e.message) || 'onbekende fout' });
+  }
+});
+
 app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, async (req, res) => {
   try {
     const website = normalizeUrl(req.body.website || '');
