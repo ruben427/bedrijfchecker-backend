@@ -514,6 +514,39 @@ async function listReferences() {
   }
 }
 
+async function referentiesMetControle(lab, max) {
+  try {
+    const params = [Math.max(1, Math.min(Number(max) || 100, 500))];
+    const waar = lab ? 'WHERE r.lab = $2' : '';
+    if (lab) params.push(lab);
+    const { rows } = await pool.query(
+      `SELECT r.lab, r.referentie, r.url,
+              array_agg(DISTINCT r.supplier_key) AS leveranciers,
+              c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
+              c.notitie, c.checked_by, c.methode, c.checked_at
+       FROM coa_references r
+       LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       ${waar}
+       GROUP BY r.lab, r.referentie, r.url, c.resolvet, c.klasse, c.client, c.product,
+                c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at
+       ORDER BY c.checked_at DESC NULLS LAST, r.referentie
+       LIMIT $1`,
+      params
+    );
+    return rows.map((r) => ({
+      lab: r.lab, referentie: r.referentie, url: r.url, leveranciers: r.leveranciers || [],
+      controle: r.checked_at ? {
+        resolvet: r.resolvet, klasse: r.klasse, client: r.client, product: r.product,
+        batchnummer: r.batchnummer, notitie: r.notitie, checkedBy: r.checked_by,
+        methode: r.methode, checkedAt: r.checked_at
+      } : null
+    }));
+  } catch (e) {
+    console.error('coaStore.referentiesMetControle:', (e && e.message) || e);
+    return [];
+  }
+}
+
 // --- Kruisverband tussen leveranciers ------------------------------------
 // Het archief is content-addressed: publiceren twee shops hetzelfde bestand,
 // dan levert dat hetzelfde sha256 op. Dat signaal zat al in de data, maar was
@@ -605,7 +638,7 @@ async function crossSupplierOverview() {
         };
         docs.set(r.sha256, d);
       }
-      d.bronnen.push({ supplierKey: r.supplier_key, url: r.url, status: r.status });
+      if (!/^lab:/i.test(r.supplier_key || '')) d.bronnen.push({ supplierKey: r.supplier_key, url: r.url, status: r.status });
     });
 
     // Verwijzingen staan los van de documenten, maar horen in hetzelfde
@@ -782,5 +815,6 @@ module.exports = {
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
   crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
   recordReferences, listReferences, saveReferenceCheck, listReferenceChecks, openstaandeReferenties,
+  referentiesMetControle,
   referentieUitUrl
 };

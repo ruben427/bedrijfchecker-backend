@@ -393,6 +393,33 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
   }
 });
 
+// Alle referenties van een lab met hun controle. Nodig omdat het kruisverband
+// alleen GEDEELDE referenties toont, en een lab met een enkele shop die per
+// definitie niet heeft - de 45 opgeloste Bridge-rapporten waren daardoor
+// nergens terug te zien.
+app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const rijen = await coaStore.referentiesMetControle(req.query.lab || null, req.query.max);
+    const metControle = rijen.filter((r) => r.controle);
+    const clients = {};
+    metControle.forEach((r) => {
+      const c = (r.controle.client || 'onbekend').toLowerCase();
+      clients[c] = (clients[c] || 0) + 1;
+    });
+    res.json({
+      lab: req.query.lab || 'alle',
+      totaal: rijen.length,
+      gecontroleerd: metControle.length,
+      opgelost: metControle.filter((r) => r.controle.resolvet === true).length,
+      nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
+      perOpdrachtgever: clients,
+      referenties: rijen
+    });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Labreferenties automatisch oplossen bij het laboratorium. Alleen zinvol bij
 // labs die onze server binnenlaten; Janoshik doet dat niet (403, Cloudflare).
 // Bewust met een expliciete aanroep en een maximum per keer: elk opgehaald
