@@ -1228,6 +1228,58 @@ async function runResearchStep(caseId, ctx, key) {
     // Welke soorten tests heeft deze leverancier laten doen? Bij een shop die
     // per batch splitst in losse rapporten is dat de enige eerlijke telling.
     const testdekking = await coaStore.testsoortDekking(refSupplierKey).catch(() => null);
+
+    // ---- Handmatige labcontroles teruglezen ----
+    //
+    // Tot nu deed de pijplijn dit niet, en dat was een gat: iemand controleert
+    // met de hand vijftig referenties bij het lab, en de eerstvolgende run van
+    // die leverancier weet daar niets van. Het duurste bewijs dat we hebben -
+    // een mens die de labpagina echt heeft geopend - kwam nergens terug.
+    //
+    // Alleen teruglezen en tonen. Geen klasse, geen score: hoe zwaar dit weegt
+    // is A15/A16 en ligt bij Annemarie.
+    const controles = await coaStore.referentiesVanLeverancier(refSupplierKey, 500).catch(() => []);
+    const metControle = controles.filter((r) => r.controle);
+    const handmatig = metControle.filter((r) => r.controle.methode === 'handmatig');
+    const opdrachtgevers = {};
+    let derdePartij = 0, veldverschillen = 0, alleenSchrijfwijze = 0;
+    metControle.forEach((r) => {
+      const c = r.controle;
+      if (c.client) {
+        opdrachtgevers[c.client] = (opdrachtgevers[c.client] || 0) + 1;
+        const oordeel = coaStore.clientOordeel(c.client, [refSupplierKey]);
+        if (oordeel && oordeel.derdePartij) derdePartij++;
+      }
+      (c.veldvergelijking || []).forEach((v) => {
+        if (v.gelijk === false) { if (v.bijnaGelijk) alleenSchrijfwijze++; else veldverschillen++; }
+      });
+    });
+    const handmatigeControles = metControle.length ? {
+      aantal: metControle.length,
+      doorEenMens: handmatig.length,
+      opgelost: metControle.filter((r) => r.controle.resolvet === true).length,
+      nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
+      opdrachtgevers,
+      // Hoeveel rapporten staan op naam van iemand anders dan deze leverancier?
+      opNaamVanDerde: derdePartij,
+      veldverschillen,
+      alleenSchrijfwijze,
+      // De regels zelf, zodat het rapport ze kan tonen in plaats van alleen tellen.
+      regels: metControle.slice(0, 60).map((r) => ({
+        referentie: r.referentie, url: r.url, testsoort: r.testsoort,
+        client: r.controle.client, manufacturer: r.controle.manufacturer,
+        product: r.controle.product, batchnummer: r.controle.batchnummer,
+        zuiverheidPct: r.controle.zuiverheidPct, vullingPct: r.controle.vullingPct,
+        resolvet: r.controle.resolvet, klasse: r.controle.klasse,
+        veldenAfwijkend: r.controle.veldenAfwijkend,
+        veldvergelijking: r.controle.veldvergelijking,
+        gecontroleerdDoor: r.controle.checkedBy, methode: r.controle.methode
+      }))
+    } : null;
+    if (handmatigeControles) {
+      await meldStap(caseId, handmatigeControles.aantal + ' eerdere handmatige labcontrole(s) teruggelezen' +
+        (derdePartij ? (' - LET OP: ' + derdePartij + ' rapport(en) staan op naam van een derde partij') : ''));
+    }
     const beloften = (phase.data && phase.data.kwaliteitsbeloften) || [];
     const beloftetoets = toetsZuiverheidsbelofte(beloften, records);
 
@@ -1283,7 +1335,7 @@ async function runResearchStep(caseId, ctx, key) {
       beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
       diagnose: (crawl && crawl.diagnose) || []
     };
-    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets, testdekking }) };
+    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets, testdekking, handmatigeControles }) };
   } else if (key === 'laboratorium') {
     // Begin bij wat de COA-stap al gezien heeft. Draait deze stap zonder
     // voorafgaande COA-stap, dan is waarneming gewoon leeg en valt stepOpts
