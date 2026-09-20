@@ -123,6 +123,14 @@ async function initCoaSchema() {
   // verborgen tests). Tot nu belandde dat alleen in een Nederlandse notitie en
   // was het na de run weg - niet te filteren, niet te tonen in het rapport.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS rapport JSONB;`);
+  // Zuiverheid en vulling hadden geen eigen kolom, dus belandden ze bij een
+  // handmatige controle in de notitie - waar ze niet te filteren of te
+  // vergelijken zijn. De mens typt over wat er staat (tekst); het
+  // percentage leiden we daar zelf uit af.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS zuiverheid TEXT;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS zuiverheid_pct NUMERIC;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vulling TEXT;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vulling_pct NUMERIC;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -500,14 +508,41 @@ async function recordReferences(supplierKey, lijst) {
 // LET OP: alleen deze route mag klasse D zetten (referentie bestaat, maar
 // lost niet op). Het model doet dat nooit zelf - zelfde regel als bij de
 // documenten.
+// Uit de letterlijke tekst die een mens overtypt het percentage halen. De
+// tekst blijft altijd bewaard; lukt het afleiden niet, dan blijft het getal
+// leeg. Nooit andersom - een geraden getal is erger dan geen getal.
+function percentageUit(tekst) {
+  if (!tekst) return null;
+  const t = String(tekst);
+  // Een expliciet percentage wint: "99.14%" of "(106%)".
+  const pct = t.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
+  if (pct) {
+    const n = Number(pct[1].replace(',', '.'));
+    if (Number.isFinite(n) && n >= 0 && n <= 1000) return n;
+  }
+  // Anders een verhouding met dezelfde eenheid: "10.6 mg / 10 mg".
+  const ratio = t.match(/(\d+(?:[.,]\d+)?)\s*([a-z]{1,4})?\s*\/\s*(\d+(?:[.,]\d+)?)\s*([a-z]{1,4})?/i);
+  if (ratio) {
+    const a = Number(ratio[1].replace(',', '.'));
+    const b = Number(ratio[3].replace(',', '.'));
+    const ea = (ratio[2] || '').toLowerCase();
+    const eb = (ratio[4] || '').toLowerCase();
+    if (ea && eb && ea !== eb) return null;   // appels en peren
+    if (Number.isFinite(a) && Number.isFinite(b) && b > 0) {
+      return Math.round((a / b) * 10000) / 100;
+    }
+  }
+  return null;
+}
+
 async function saveReferenceCheck(lab, referentie, check) {
   if (!lab || !referentie || !check) return null;
   const c = check;
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
-         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -517,6 +552,10 @@ async function saveReferenceCheck(lab, referentie, check) {
          -- Een menselijke controle heeft geen labrapport bij zich. Die mag het
          -- rapport dat de resolver eerder ophaalde niet wissen.
          rapport = COALESCE(EXCLUDED.rapport, coa_reference_checks.rapport),
+         zuiverheid = COALESCE(EXCLUDED.zuiverheid, coa_reference_checks.zuiverheid),
+         zuiverheid_pct = COALESCE(EXCLUDED.zuiverheid_pct, coa_reference_checks.zuiverheid_pct),
+         vulling = COALESCE(EXCLUDED.vulling, coa_reference_checks.vulling),
+         vulling_pct = COALESCE(EXCLUDED.vulling_pct, coa_reference_checks.vulling_pct),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -526,7 +565,9 @@ async function saveReferenceCheck(lab, referentie, check) {
        typeof c.resolvet === 'boolean' ? c.resolvet : null,
        c.klasse || null, c.client || null, c.product || null, c.batchnummer || null,
        c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, c.methode || 'handmatig', Date.now(),
-       c.rapport ? JSON.stringify(c.rapport) : null]
+       c.rapport ? JSON.stringify(c.rapport) : null,
+       c.zuiverheid || null, percentageUit(c.zuiverheid),
+       c.vulling || null, percentageUit(c.vulling)]
     );
     return rows[0] || null;
   } catch (e) {
@@ -678,12 +719,14 @@ async function referentiesMetControle(lab, max) {
       `SELECT r.lab, r.referentie, r.url,
               array_agg(DISTINCT r.supplier_key) AS leveranciers,
               c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
-              c.notitie, c.checked_by, c.methode, c.checked_at
+              c.notitie, c.checked_by, c.methode, c.checked_at,
+              c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
        ${waar}
        GROUP BY r.lab, r.referentie, r.url, c.resolvet, c.klasse, c.client, c.product,
-                c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at
+                c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at,
+                c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $1`,
       params
@@ -694,7 +737,9 @@ async function referentiesMetControle(lab, max) {
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, product: r.product,
         batchnummer: r.batchnummer, notitie: r.notitie, checkedBy: r.checked_by,
-        methode: r.methode, checkedAt: r.checked_at
+        methode: r.methode, checkedAt: r.checked_at,
+        zuiverheid: r.zuiverheid, zuiverheidPct: r.zuiverheid_pct,
+        vulling: r.vulling, vullingPct: r.vulling_pct
       } : null
     }));
   } catch (e) {

@@ -160,19 +160,22 @@ async function buildServer() {
         klasse: z.enum(['A', 'B', 'C', 'D']).optional().describe('A = lost op en komt overeen, B = lost op maar velden wijken af, C = geen bruikbare referentie, D = referentie aanwezig maar lost niet op'),
         client: z.string().optional().describe('De opdrachtgever zoals letterlijk op het rapport vermeld'),
         product: z.string().optional(),
-        batchnummer: z.string().optional(),
-        notitie: z.string().optional().describe('Wat er verder op de pagina te zien was'),
+        batchnummer: z.string().optional().describe('Het batch- of lotnummer zoals het lab het noemt. Heeft een eigen kolom: niet in de notitie zetten.'),
+        zuiverheid: z.string().optional().describe('De zuiverheid letterlijk zoals hij op de pagina staat, bijvoorbeeld "99.14%". Overtypen wat er staat; het percentage wordt er zelf uit afgeleid.'),
+        vulling: z.string().optional().describe('De gemeten hoeveelheid tegenover de geclaimde, letterlijk zoals het er staat, bijvoorbeeld "10.6 mg / 10 mg" of "83.98mg / 80mg (105%)". Het percentage wordt er zelf uit afgeleid.'),
+        notitie: z.string().optional().describe('Wat er VERDER op de pagina te zien was. Batch, zuiverheid en vulling horen hier niet in - die hebben een eigen veld.'),
         gecontroleerdDoor: z.string().min(1).describe('Naam van de persoon die de controle heeft uitgevoerd')
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
-    async ({ referentie, lab, resolvet, klasse, client, product, batchnummer, notitie, gecontroleerdDoor }) => {
+    async ({ referentie, lab, resolvet, klasse, client, product, batchnummer, zuiverheid, vulling, notitie, gecontroleerdDoor }) => {
       const p = require('./janoshik').parseReferentie(referentie);
       const ref = p ? p.referentie : String(referentie).trim();
       const opgeslagen = await coaStore.saveReferenceCheck(lab || 'Janoshik', ref, {
         taskNumber: p ? p.taskNumber : null,
         resolvet, klasse: klasse || null, client: client || null,
         product: product || null, batchnummer: batchnummer || null,
+        zuiverheid: zuiverheid || null, vulling: vulling || null,
         resolvedUrl: /^https?:\/\//i.test(String(referentie)) ? String(referentie) : janoshikLinkFrom(p && p.taskNumber, p && p.sample, p && p.key),
         notitie: notitie || null, checkedBy: gecontroleerdDoor
       });
