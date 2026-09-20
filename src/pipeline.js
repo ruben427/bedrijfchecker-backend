@@ -275,10 +275,34 @@ function trimPhasesForPrompt(phases) {
   return out;
 }
 
-async function runPhase(ctx, opts) {
-  const searchResults = opts.searchQueries && opts.searchQueries.length ? await tavilySearch(opts.searchQueries) : [];
-  const extractResults = opts.extractUrls && opts.extractUrls.length ? await tavilyExtract(opts.extractUrls) : { ok: [], failed: [] };
-  const researchResult = opts.researchQuery ? await tavilyResearch(opts.researchQuery) : null;
+async function runPhase(ctx, opts, caseId) {
+  // Deze functie was de stille veertig seconden aan het begin van elke stap:
+  // drie zoekacties en daarna een modelaanroep, zonder een enkel teken van
+  // leven. Vandaar dat er onder de lopende stap alleen "Nog geen tussenstand"
+  // stond. Elke deelactie meldt zich nu.
+  const melden = (t) => (caseId ? meldStap(caseId, t).catch(() => {}) : Promise.resolve());
+
+  let searchResults = [];
+  if (opts.searchQueries && opts.searchQueries.length) {
+    await melden('Zoeken op het web: "' + String(opts.searchQueries[0]).slice(0, 90) + '"' +
+      (opts.searchQueries.length > 1 ? (' en ' + (opts.searchQueries.length - 1) + ' andere zoekopdracht(en)') : ''));
+    searchResults = await tavilySearch(opts.searchQueries);
+    await melden(searchResults.length + ' zoekresultaat/resultaten binnen');
+  }
+
+  let extractResults = { ok: [], failed: [] };
+  if (opts.extractUrls && opts.extractUrls.length) {
+    await melden(opts.extractUrls.length + ' pagina(s) ophalen en uitlezen');
+    extractResults = await tavilyExtract(opts.extractUrls);
+    await melden(extractResults.ok.length + ' pagina(s) gelezen, ' + extractResults.failed.length + ' niet opgehaald');
+  }
+
+  let researchResult = null;
+  if (opts.researchQuery) {
+    await melden('Verdiepend onderzoek uitvoeren - dit is meestal de langste deelstap');
+    researchResult = await tavilyResearch(opts.researchQuery);
+    await melden(researchResult ? 'Verdiepend onderzoek afgerond' : 'Verdiepend onderzoek leverde niets op');
+  }
 
   const raw = {
     zoekresultaten: trimList(searchResults, 8, 500),
@@ -290,7 +314,9 @@ async function runPhase(ctx, opts) {
   const prompt = EVIDENCE_RULES + '\n\nOnderzoeksfase: ' + opts.title + '\nLeverancier: ' + ctx.naam + '\nWebsite: ' + ctx.website + '\n\n' +
     'Ruwe brondata (JSON):\n' + JSON.stringify(raw) + '\n\n' + opts.schemaHint;
 
+  await melden('Het model laten lezen wat er is opgehaald (' + opts.title + ')');
   const data = await sampleJsonSafe(prompt, { label: opts.key });
+  await melden('Antwoord van het model binnen');
   return { key: opts.key, title: opts.title, data };
 }
 
@@ -743,7 +769,7 @@ async function runResearchStep(caseId, ctx, key) {
   await beginStep(caseId, key);
   let result;
   if (key === 'coaDataset') {
-    const phase = await runPhase(ctx, stepOpts('coaDataset', ctx));
+    const phase = await runPhase(ctx, stepOpts('coaDataset', ctx), caseId);
     let records = (phase.data && phase.data.coaRecords) || [];
 
     // Deterministische crawl van de eigen COA-bibliotheek van de leverancier.
@@ -1237,7 +1263,7 @@ async function runResearchStep(caseId, ctx, key) {
     const bestaand = await db.getCase(caseId).catch(() => null);
     const coaData = (bestaand && bestaand.phaseData && bestaand.phaseData.coaDataset && bestaand.phaseData.coaDataset.data) || null;
     const waarneming = labsUitCoaData(coaData);
-    const fase = await runPhase(ctx, stepOpts('laboratorium', ctx, waarneming));
+    const fase = await runPhase(ctx, stepOpts('laboratorium', ctx, waarneming), caseId);
     const data = Object.assign({}, (fase && fase.data) || {});
     const gevonden = Array.isArray(data.bevindingen) ? data.bevindingen : [];
     // Waarnemingen eerst: die zijn geteld, de rest is onderzoek.
@@ -1248,7 +1274,7 @@ async function runResearchStep(caseId, ctx, key) {
     delete data.labBeoordelingen;
     result = { key: 'laboratorium', title: 'Laboratorium', data };
   } else if (key === 'identiteit') {
-    result = await runPhase(ctx, stepOpts('identiteit', ctx));
+    result = await runPhase(ctx, stepOpts('identiteit', ctx), caseId);
     if (ctx.kvkDocument) {
       const kvkPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde, door de gebruiker geüploade KvK-uittreksel (PDF) voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Dit telt als direct geziene brondata (niet zelf op te zoeken, geen bronUrl).\n\n' +
         'Antwoord met JSON: {"leesbaar":boolean,"kvkGegevens":{"bedrijfsnaam":string,"handelsnamen":[string],"kvkNummer":string,"rechtsvorm":string,"adres":string,"vestigingsplaats":string,"oprichtingsdatum":string,"status":string,"bestuurders":[string]}}';
@@ -1265,7 +1291,7 @@ async function runResearchStep(caseId, ctx, key) {
       }
     }
   } else {
-    result = await runPhase(ctx, stepOpts(key, ctx));
+    result = await runPhase(ctx, stepOpts(key, ctx), caseId);
   }
   await db.mergePhaseData(caseId, key, result);
   if (key === 'identiteit' && result.data && result.data.vastgesteldeNaam) {
