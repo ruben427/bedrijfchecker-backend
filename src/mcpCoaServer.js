@@ -238,6 +238,55 @@ async function buildServer() {
     }
   );
 
+  // Vijfde tool, 20 september. Aanleiding: de chatroute kon labreferenties wel
+  // vastleggen maar niet teruglezen. Zonder leestool weet niemand of een
+  // referentie al gecontroleerd is, en wordt hetzelfde rapport twee keer met
+  // de hand geopend.
+  server.registerTool(
+    'zoek_labreferenties',
+    {
+      title: 'Bekijk de labreferenties van een leverancier',
+      description: 'Geeft alle labverwijzingen (links naar verify.janoshik.com en vergelijkbare labpaginas) die bij een leverancier bekend zijn, met per stuk of er al een controle op zit en wat daaruit kwam. Gebruik dit VOORDAT je iets handmatig gaat controleren: dan weet je welke nog open staan en werk je niets dubbel. Let op het veld testsoort - sommige shops splitsen per batch in losse rapporten voor zuiverheid, zware metalen en endotoxinen.',
+      inputSchema: z.object({
+        leverancierUrl: z.string().min(1).describe('Website of domein van de leverancier, bijv. omegapeptides.eu'),
+        alleenOpenstaand: z.boolean().optional().describe('Alleen de referenties zonder controle teruggeven'),
+        max: z.number().optional().describe('Maximum aantal (standaard 200)')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ leverancierUrl, alleenOpenstaand, max }) => {
+      const supplierKey = coaStore.supplierKeyFromUrl(leverancierUrl);
+      const alle = await coaStore.referentiesVanLeverancier(supplierKey, max);
+      const rijen = alleenOpenstaand ? alle.filter((r) => !r.controle) : alle;
+      const perSoort = {};
+      alle.forEach((r) => { const k = r.testsoort || '(niet benoemd)'; perSoort[k] = (perSoort[k] || 0) + 1; });
+      const gecontroleerd = alle.filter((r) => r.controle).length;
+      const kop = 'Leverancier-ID: ' + supplierKey + '\n' +
+        alle.length + ' labverwijzingen, ' + gecontroleerd + ' gecontroleerd, ' +
+        (alle.length - gecontroleerd) + ' open.\n' +
+        'Per testsoort: ' + (Object.keys(perSoort).length
+          ? Object.keys(perSoort).map((k) => k + ' ' + perSoort[k]).join(', ')
+          : 'geen') + '\n';
+      const lijst = rijen.length
+        ? rijen.slice(0, 60).map((r) => {
+            const c = r.controle;
+            return '- ' + r.referentie + (r.testsoort ? ' [' + r.testsoort + ']' : '') +
+              (c
+                ? (' — gecontroleerd door ' + (c.checkedBy || '?') +
+                   (c.client ? ', opdrachtgever: ' + c.client : '') +
+                   (c.klasse ? ', klasse ' + c.klasse : ', geen klasse') +
+                   (c.veldenAfwijkend ? ', ' + c.veldenAfwijkend + ' veld(en) wijken af' : ''))
+                : ' — nog niet gecontroleerd') +
+              '\n  ' + r.url;
+          }).join('\n')
+        : 'Geen verwijzingen die aan het filter voldoen.';
+      return {
+        content: [{ type: 'text', text: kop + '\n' + lijst }],
+        structuredContent: { supplierKey, totaal: alle.length, gecontroleerd, perSoort, referenties: rijen }
+      };
+    }
+  );
+
   return server;
 }
 

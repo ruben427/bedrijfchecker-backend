@@ -953,6 +953,46 @@ async function referentieTotalen(lab) {
   }
 }
 
+// Labreferenties van EEN leverancier, met hun controle. Nodig omdat de
+// chatroute wel kon schrijven maar niet teruglezen: zonder dit weet niemand
+// of een referentie al gecontroleerd is, en wordt hetzelfde rapport twee keer
+// met de hand geopend.
+async function referentiesVanLeverancier(supplierKey, max) {
+  if (!supplierKey) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.lab, r.referentie, r.url, r.testsoort, r.context,
+              c.resolvet, c.klasse, c.client, c.manufacturer, c.product, c.batchnummer,
+              c.zuiverheid, c.zuiverheid_pct, c.vulling_pct, c.datum_analyse,
+              c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend,
+              c.vergeleken_met, c.afleidingsnotitie, c.notitie,
+              c.checked_by, c.methode, c.checked_at
+       FROM coa_references r
+       LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       WHERE r.supplier_key = $1
+       ORDER BY c.checked_at DESC NULLS LAST, r.referentie
+       LIMIT $2`,
+      [supplierKey, Math.max(1, Math.min(Number(max) || 200, 500))]
+    );
+    return rows.map((r) => ({
+      lab: normaliseerLab(r.lab).naam, referentie: r.referentie, url: r.url,
+      testsoort: r.testsoort, context: r.context,
+      controle: r.checked_at ? {
+        resolvet: r.resolvet, klasse: r.klasse, client: r.client, manufacturer: r.manufacturer,
+        product: r.product, batchnummer: r.batchnummer,
+        zuiverheid: r.zuiverheid, zuiverheidPct: r.zuiverheid_pct, vullingPct: r.vulling_pct,
+        datumAnalyse: r.datum_analyse, veldvergelijking: r.veldvergelijking,
+        veldenVergeleken: r.velden_vergeleken, veldenAfwijkend: r.velden_afwijkend,
+        vergelekenMet: r.vergeleken_met, afleidingsnotitie: r.afleidingsnotitie,
+        notitie: r.notitie, checkedBy: r.checked_by, methode: r.methode, checkedAt: r.checked_at
+      } : null
+    }));
+  } catch (e) {
+    console.error('coaStore.referentiesVanLeverancier:', (e && e.message) || e);
+    return [];
+  }
+}
+
 async function referentiesMetControle(lab, max) {
   try {
     const params = [Math.max(1, Math.min(Number(max) || 100, 500))];
@@ -1263,6 +1303,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  referentiesVanLeverancier,
   testsoortDekking,
   referentieTotalen,
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation, publiekeBronVoorDocument,
