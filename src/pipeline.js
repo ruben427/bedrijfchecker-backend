@@ -1247,7 +1247,7 @@ async function runResearchStep(caseId, ctx, key) {
       const c = r.controle;
       if (c.client) {
         opdrachtgevers[c.client] = (opdrachtgevers[c.client] || 0) + 1;
-        const oordeel = coaStore.clientOordeel(c.client, [refSupplierKey]);
+        const oordeel = coaStore.wieBesteldeDeTest(c.client, [refSupplierKey]);
         if (oordeel && oordeel.derdePartij) derdePartij++;
       }
       (c.veldvergelijking || []).forEach((v) => {

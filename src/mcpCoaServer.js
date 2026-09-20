@@ -294,7 +294,7 @@ async function buildServer() {
       const lijst = rijen.length
         ? rijen.slice(0, 60).map((r) => {
             const c = r.controle;
-            const oordeel = (c && c.client) ? coaStore.clientOordeel(c.client, [supplierKey]) : null;
+            const oordeel = (c && c.client) ? coaStore.wieBesteldeDeTest(c.client, [supplierKey]) : null;
             return '- ' + r.referentie + (r.testsoort ? ' [' + r.testsoort + ']' : '') +
               (r.relatie === 'opdrachtgever' ? ' (op naam van deze partij, zij tonen hem niet zelf)' : '') +
               (c

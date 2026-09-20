@@ -1445,9 +1445,13 @@ async function referentieTotalen(lab) {
 // winkel.
 //
 // Vergelijken met kaleNaam uit janoshik.js: die haalt domeinvorm en
-// rechtsvorm weg, zodat 'Astra Labs' en 'astralabs.co.uk' matchen. Geen match
-// is geen oordeel over eerlijkheid - alleen een waarneming.
-function clientOordeel(client, leveranciers) {
+// rechtsvorm weg, zodat 'Astra Labs' en 'astralabs.co.uk' matchen.
+//
+// Deze functie heette clientOordeel. Fout: er wordt niets geoordeeld. Op het
+// rapport staat een naam, en die is wel of niet van de shop die het toont -
+// dat is af te lezen, niet te wegen. De naam is veranderd omdat een woord dat
+// eenmaal in de code staat later in het product terechtkomt.
+function wieBesteldeDeTest(client, leveranciers) {
   const kaal = janoshik.kaleNaam(client);
   if (!kaal) return null;
   const lijst = (leveranciers || []).filter(Boolean);
@@ -1476,6 +1480,104 @@ function clientOordeel(client, leveranciers) {
 // Alleen als de clientnaam een domein is. "OmegaPeptides" is geen sleutel; die
 // shop kennen we al via zijn eigen site. Een naam zonder punt laten we staan -
 // liever geen entiteit dan een verzonnen entiteit.
+// Hetzelfde, maar per leverancier in plaats van per rapport. Nodig omdat een
+// uitspraak over een shop niet uit een enkel rapport kan komen: een rapport op
+// naam van een ander zegt weinig, 55 van de 55 zegt alles.
+//
+// Telt alleen rapporten die deze shop TOONT, en alleen die waarvan we de
+// opdrachtgever echt hebben gezien. Rapporten zonder controle tellen apart:
+// niet gecontroleerd is iets anders dan op naam van een ander.
+async function opdrachtgeversBeeld(supplierKey) {
+  if (!supplierKey) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT c.client, COUNT(*)::int AS aantal
+       FROM coa_references r
+       JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       WHERE r.supplier_key = $1 AND r.relatie = 'toont' AND c.client IS NOT NULL
+       GROUP BY c.client ORDER BY 2 DESC`,
+      [supplierKey]
+    );
+    const totaal = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM coa_references WHERE supplier_key = $1 AND relatie = 'toont'`,
+      [supplierKey]
+    );
+    const getoond = totaal.rows[0] ? totaal.rows[0].n : 0;
+    let eigen = 0;
+    const anderen = [];
+    rows.forEach((r) => {
+      const v = wieBesteldeDeTest(r.client, [supplierKey]);
+      if (v && !v.derdePartij) eigen += r.aantal;
+      else anderen.push({ opdrachtgever: r.client, aantal: r.aantal });
+    });
+    const metOpdrachtgever = eigen + anderen.reduce((a, b) => a + b.aantal, 0);
+    return {
+      getoond,
+      metOpdrachtgever,
+      zonderControle: getoond - metOpdrachtgever,
+      opEigenNaam: eigen,
+      opNaamVanAnder: metOpdrachtgever - eigen,
+      anderen,
+      // Alleen waar als we van ELK gecontroleerd rapport weten wie het bestelde
+      // en geen enkele op naam van de shop zelf staat. Een gedeeltelijk beeld
+      // krijgt deze vlag niet: dan is 'geen van de tests' niet vast te stellen.
+      geenEnkeleOpEigenNaam: metOpdrachtgever > 0 && eigen === 0
+    };
+  } catch (e) {
+    console.error('coaStore.opdrachtgeversBeeld:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// De zin die hieruit naar buiten gaat, op een plek. Eerder stond dit nergens
+// en werd het per rapport opnieuw bedacht; dan sluipt er een woord in dat meer
+// zegt dan het feit draagt.
+//
+// Drie regels, gescheiden gehouden: wat er staat, wat dat betekent, en wat het
+// niet zegt. Ze door elkaar schrijven levert de zin op waar we vanaf wilden -
+// een vaststelling met een ontsnapping erin, die zo vaak herhaald kan worden
+// dat hij niets meer betekent.
+//
+// LET OP: alleen FEIT is vastgesteld. BETEKENIS en GRENS zijn concept en
+// wachten op Annemarie. Niet naar buiten brengen voordat dat rond is.
+function opdrachtgeverZinnen(beeld, shopnaam) {
+  if (!beeld || !beeld.metOpdrachtgever) return null;
+  const naam = shopnaam || 'deze aanbieder';
+  const grootste = beeld.anderen.length
+    ? beeld.anderen.slice().sort((a, b) => b.aantal - a.aantal)[0]
+    : null;
+  let feit;
+  if (beeld.geenEnkeleOpEigenNaam && grootste && beeld.anderen.length === 1) {
+    feit = 'Van de ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
+      'staat er geen enkele op naam van ' + naam + '. Alle ' + grootste.aantal +
+      ' zijn besteld door ' + grootste.opdrachtgever + '.';
+  } else if (beeld.geenEnkeleOpEigenNaam) {
+    feit = 'Van de ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
+      'staat er geen enkele op naam van ' + naam + '. Ze zijn besteld door ' +
+      beeld.anderen.map((a) => a.opdrachtgever + ' (' + a.aantal + ')').join(', ') + '.';
+  } else if (beeld.opNaamVanAnder) {
+    feit = 'Van de ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
+      'staan er ' + beeld.opNaamVanAnder + ' op naam van een andere partij: ' +
+      beeld.anderen.map((a) => a.opdrachtgever + ' (' + a.aantal + ')').join(', ') + '.';
+  } else {
+    feit = 'Alle ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
+      'staan op naam van ' + naam + ' zelf.';
+  }
+  const rest = beeld.zonderControle
+    ? ' Van ' + beeld.zonderControle + ' getoonde rapporten hebben wij niet nagegaan wie ze bestelde.'
+    : '';
+  return {
+    feit: feit + rest,
+    betekenisConcept: beeld.opNaamVanAnder
+      ? 'Wie de test bestelt, bepaalt welk monster naar het laboratorium gaat. Dat monster is niet door ' + naam + ' ingestuurd.'
+      : null,
+    grensConcept: beeld.opNaamVanAnder
+      ? 'Dit zegt niet dat de rapporten onjuist zijn, en niet dat het product afwijkt van wat er staat.'
+      : null,
+    vastgesteld: ['feit']
+  };
+}
+
 function lijktOpDomein(naam) {
   const t = String(naam || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
   return /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(t) && /\.[a-z]{2,}$/.test(t) ? t : null;
@@ -1560,7 +1662,7 @@ async function leveranciersOverzicht() {
       if (r.resolvet === false) b.nietOpgelost++;
       if (Number(r.velden_afwijkend) > 0) b.metVeldverschil++;
       if (r.client) {
-        const oordeel = clientOordeel(r.client, [r.supplier_key]);
+        const oordeel = wieBesteldeDeTest(r.client, [r.supplier_key]);
         if (oordeel && oordeel.derdePartij) b.opNaamVanDerde++;
       }
       if (r.checked_at && (!b.laatstGecontroleerd || r.checked_at > b.laatstGecontroleerd)) {
@@ -1964,7 +2066,9 @@ module.exports = {
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
-  clientOordeel,
+  wieBesteldeDeTest,
+  opdrachtgeversBeeld,
+  opdrachtgeverZinnen,
   referentiesVanLeverancier,
   testsoortDekking,
   testsoortenUit,

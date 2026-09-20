@@ -429,8 +429,8 @@ app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken,
       coaStore.laboordeelVoorLeverancier(key)
     ]);
     referenties.forEach((r) => {
-      r.clientOordeel = (r.controle && r.controle.client)
-        ? coaStore.clientOordeel(r.controle.client, [key])
+      r.wieBesteldeDeTest = (r.controle && r.controle.client)
+        ? coaStore.wieBesteldeDeTest(r.controle.client, [key])
         : null;
     });
     res.json({
@@ -552,12 +552,12 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireLez
     // niet van allebei. Deze afgeleide zegt per referentie of de opdrachtgever
     // een van de tonende shops is, of een derde partij.
     rijen.forEach((r) => {
-      r.clientOordeel = (r.controle && r.controle.client)
-        ? coaStore.clientOordeel(r.controle.client, r.leveranciers)
+      r.wieBesteldeDeTest = (r.controle && r.controle.client)
+        ? coaStore.wieBesteldeDeTest(r.controle.client, r.leveranciers)
         : null;
     });
-    const derdePartij = rijen.filter((r) => r.clientOordeel && r.clientOordeel.derdePartij);
-    const gedeeldMaarVanEen = rijen.filter((r) => r.clientOordeel && r.clientOordeel.gedeeldMaarVanEen);
+    const derdePartij = rijen.filter((r) => r.wieBesteldeDeTest && r.wieBesteldeDeTest.derdePartij);
+    const gedeeldMaarVanEen = rijen.filter((r) => r.wieBesteldeDeTest && r.wieBesteldeDeTest.gedeeldMaarVanEen);
     res.json({
       lab: req.query.lab || 'alle',
       // Wat er werkelijk in het archief staat.
@@ -578,7 +578,7 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireLez
       // precies een van de tonende shops.
       opNaamVanDerde: derdePartij.length,
       gedeeldMaarVanEenShop: gedeeldMaarVanEen.length,
-      derdePartijen: [...new Set(derdePartij.map((r) => r.clientOordeel.client))],
+      derdePartijen: [...new Set(derdePartij.map((r) => r.wieBesteldeDeTest.client))],
       nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
       referenties: rijen
     });
