@@ -49,7 +49,28 @@ mcpCoaServer.mount(app);
 
 app.use(express.json({ limit: '2mb' }));
 
-app.get('/api/health', (req, res) => res.json({ ok: true }));
+const START_TIJD = Date.now();
+
+// Welke code draait hier eigenlijk?
+//
+// Dit ontbrak, en dat heeft vandaag drie keer tijd gekost: we probeerden te
+// raden of een deploy live was door te kijken of een nieuw endpoint bestond.
+// Dat bewijst alleen dat DIE commit er is, niet de laatste - en de toollijst
+// van een MCP-verbinding is helemaal onbetrouwbaar, want die is gecachet.
+//
+// Railway zet de commit-sha in de omgeving. Eén regel, en elke twijfel over
+// welke versie draait is voorbij. Publiek: een commit-sha verraadt niets wat
+// een aanvaller niet ook uit de repo haalt, en de prijs van raden is hoger.
+app.get('/api/health', (req, res) => res.json({
+  ok: true,
+  commit: process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT || null,
+  commitKort: (process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT || '').slice(0, 7) || null,
+  tak: process.env.RAILWAY_GIT_BRANCH || null,
+  gestartOp: START_TIJD,
+  draaitAl: Math.round((Date.now() - START_TIJD) / 1000) + 's',
+  // Zodat je zonder de connector kunt zien welke MCP-tools deze versie kent.
+  mcpTools: mcpCoaServer.toolNamen ? mcpCoaServer.toolNamen() : null
+}));
 
 const caseAccess = auth.requireCaseAccess(db);
 

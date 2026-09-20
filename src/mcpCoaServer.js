@@ -350,6 +350,15 @@ async function buildServer() {
   return server;
 }
 
+// De namen van de tools die DEZE versie registreert. Zo kun je via /api/health
+// zien welke tools de draaiende code kent, zonder afhankelijk te zijn van een
+// MCP-verbinding die een oud schema vasthoudt.
+const TOOL_NAMEN = [
+  'zoek_leverancier_coas', 'upload_coa', 'verifieer_coa',
+  'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium'
+];
+function toolNamen() { return TOOL_NAMEN; }
+
 let serverPromise = null;
 function getServer() {
   if (!serverPromise) serverPromise = buildServer();
@@ -383,4 +392,4 @@ function mount(app) {
   });
 }
 
-module.exports = { mount };
+module.exports = { mount , toolNamen};
