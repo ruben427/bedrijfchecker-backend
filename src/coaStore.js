@@ -135,6 +135,26 @@ async function initCoaSchema() {
   // mislukte afleiding er hetzelfde uit als een veld dat nooit is ingevuld,
   // en leest 'geen getal' als 'geen bezwaar'. Niet leeg = mensenoog nodig.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS afleidingsnotitie TEXT;`);
+  // Velden die tot nu in de notitie belandden of alleen in een JSON-blob
+  // stonden. Eigen kolommen, want in proza kun je niet filteren.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS manufacturer TEXT;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS gemeten_mg NUMERIC;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS etiket_mg NUMERIC;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS datum_analyse DATE;`);
+  // Waartegen de klasse is afgezet: de URL van de kopie op de site van de
+  // shop, of het sha256 van het document. Zonder dit is later niet na te
+  // gaan waar een A op rust.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vergeleken_met TEXT;`);
+  // Zelfde velden op documentniveau. Daar zat de hele verificatie in een
+  // JSONB-blob en was alleen authenticity_class een echte kolom.
+  for (const kolom of [
+    'client TEXT', 'manufacturer TEXT', 'batchnummer TEXT', 'zuiverheid TEXT',
+    'zuiverheid_pct NUMERIC', 'gemeten_mg NUMERIC', 'etiket_mg NUMERIC',
+    'vulling_pct NUMERIC', 'datum_analyse DATE', 'vergeleken_met TEXT',
+    'afleidingsnotitie TEXT', 'verification_method TEXT'
+  ]) {
+    await pool.query('ALTER TABLE coa_documents ADD COLUMN IF NOT EXISTS ' + kolom + ';');
+  }
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -358,10 +378,30 @@ async function getExtraction(sha256, extractorVersion) {
 //   resolvedUrl, note, checkedBy, checkedAt }.
 async function saveVerification(sha256, verification) {
   const v = verification || {};
+  // De blob blijft (daar staat alles in wat we ooit meekregen), maar de velden
+  // waarop gefilterd en vergeleken wordt krijgen een echte kolom. In een
+  // JSONB-blob kun je geen leverancier met een afwijkende vulling opzoeken.
+  const vul = vullingUit(v);
   try {
     await pool.query(
-      `UPDATE coa_documents SET verification = $2, authenticity_class = $3, verification_checked_at = $4 WHERE sha256 = $1`,
-      [sha256, JSON.stringify(v), v.class || null, v.checkedAt || Date.now()]
+      `UPDATE coa_documents SET verification = $2, authenticity_class = $3, verification_checked_at = $4,
+              client = COALESCE($5, client), manufacturer = COALESCE($6, manufacturer),
+              batchnummer = COALESCE($7, batchnummer), zuiverheid = COALESCE($8, zuiverheid),
+              zuiverheid_pct = COALESCE($9, zuiverheid_pct), gemeten_mg = COALESCE($10, gemeten_mg),
+              etiket_mg = COALESCE($11, etiket_mg), vulling_pct = COALESCE($12, vulling_pct),
+              datum_analyse = COALESCE($13, datum_analyse),
+              vergeleken_met = COALESCE($14, vergeleken_met),
+              afleidingsnotitie = COALESCE($15, afleidingsnotitie),
+              verification_method = COALESCE($16, verification_method)
+       WHERE sha256 = $1`,
+      [sha256, JSON.stringify(v), v.class || null, v.checkedAt || Date.now(),
+       v.client || null, v.manufacturer || null, v.batchnummer || null,
+       v.zuiverheid || null, percentageUit(v.zuiverheid),
+       vul.gemetenMg, vul.etiketMg, vul.pct,
+       v.datumAnalyse || null,
+       // Bij een document is de kopie van de shop het document zelf.
+       v.vergelekenMet || sha256,
+       afleidingsnotitieVoor(v, vul), v.method || null]
     );
   } catch (e) {
     console.error('coaStore.saveVerification:', (e && e.message) || e);
@@ -539,28 +579,71 @@ function percentageUit(tekst) {
   return null;
 }
 
-// Welke velden hadden wel tekst maar leverden geen getal op? Dat vastleggen
-// in plaats van stil laten verdwijnen.
-function afleidingsnotitieVoor(c) {
-  const regels = [];
-  for (const paar of [['zuiverheid', c.zuiverheid], ['vulling', c.vulling]]) {
-    const naam = paar[0], tekst = paar[1];
-    if (!tekst) continue;
-    if (percentageUit(tekst) === null) {
-      regels.push(naam + ': "' + String(tekst).slice(0, 120) + '" - hier kwam geen percentage uit; tekst bewaard, getal leeg');
+// Vulling: hoeveel wijkt de gemeten hoeveelheid af van wat het etiket claimt?
+//
+// LET OP - dit is een AFWIJKING, geen verhouding. 10,6 mg in een vial van
+// 10 mg geeft +6, niet 106. De pijplijn gebruikt elders al deviationPct met
+// diezelfde betekenis; twee betekenissen onder een naam is precies de fout
+// die we bij de klassen A-D al hebben.
+//
+// Leeg bij iu-eenheden (HGH) en bij blends: daar staat een som van meerdere
+// peptides tegenover een geclaimd totaal, en dat is iets anders dan vulling.
+// De reden komt in de afleidingsnotitie, zodat leeg nooit stil is.
+const GEWICHT = { mg: 1, mcg: 0.001, 'ug': 0.001, 'µg': 0.001, g: 1000 };
+
+function vullingUit(c) {
+  const tekst = c.vulling ? String(c.vulling) : '';
+  const product = c.product ? String(c.product) : '';
+  // Een losse plus maakt nog geen blend: NAD+ is een enkele stof. Alleen een
+  // plus met een woord erachter telt, zoals 'CJC-1295 + Ipamorelin'.
+  const lijktBlend = /\bblend\b/i.test(product) || /\+\s*[a-z]{2,}/i.test(product) || /\bblend\b/i.test(tekst);
+  const lijktIu = /\biu\b/i.test(tekst) || /\biu\b/i.test(product);
+
+  let gemeten = Number.isFinite(Number(c.gemetenMg)) && c.gemetenMg !== null && c.gemetenMg !== '' ? Number(c.gemetenMg) : null;
+  let etiket = Number.isFinite(Number(c.etiketMg)) && c.etiketMg !== null && c.etiketMg !== '' ? Number(c.etiketMg) : null;
+
+  if ((gemeten === null || etiket === null) && tekst) {
+    const m = tekst.match(/(\d+(?:[.,]\d+)?)\s*(mg|mcg|ug|µg|g|iu)?\s*\/\s*(\d+(?:[.,]\d+)?)\s*(mg|mcg|ug|µg|g|iu)?/i);
+    if (m) {
+      const ea = (m[2] || 'mg').toLowerCase();
+      const eb = (m[4] || ea).toLowerCase();
+      if (ea in GEWICHT && eb in GEWICHT) {
+        if (gemeten === null) gemeten = Number(m[1].replace(',', '.')) * GEWICHT[ea];
+        if (etiket === null) etiket = Number(m[3].replace(',', '.')) * GEWICHT[eb];
+      }
     }
   }
+
+  if (lijktIu) return { gemetenMg: null, etiketMg: null, pct: null, reden: 'iu-eenheid: niet in mg uit te drukken' };
+  if (lijktBlend) return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: 'blend: som van meerdere peptides, geen vulling van een enkele stof' };
+  if (gemeten === null || etiket === null) {
+    return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: tekst ? 'uit "' + tekst.slice(0, 80) + '" kwamen geen twee vergelijkbare gewichten' : null };
+  }
+  if (!(etiket > 0)) return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: 'etiketwaarde is nul of negatief' };
+  return { gemetenMg: gemeten, etiketMg: etiket, pct: Math.round(((gemeten - etiket) / etiket) * 10000) / 100, reden: null };
+}
+
+// Welke velden hadden wel tekst maar leverden geen getal op? Dat vastleggen
+// in plaats van stil laten verdwijnen.
+function afleidingsnotitieVoor(c, vul) {
+  const regels = [];
+  if (c.zuiverheid && percentageUit(c.zuiverheid) === null) {
+    regels.push('zuiverheid: "' + String(c.zuiverheid).slice(0, 120) + '" - hier kwam geen percentage uit; tekst bewaard, getal leeg');
+  }
+  if (vul && vul.reden) regels.push('vulling: ' + vul.reden);
   return regels.length ? regels.join(' | ') : null;
 }
 
 async function saveReferenceCheck(lab, referentie, check) {
   if (!lab || !referentie || !check) return null;
   const c = check;
+  const vul = vullingUit(c);
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
-         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie,
+          manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -575,6 +658,11 @@ async function saveReferenceCheck(lab, referentie, check) {
          vulling = COALESCE(EXCLUDED.vulling, coa_reference_checks.vulling),
          vulling_pct = COALESCE(EXCLUDED.vulling_pct, coa_reference_checks.vulling_pct),
          afleidingsnotitie = COALESCE(EXCLUDED.afleidingsnotitie, coa_reference_checks.afleidingsnotitie),
+         manufacturer = COALESCE(EXCLUDED.manufacturer, coa_reference_checks.manufacturer),
+         gemeten_mg = COALESCE(EXCLUDED.gemeten_mg, coa_reference_checks.gemeten_mg),
+         etiket_mg = COALESCE(EXCLUDED.etiket_mg, coa_reference_checks.etiket_mg),
+         datum_analyse = COALESCE(EXCLUDED.datum_analyse, coa_reference_checks.datum_analyse),
+         vergeleken_met = COALESCE(EXCLUDED.vergeleken_met, coa_reference_checks.vergeleken_met),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -586,7 +674,9 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, c.methode || 'handmatig', Date.now(),
        c.rapport ? JSON.stringify(c.rapport) : null,
        c.zuiverheid || null, percentageUit(c.zuiverheid),
-       c.vulling || null, percentageUit(c.vulling), afleidingsnotitieVoor(c)]
+       c.vulling || null, vul.pct, afleidingsnotitieVoor(c, vul),
+       c.manufacturer || null, vul.gemetenMg, vul.etiketMg,
+       c.datumAnalyse || null, c.vergelekenMet || null]
     );
     return rows[0] || null;
   } catch (e) {
@@ -739,13 +829,15 @@ async function referentiesMetControle(lab, max) {
               array_agg(DISTINCT r.supplier_key) AS leveranciers,
               c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
               c.notitie, c.checked_by, c.methode, c.checked_at,
-              c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie
+              c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
+              c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
        ${waar}
        GROUP BY r.lab, r.referentie, r.url, c.resolvet, c.klasse, c.client, c.product,
                 c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at,
-                c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie
+                c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
+              c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $1`,
       params
@@ -759,7 +851,9 @@ async function referentiesMetControle(lab, max) {
         methode: r.methode, checkedAt: r.checked_at,
         zuiverheid: r.zuiverheid, zuiverheidPct: r.zuiverheid_pct,
         vulling: r.vulling, vullingPct: r.vulling_pct,
-        afleidingsnotitie: r.afleidingsnotitie
+        afleidingsnotitie: r.afleidingsnotitie,
+        manufacturer: r.manufacturer, gemetenMg: r.gemeten_mg, etiketMg: r.etiket_mg,
+        datumAnalyse: r.datum_analyse, vergelekenMet: r.vergeleken_met
       } : null
     }));
   } catch (e) {

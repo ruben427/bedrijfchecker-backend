@@ -126,15 +126,27 @@ async function buildServer() {
         sample: z.string().optional(),
         key: z.string().optional(),
         resolvedUrl: z.string().optional().describe('De uiteindelijke URL die geopend en gecontroleerd is'),
-        notitie: z.string().optional().describe('Wat er op de verificatiepagina te zien was'),
+        client: z.string().optional().describe('De opdrachtgever zoals het labrapport die letterlijk noemt'),
+        manufacturer: z.string().optional().describe('De fabrikant zoals het labrapport die letterlijk noemt. Kan afwijken van client - juist dat verschil is een waarneming.'),
+        batchnummer: z.string().optional().describe('Het batch- of lotnummer zoals het lab het noemt. Eigen kolom: niet in de notitie.'),
+        zuiverheid: z.string().optional().describe('De zuiverheid letterlijk zoals hij op de pagina staat, bijvoorbeeld "99.14%".'),
+        vulling: z.string().optional().describe('Gemeten tegenover geclaimd, letterlijk, bijvoorbeeld "10.6 mg / 10 mg".'),
+        gemetenMg: z.number().optional(),
+        etiketMg: z.number().optional(),
+        datumAnalyse: z.string().optional().describe('Analysedatum als JJJJ-MM-DD'),
+        notitie: z.string().optional().describe('Wat er VERDER op de verificatiepagina te zien was. Batch, zuiverheid, vulling, client en fabrikant horen hier niet in - die hebben een eigen veld.'),
         gecontroleerdDoor: z.string().min(1).describe('Naam van de persoon die de controle heeft uitgevoerd')
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
-    async ({ sha256, klasse, lab, task, sample, key, resolvedUrl, notitie, gecontroleerdDoor }) => {
+    async (a) => {
+      const { sha256, klasse, lab, task, sample, key, resolvedUrl, notitie, gecontroleerdDoor } = a;
       const verification = {
         class: klasse, method: 'janoshik', lab: lab || null, task: task || null, sample: sample || null,
         key: key || null, resolvedUrl: resolvedUrl || null, note: notitie || null,
+        client: a.client || null, manufacturer: a.manufacturer || null, batchnummer: a.batchnummer || null,
+        zuiverheid: a.zuiverheid || null, vulling: a.vulling || null,
+        gemetenMg: a.gemetenMg, etiketMg: a.etiketMg, datumAnalyse: a.datumAnalyse || null,
         checkedBy: gecontroleerdDoor, checkedAt: Date.now()
       };
       await coaStore.saveVerification(sha256, verification);
@@ -157,18 +169,27 @@ async function buildServer() {
         referentie: z.string().min(3).describe('De referentie of de volledige verificatie-URL'),
         lab: z.string().optional().describe('Standaard Janoshik'),
         resolvet: z.boolean().describe('Gaf de pagina een echt rapport terug? true of false'),
-        klasse: z.enum(['A', 'B', 'C', 'D']).optional().describe('A = lost op en komt overeen, B = lost op maar velden wijken af, C = geen bruikbare referentie, D = referentie aanwezig maar lost niet op'),
+        klasse: z.enum(['A', 'B', 'C', 'D']).optional().describe('ALLEEN invullen als er een kopie van de shop naast het labrapport ligt en je vergelekenMet meegeeft - een klasse op een kale referentie zegt niets. LET OP: welke definitie voor A-D geldt is nog niet besloten (A15, ligt bij Annemarie). Tot dat besluit: laat dit leeg en leg alleen de waarnemingen vast. Wat je nu als letter wegschrijft moet je na het besluit herzien; waarnemingen niet.'),
         client: z.string().optional().describe('De opdrachtgever zoals letterlijk op het rapport vermeld'),
         product: z.string().optional(),
         batchnummer: z.string().optional().describe('Het batch- of lotnummer zoals het lab het noemt. Heeft een eigen kolom: niet in de notitie zetten.'),
         zuiverheid: z.string().optional().describe('De zuiverheid letterlijk zoals hij op de pagina staat, bijvoorbeeld "99.14%". Overtypen wat er staat; het percentage wordt er zelf uit afgeleid.'),
-        vulling: z.string().optional().describe('De gemeten hoeveelheid tegenover de geclaimde, letterlijk zoals het er staat, bijvoorbeeld "10.6 mg / 10 mg" of "83.98mg / 80mg (105%)". Het percentage wordt er zelf uit afgeleid.'),
+        vulling: z.string().optional().describe('De gemeten hoeveelheid tegenover de geclaimde, letterlijk zoals het er staat, bijvoorbeeld "10.6 mg / 10 mg". Gemeten en etiket worden hieruit afgeleid als je ze niet los meegeeft.'),
+        gemetenMg: z.number().optional().describe('De gemeten hoeveelheid in mg. Alleen invullen als je het cijfer zelf hebt gezien.'),
+        etiketMg: z.number().optional().describe('De hoeveelheid die het etiket claimt, in mg.'),
+        manufacturer: z.string().optional().describe('De fabrikant zoals het labrapport die letterlijk noemt. Staat los van client: die twee kunnen verschillen en juist dat verschil is een waarneming.'),
+        datumAnalyse: z.string().optional().describe('De analysedatum van het rapport, als JJJJ-MM-DD.'),
+        vergelekenMet: z.string().optional().describe('VERPLICHT zodra je een klasse geeft: waartegen is het labrapport afgezet? De URL van de kopie op de site van de shop, of het sha256 van het document. Zonder dit is later niet na te gaan waar een A op rust.'),
         notitie: z.string().optional().describe('Wat er VERDER op de pagina te zien was. Batch, zuiverheid en vulling horen hier niet in - die hebben een eigen veld.'),
         gecontroleerdDoor: z.string().min(1).describe('Naam van de persoon die de controle heeft uitgevoerd')
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
-    async ({ referentie, lab, resolvet, klasse, client, product, batchnummer, zuiverheid, vulling, notitie, gecontroleerdDoor }) => {
+    async (a) => {
+      const { referentie, lab, resolvet, klasse, client, product, batchnummer, zuiverheid, vulling, notitie, gecontroleerdDoor } = a;
+      if (klasse && !a.vergelekenMet) {
+        return { content: [{ type: 'text', text: 'Geen klasse vastgelegd: bij een klasse hoort vergelekenMet (de URL van de kopie bij de shop, of het sha256 van het document). Zonder die verwijzing rust de klasse nergens op. Leg de waarnemingen vast zonder klasse, of vul vergelekenMet aan.' }], isError: true };
+      }
       const p = require('./janoshik').parseReferentie(referentie);
       const ref = p ? p.referentie : String(referentie).trim();
       const opgeslagen = await coaStore.saveReferenceCheck(lab || 'Janoshik', ref, {
@@ -176,6 +197,9 @@ async function buildServer() {
         resolvet, klasse: klasse || null, client: client || null,
         product: product || null, batchnummer: batchnummer || null,
         zuiverheid: zuiverheid || null, vulling: vulling || null,
+        gemetenMg: a.gemetenMg, etiketMg: a.etiketMg,
+        manufacturer: a.manufacturer || null, datumAnalyse: a.datumAnalyse || null,
+        vergelekenMet: a.vergelekenMet || null,
         resolvedUrl: /^https?:\/\//i.test(String(referentie)) ? String(referentie) : janoshikLinkFrom(p && p.taskNumber, p && p.sample, p && p.key),
         notitie: notitie || null, checkedBy: gecontroleerdDoor
       });
