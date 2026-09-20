@@ -506,7 +506,16 @@ async function resolveerLabReferenties(lab, max) {
       });
       uitkomsten.push({
         referentie: r.referentie, resolvet: true, client: res.client, product: res.product,
-        tests, verborgenOpCertificaat: res.verborgenOpCertificaat
+        batchnummer: res.batchnummer || null,
+        identiteit: res.identiteit, zuiverheid: res.zuiverheid, gehalte: res.gehalte,
+        // Niet alleen WELKE tests zijn gedaan, maar ook wat eruit kwam. Een
+        // lijst testnamen zegt niets over het monster; 'Purity (HPLC)' is
+        // pas informatie zodra er een percentage en een norm bij staan.
+        tests: res.tests.map((t) => ({
+          test: t.analyte, resultaat: t.resultaat, norm: t.limiet,
+          eenheid: t.eenheid, status: t.status, verborgen: t.verborgenOpCertificaat
+        })),
+        verborgenOpCertificaat: res.verborgenOpCertificaat
       });
       continue;
     }
