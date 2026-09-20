@@ -84,6 +84,9 @@ function publicCase(c) {
       workflow: er.workflowVersion || null
     },
     gate: er.gate ? { status: er.gate.status, code: er.gate.code, gelezenCount: er.gate.gelezenCount != null ? er.gate.gelezenCount : null, doorLabCount: er.gate.doorLabCount != null ? er.gate.doorLabCount : null, labReden: er.gate.labReden || null } : null,
+    // De drie blokken: uitkomst plus het werk erachter, geen rekenweg. De
+    // stippen zijn een telling van bestaande rapporten, geen nieuwe uitspraak.
+    blokken: er.blokken || null,
     assessments: Array.isArray(er.assessments)
       ? er.assessments.map((a) => ({
           id: a.id,

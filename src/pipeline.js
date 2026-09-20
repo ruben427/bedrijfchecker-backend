@@ -17,6 +17,7 @@ const ilsLab = require('./ilsLab');
 // betekent dat alle eerder gelezen COA's opnieuw door vision gaan.
 const COA_EXTRACTOR_VERSION = 'coa-read-1';
 const { runScoringEngine, computeQuantity, CATEGORY_DEFS } = require('./scoringEngine');
+const { bouwBlokken } = require('./blokken');
 // Het aantal categorieen stond op vier plekken los ingetypt. Hier komt het
 // uit de lijst zelf, zodat het label niet stilletjes verloopt zodra er een
 // categorie bij komt. LET OP: in bedrijfchecker.html en frontend/index.html
@@ -1490,6 +1491,12 @@ async function applyScoringEngine(caseId) {
   const c = await db.getCase(caseId);
   const intake = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.intake) || [];
   const engineResult = runScoringEngine(c.categoryAssessments || {}, c.adequacy || {}, intake);
+  // De drie blokken boven het rapport. Deterministisch, en bewust NA de
+  // engine: productbewijs leest de Evidence Score, verificatie leest de
+  // authenticiteitsklassen die de resolver of een mens heeft vastgelegd.
+  const coaRecordsVoorBlokken = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data
+    && c.phaseData.coaDataset.data.coaRecords) || [];
+  engineResult.blokken = bouwBlokken(engineResult, coaRecordsVoorBlokken, c.bedrijfsgegevens || null);
   await db.updateCase(caseId, { engineResult });
   return engineResult;
 }
