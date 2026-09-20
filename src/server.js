@@ -471,6 +471,28 @@ app.get('/api/admin/coa/:supplierKey', rl.read, auth.requireOwnerToken, requireA
     const verrijkt = documents.map((d) => Object.assign({}, d, {
       andere_leveranciers: (spreiding[d.sha256] || []).filter((k) => k !== req.params.supplierKey)
     }));
+
+    // Wat konden we NIET lezen? Dat is de werklijst om de leesstap mee te
+    // verbeteren, en zonder filter verdrinkt hij in de rest. Bewust smal
+    // teruggegeven: sha256, lab en wat er wel gelezen is - genoeg om een
+    // document te kiezen en er /herlees op los te laten.
+    const eersteRec = (d) => ((d.extraction && d.extraction.coaRecords) || [{}])[0] || {};
+    if (req.query.zonderSleutel === '1') {
+      const zonder = verrijkt.filter((d) => !eersteRec(d).verificationKey);
+      return res.json({
+        supplierKey: req.params.supplierKey,
+        totaal: verrijkt.length,
+        zonderSleutel: zonder.length,
+        documents: zonder.map((d) => ({
+          sha256: d.sha256,
+          lab: eersteRec(d).laboratorium || d.lab || null,
+          reportId: eersteRec(d).reportId || d.task_number || null,
+          product: eersteRec(d).product || null,
+          status: d.status,
+          url: d.url
+        }))
+      });
+    }
     res.json({ supplierKey: req.params.supplierKey, documents: verrijkt });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
