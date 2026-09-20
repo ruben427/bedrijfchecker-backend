@@ -1529,53 +1529,13 @@ async function opdrachtgeversBeeld(supplierKey) {
   }
 }
 
-// De zin die hieruit naar buiten gaat, op een plek. Eerder stond dit nergens
-// en werd het per rapport opnieuw bedacht; dan sluipt er een woord in dat meer
-// zegt dan het feit draagt.
-//
-// Drie regels, gescheiden gehouden: wat er staat, wat dat betekent, en wat het
-// niet zegt. Ze door elkaar schrijven levert de zin op waar we vanaf wilden -
-// een vaststelling met een ontsnapping erin, die zo vaak herhaald kan worden
-// dat hij niets meer betekent.
-//
-// LET OP: alleen FEIT is vastgesteld. BETEKENIS en GRENS zijn concept en
-// wachten op Annemarie. Niet naar buiten brengen voordat dat rond is.
-function opdrachtgeverZinnen(beeld, shopnaam) {
-  if (!beeld || !beeld.metOpdrachtgever) return null;
-  const naam = shopnaam || 'deze aanbieder';
-  const grootste = beeld.anderen.length
-    ? beeld.anderen.slice().sort((a, b) => b.aantal - a.aantal)[0]
-    : null;
-  let feit;
-  if (beeld.geenEnkeleOpEigenNaam && grootste && beeld.anderen.length === 1) {
-    feit = 'Van de ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
-      'staat er geen enkele op naam van ' + naam + '. Alle ' + grootste.aantal +
-      ' zijn besteld door ' + grootste.opdrachtgever + '.';
-  } else if (beeld.geenEnkeleOpEigenNaam) {
-    feit = 'Van de ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
-      'staat er geen enkele op naam van ' + naam + '. Ze zijn besteld door ' +
-      beeld.anderen.map((a) => a.opdrachtgever + ' (' + a.aantal + ')').join(', ') + '.';
-  } else if (beeld.opNaamVanAnder) {
-    feit = 'Van de ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
-      'staan er ' + beeld.opNaamVanAnder + ' op naam van een andere partij: ' +
-      beeld.anderen.map((a) => a.opdrachtgever + ' (' + a.aantal + ')').join(', ') + '.';
-  } else {
-    feit = 'Alle ' + beeld.metOpdrachtgever + ' labrapporten waarvan wij konden nagaan wie ze bestelde, ' +
-      'staan op naam van ' + naam + ' zelf.';
-  }
-  const rest = beeld.zonderControle
-    ? ' Van ' + beeld.zonderControle + ' getoonde rapporten hebben wij niet nagegaan wie ze bestelde.'
-    : '';
-  return {
-    feit: feit + rest,
-    betekenisConcept: beeld.opNaamVanAnder
-      ? 'Wie de test bestelt, bepaalt welk monster naar het laboratorium gaat. Dat monster is niet door ' + naam + ' ingestuurd.'
-      : null,
-    grensConcept: beeld.opNaamVanAnder
-      ? 'Dit zegt niet dat de rapporten onjuist zijn, en niet dat het product afwijkt van wat er staat.'
-      : null,
-    vastgesteld: ['feit']
-  };
+// De zinnen zijn verhuisd naar src/uitspraken.js. Ze stonden hier als
+// concept; op 20 september heeft Annemarie ze vastgesteld, en regel 2 daarbij
+// aangepast. Zodra een tekst een besluit is hoort hij niet meer tussen de
+// afleidingen te staan, want dan verandert er iets aan zonder dat iemand het
+// merkt. Deze wrapper blijft staan zodat bestaande aanroepers blijven werken.
+function opdrachtgeverZinnen(beeld, shopnaam, dekkingszin) {
+  return require('./uitspraken').opdrachtgeverRegels(beeld, shopnaam, dekkingszin);
 }
 
 function lijktOpDomein(naam) {
