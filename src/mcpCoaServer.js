@@ -246,7 +246,7 @@ async function buildServer() {
     'zoek_labreferenties',
     {
       title: 'Bekijk de labreferenties van een leverancier',
-      description: 'Geeft alle labverwijzingen (links naar verify.janoshik.com en vergelijkbare labpaginas) die bij een leverancier bekend zijn, met per stuk of er al een controle op zit en wat daaruit kwam. Gebruik dit VOORDAT je iets handmatig gaat controleren: dan weet je welke nog open staan en werk je niets dubbel. Let op het veld testsoort - sommige shops splitsen per batch in losse rapporten voor zuiverheid, zware metalen en endotoxinen.',
+      description: 'Geeft alle labverwijzingen (links naar verify.janoshik.com en vergelijkbare labpaginas) die bij een leverancier bekend zijn, met per stuk of er al een controle op zit en wat daaruit kwam. Werkt ook voor een partij die zelf geen webshop is maar wel als opdrachtgever op rapporten staat, zoals een fabrikant achter meerdere shops: het veld relatie zegt of deze partij het rapport TOONT of er de OPDRACHTGEVER van is. Gebruik dit VOORDAT je iets handmatig gaat controleren: dan weet je welke nog open staan en werk je niets dubbel. Let op het veld testsoort - sommige shops splitsen per batch in losse rapporten voor zuiverheid, zware metalen en endotoxinen.',
       inputSchema: z.object({
         leverancierUrl: z.string().min(1).describe('Website of domein van de leverancier, bijv. omegapeptides.eu'),
         alleenOpenstaand: z.boolean().optional().describe('Alleen de referenties zonder controle teruggeven'),
@@ -272,6 +272,7 @@ async function buildServer() {
             const c = r.controle;
             const oordeel = (c && c.client) ? coaStore.clientOordeel(c.client, [supplierKey]) : null;
             return '- ' + r.referentie + (r.testsoort ? ' [' + r.testsoort + ']' : '') +
+              (r.relatie === 'opdrachtgever' ? ' (op naam van deze partij, zij tonen hem niet zelf)' : '') +
               (c
                 ? (' — gecontroleerd door ' + (c.checkedBy || '?') +
                    (c.client ? ', opdrachtgever: ' + c.client +

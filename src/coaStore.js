@@ -168,6 +168,13 @@ async function initCoaSchema() {
   // die als 74 losse rapporten en zien we niet dat een batch volledig is -
   // of juist alleen op zuiverheid is getest.
   await pool.query(`ALTER TABLE coa_references ADD COLUMN IF NOT EXISTS testsoort TEXT;`);
+  // Waarom staat deze leverancier bij deze referentie? Tot nu was dat altijd
+  // 'toont hem op zijn site'. Sinds we opdrachtgevers kennen is er een tweede
+  // soort: de partij op wiens naam het rapport staat. utherpeptide.com toont
+  // niets - die is de opdrachtgever achter astralabs en pyroxlabs.
+  // Ze scheiden is noodzakelijk: zonder dit zou Uther ineens 55 referenties
+  // 'delen' met beide shops en klopt de kruisverbandtelling niet meer.
+  await pool.query(`ALTER TABLE coa_references ADD COLUMN IF NOT EXISTS relatie TEXT NOT NULL DEFAULT 'toont';`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -819,6 +826,9 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.datumAnalyse || null, c.vergelekenMet || null,
        vv.velden ? JSON.stringify(vv.velden) : null, vv.vergeleken, vv.afwijkend]
     );
+    // Is de opdrachtgever een partij die we nog niet kennen? Dan krijgt die
+    // zijn eigen plek, zodat hij later op te vragen is als elke leverancier.
+    if (c.client) await legOpdrachtgeverVast(lab, referentie, c.client);
     return rows[0] || null;
   } catch (e) {
     console.error('coaStore.saveReferenceCheck:', (e && e.message) || e);
@@ -1004,11 +1014,57 @@ function clientOordeel(client, leveranciers) {
   };
 }
 
+// Een opdrachtgever die zelf geen shop in ons archief is, krijgt zijn eigen
+// plek. Daarna is utherpeptide.com op te vragen als elke andere leverancier:
+// welke rapporten staan op hun naam, en welke shops tonen die.
+//
+// Alleen als de clientnaam een domein is. "OmegaPeptides" is geen sleutel; die
+// shop kennen we al via zijn eigen site. Een naam zonder punt laten we staan -
+// liever geen entiteit dan een verzonnen entiteit.
+function lijktOpDomein(naam) {
+  const t = String(naam || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+  return /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(t) && /\.[a-z]{2,}$/.test(t) ? t : null;
+}
+
+async function legOpdrachtgeverVast(lab, referentie, client) {
+  const sleutel = lijktOpDomein(client);
+  if (!sleutel || !lab || !referentie) return null;
+  try {
+    // Toont deze partij de referentie zelf al? Dan is het een shop, geen
+    // losse opdrachtgever, en verandert er niets.
+    const bestaand = await pool.query(
+      `SELECT relatie FROM coa_references WHERE supplier_key = $1 AND lab = $2 AND referentie = $3 LIMIT 1`,
+      [sleutel, lab, referentie]
+    );
+    if (bestaand.rows.length && bestaand.rows[0].relatie === 'toont') return null;
+
+    const bron = await pool.query(
+      `SELECT url, task_number, sample, ref_key, testsoort FROM coa_references
+       WHERE lab = $1 AND referentie = $2 ORDER BY first_seen_at LIMIT 1`,
+      [lab, referentie]
+    );
+    if (!bron.rows.length) return null;
+    const b = bron.rows[0];
+    const now = Date.now();
+    await pool.query(
+      `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at, testsoort, relatie)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12,'opdrachtgever')
+       ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+      [uuidv4(), sleutel, lab, referentie, b.task_number, b.sample, b.ref_key, b.url,
+       'opdrachtgever volgens het labrapport', null, now, b.testsoort]
+    );
+    return sleutel;
+  } catch (e) {
+    console.error('coaStore.legOpdrachtgeverVast:', (e && e.message) || e);
+    return null;
+  }
+}
+
 async function referentiesVanLeverancier(supplierKey, max) {
   if (!supplierKey) return [];
   try {
     const { rows } = await pool.query(
-      `SELECT r.lab, r.referentie, r.url, r.testsoort, r.context,
+      `SELECT r.lab, r.referentie, r.url, r.testsoort, r.context, r.relatie,
               c.resolvet, c.klasse, c.client, c.manufacturer, c.product, c.batchnummer,
               c.zuiverheid, c.zuiverheid_pct, c.vulling_pct, c.datum_analyse,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend,
@@ -1023,7 +1079,7 @@ async function referentiesVanLeverancier(supplierKey, max) {
     );
     return rows.map((r) => ({
       lab: normaliseerLab(r.lab).naam, referentie: r.referentie, url: r.url,
-      testsoort: r.testsoort, context: r.context,
+      testsoort: r.testsoort, context: r.context, relatie: r.relatie || 'toont',
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, manufacturer: r.manufacturer,
         product: r.product, batchnummer: r.batchnummer,
@@ -1047,7 +1103,8 @@ async function referentiesMetControle(lab, max) {
     if (lab) params.push(lab);
     const { rows } = await pool.query(
       `SELECT r.lab, r.referentie, r.url, r.testsoort,
-              array_agg(DISTINCT r.supplier_key) AS leveranciers,
+              array_agg(DISTINCT r.supplier_key) FILTER (WHERE r.relatie = 'toont') AS leveranciers,
+              array_agg(DISTINCT r.supplier_key) FILTER (WHERE r.relatie = 'opdrachtgever') AS opdrachtgevers,
               c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
               c.notitie, c.checked_by, c.methode, c.checked_at,
               c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
@@ -1068,7 +1125,11 @@ async function referentiesMetControle(lab, max) {
     return rows.map((r) => ({
       lab: r.lab, labNet: normaliseerLab(r.lab).naam,
       referentie: r.referentie, url: r.url, testsoort: r.testsoort || null,
+      // LET OP: leveranciers zijn de shops die het rapport TONEN. De partij op
+      // wiens naam het staat zit in opdrachtgevers. Ze door elkaar halen maakt
+      // de kruisverbandtelling onzin: Uther zou dan 55 referenties 'delen'.
       leveranciers: r.leveranciers || [],
+      opdrachtgevers: r.opdrachtgevers || [],
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, product: r.product,
         batchnummer: r.batchnummer, notitie: r.notitie, checkedBy: r.checked_by,
@@ -1351,6 +1412,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  legOpdrachtgeverVast, lijktOpDomein,
   clientOordeel,
   referentiesVanLeverancier,
   testsoortDekking,
