@@ -270,10 +270,12 @@ async function buildServer() {
       const lijst = rijen.length
         ? rijen.slice(0, 60).map((r) => {
             const c = r.controle;
+            const oordeel = (c && c.client) ? coaStore.clientOordeel(c.client, [supplierKey]) : null;
             return '- ' + r.referentie + (r.testsoort ? ' [' + r.testsoort + ']' : '') +
               (c
                 ? (' — gecontroleerd door ' + (c.checkedBy || '?') +
-                   (c.client ? ', opdrachtgever: ' + c.client : '') +
+                   (c.client ? ', opdrachtgever: ' + c.client +
+                     (oordeel ? (oordeel.derdePartij ? ' (DERDE PARTIJ - niet deze shop)' : ' (de shop zelf)') : '') : '') +
                    (c.klasse ? ', klasse ' + c.klasse : ', geen klasse') +
                    (c.veldenAfwijkend ? ', ' + c.veldenAfwijkend + ' veld(en) wijken af' : ''))
                 : ' — nog niet gecontroleerd') +

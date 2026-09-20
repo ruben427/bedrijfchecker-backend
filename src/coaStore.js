@@ -957,6 +957,46 @@ async function referentieTotalen(lab) {
 // chatroute wel kon schrijven maar niet teruglezen: zonder dit weet niemand
 // of een referentie al gecontroleerd is, en wordt hetzelfde rapport twee keer
 // met de hand geopend.
+// Van wie is deze test eigenlijk?
+//
+// Zodra twee shops hetzelfde labrapport tonen, is het rapport niet van allebei.
+// Er zijn drie uitkomsten, en de derde is de interessantste:
+//
+//   eigen        - de opdrachtgever op het rapport is deze shop zelf
+//   andere shop  - de opdrachtgever is een van de andere shops op dit rapport
+//   derde partij - de opdrachtgever is niemand van de shops die het tonen
+//
+// Die laatste zagen we bij astralabs en pyroxlabs: Client en Manufacturer
+// allebei utherpeptide.com, een partij die geen van beide noemt. Waarschijnlijk
+// hun gezamenlijke fabrikant. Dat is iets anders dan 'een van de twee liegt' -
+// maar de claim 'onafhankelijk getest' hoort dan bij de fabrikant, niet bij de
+// winkel.
+//
+// Vergelijken met kaleNaam uit janoshik.js: die haalt domeinvorm en
+// rechtsvorm weg, zodat 'Astra Labs' en 'astralabs.co.uk' matchen. Geen match
+// is geen oordeel over eerlijkheid - alleen een waarneming.
+function clientOordeel(client, leveranciers) {
+  const kaal = janoshik.kaleNaam(client);
+  if (!kaal) return null;
+  const lijst = (leveranciers || []).filter(Boolean);
+  if (!lijst.length) return null;
+
+  const eigen = [];
+  for (const key of lijst) {
+    const k = janoshik.kaleNaam(key);
+    if (k && (k === kaal || k.includes(kaal) || kaal.includes(k))) eigen.push(key);
+  }
+  return {
+    client,
+    hoort_bij: eigen,
+    // true als geen van de shops die dit rapport tonen de opdrachtgever is
+    derdePartij: eigen.length === 0,
+    // true als meerdere shops het tonen maar maar een ervan de opdrachtgever is
+    gedeeldMaarVanEen: lijst.length > 1 && eigen.length === 1,
+    aantalLeveranciers: lijst.length
+  };
+}
+
 async function referentiesVanLeverancier(supplierKey, max) {
   if (!supplierKey) return [];
   try {
@@ -1304,6 +1344,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  clientOordeel,
   referentiesVanLeverancier,
   testsoortDekking,
   referentieTotalen,

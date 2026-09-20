@@ -413,6 +413,16 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdm
       const c = (r.controle.client || 'onbekend').toLowerCase();
       clients[c] = (clients[c] || 0) + 1;
     });
+    // Van wie is deze test? Zodra twee shops hetzelfde rapport tonen is het
+    // niet van allebei. Deze afgeleide zegt per referentie of de opdrachtgever
+    // een van de tonende shops is, of een derde partij.
+    rijen.forEach((r) => {
+      r.clientOordeel = (r.controle && r.controle.client)
+        ? coaStore.clientOordeel(r.controle.client, r.leveranciers)
+        : null;
+    });
+    const derdePartij = rijen.filter((r) => r.clientOordeel && r.clientOordeel.derdePartij);
+    const gedeeldMaarVanEen = rijen.filter((r) => r.clientOordeel && r.clientOordeel.gedeeldMaarVanEen);
     res.json({
       lab: req.query.lab || 'alle',
       // Wat er werkelijk in het archief staat.
@@ -428,6 +438,12 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdm
       getoondPerLab: perLab,
       afgekapt: rijen.length < totalen.totaal,
       perOpdrachtgever: clients,
+      // Hoeveel gecontroleerde rapporten staan op naam van iemand anders dan
+      // de shop(s) die ze tonen, en hoeveel gedeelde rapporten horen bij
+      // precies een van de tonende shops.
+      opNaamVanDerde: derdePartij.length,
+      gedeeldMaarVanEenShop: gedeeldMaarVanEen.length,
+      derdePartijen: [...new Set(derdePartij.map((r) => r.clientOordeel.client))],
       nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
       referenties: rijen
     });
