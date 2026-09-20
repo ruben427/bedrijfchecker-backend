@@ -1283,6 +1283,37 @@ async function runResearchStep(caseId, ctx, key) {
     const beloften = (phase.data && phase.data.kwaliteitsbeloften) || [];
     const beloftetoets = toetsZuiverheidsbelofte(beloften, records);
 
+    // ---- Bewijskracht per rapport: telt het lab mee? ----
+    //
+    // Regel van Annemarie, 20 september: een COA die er plausibel uitziet is
+    // NIET hetzelfde als een COA die onafhankelijk geverifieerd is. Is het lab
+    // erachter onvoldoende te verifieren, dan blijven identity, purity en
+    // quantity die uitsluitend op dat rapport rusten ONBEVESTIGD. Niet
+    // weerlegd - onbevestigd.
+    //
+    // LET OP: dit vuurt alleen waar een MENS een oordeel heeft vastgelegd.
+    // Een lab zonder oordeel laat het bewijs staan zoals het was. Anders zou
+    // vandaag elke leverancier in een klap op nul komen, want er is nog geen
+    // enkel lab beoordeeld. Hoeveel labs nog wachten staat in labsZonderOordeel;
+    // of een onbeoordeeld lab ook al zou moeten blokkeren is A22.
+    const labOordelenNu = await coaStore.labOordelen().catch(() => ({}));
+    const labsZonderOordeel = new Set();
+    records.forEach((r) => {
+      if (!r) return;
+      const naam = r.laboratorium ? coaStore.normaliseerLab(r.laboratorium).naam : null;
+      const oordeel = naam ? (labOordelenNu[coaStore.labSleutel(naam)] || null) : null;
+      const bk = coaStore.bewijskrachtVanLab(oordeel);
+      r.bewijskracht = bk.telt === true ? 'onafhankelijk geverifieerd'
+        : (bk.telt === false ? 'onbevestigd' : 'lab nog niet beoordeeld');
+      r.bewijskrachtReden = bk.reden;
+      r.labStatus = oordeel ? oordeel.status : null;
+      if (naam && !oordeel) labsZonderOordeel.add(naam);
+    });
+    const onbevestigd = records.filter((r) => r && r.bewijskracht === 'onbevestigd').length;
+    if (onbevestigd) {
+      await meldStap(caseId, 'LET OP: ' + onbevestigd + ' rapport(en) rusten op een laboratorium dat niet als onafhankelijk geverifieerd geldt');
+    }
+
     const intake = records.map((r, i) => {
       const fields = [];
       if (r.purityPercent != null) fields.push('purity');
@@ -1306,7 +1337,13 @@ async function runResearchStep(caseId, ctx, key) {
         intake_id: 'coa-' + i, found: true,
         access_status: r.accessStatus || (r.reportId || r.verificationKey ? 'readable' : 'unreadable'),
         parse_status: (r.product || r.purityPercent != null) ? 'valid' : 'partial',
-        analytical_fields_usable: fields
+        // Rust dit rapport op een lab dat niet als onafhankelijk geverifieerd
+        // geldt? Dan zijn de analytische velden niet bruikbaar als bewijs. Ze
+        // staan er wel, ze tellen alleen niet mee.
+        analytical_fields_usable: r.bewijskracht === 'onbevestigd' ? [] : fields,
+        analytical_fields_gelezen: fields,
+        bewijskracht: r.bewijskracht || null,
+        bewijskracht_reden: r.bewijskrachtReden || null
       };
     });
     // Welke COA-URLs zagen we deze keer? Wat er eerder was en nu niet meer,
@@ -1335,7 +1372,8 @@ async function runResearchStep(caseId, ctx, key) {
       beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
       diagnose: (crawl && crawl.diagnose) || []
     };
-    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets, testdekking, handmatigeControles }) };
+    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets, testdekking, handmatigeControles,
+      labsZonderOordeel: [...labsZonderOordeel], rapportenOnbevestigd: onbevestigd }) };
   } else if (key === 'laboratorium') {
     // Begin bij wat de COA-stap al gezien heeft. Draait deze stap zonder
     // voorafgaande COA-stap, dan is waarneming gewoon leeg en valt stepOpts

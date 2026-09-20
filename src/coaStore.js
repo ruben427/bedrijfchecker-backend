@@ -200,6 +200,11 @@ async function initCoaSchema() {
       vastgelegd_op BIGINT NOT NULL
     );
   `);
+  // Heeft iemand de leverancier om de bedrijfsgegevens van het lab gevraagd,
+  // en wat kwam daaruit? Weigeren bewijst niets, maar het is wel het punt
+  // waarop de verificatieketen ophoudt - en dat hoort vastgelegd.
+  await pool.query(`ALTER TABLE lab_oordelen ADD COLUMN IF NOT EXISTS informatie_opgevraagd BOOLEAN;`);
+  await pool.query(`ALTER TABLE lab_oordelen ADD COLUMN IF NOT EXISTS informatie_reactie TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -634,7 +639,44 @@ async function testsoortDekking(supplierKey) {
 // prettiger en toont het product.
 // De vier standen die een laboratorium kan hebben. Bewust grof: dit is een
 // menselijk oordeel, geen schaal.
-const LAB_STATUSSEN = ['erkend', 'onbekend', 'niet onafhankelijk', 'bestaat niet'];
+// De standen van een laboratorium, en wat ze betekenen voor het bewijs.
+//
+// Vastgesteld door Annemarie, 20 september, naar aanleiding van RC Testing.
+// De kern van haar regel: een COA die er plausibel uitziet is NIET hetzelfde
+// als een COA die onafhankelijk geverifieerd is. Wij stelden niet vast dat RC
+// Testing vals is - we stelden vast dat de verificatieketen daar ophoudt.
+//
+// Daarom is 'onvoldoende verifieerbaar' een eigen stand, los van 'bestaat
+// niet'. Die eerste zeggen we; die tweede vraagt bewijs dat we niet hebben.
+const LAB_STATUSSEN = [
+  'erkend',                      // bestaand, onafhankelijk lab - bewijs telt mee
+  'nog niet beoordeeld',         // niemand heeft ernaar gekeken
+  'onvoldoende verifieerbaar',   // niet genoeg onafhankelijke bevestiging gevonden
+  'niet onafhankelijk',          // bestaat, maar hoort bij de leverancier
+  'bestaat niet'                 // vastgesteld dat het niet bestaat
+];
+
+// Bij welke standen mag een COA niet als onafhankelijk geverifieerd bewijs
+// gelden? Bij alles behalve 'erkend'. Identity, purity en quantity die
+// uitsluitend op zo'n rapport rusten blijven ONBEVESTIGD - niet afwezig, niet
+// weerlegd. Dat onderscheid is de hele methodiek.
+const LAB_TELT_NIET_MEE = ['onvoldoende verifieerbaar', 'niet onafhankelijk', 'bestaat niet'];
+
+function bewijskrachtVanLab(oordeel) {
+  if (!oordeel) return { telt: null, reden: 'laboratorium nog niet beoordeeld' };
+  if (oordeel.status === 'erkend') return { telt: true, reden: null };
+  if (LAB_TELT_NIET_MEE.indexOf(oordeel.status) !== -1) {
+    return {
+      telt: false,
+      reden: oordeel.status === 'bestaat niet'
+        ? 'het laboratorium bestaat niet'
+        : (oordeel.status === 'niet onafhankelijk'
+          ? 'het laboratorium is niet onafhankelijk van de leverancier'
+          : 'het laboratorium is onvoldoende onafhankelijk te verifieren')
+    };
+  }
+  return { telt: null, reden: 'laboratorium nog niet beoordeeld' };
+}
 
 function labSleutel(naam) {
   return String(naam || '').toLowerCase().replace(/[^a-z0-9]/g, '') || null;
@@ -646,15 +688,19 @@ async function saveLabOordeel(lab, oordeel) {
   if (!sleutel || LAB_STATUSSEN.indexOf(o.status) === -1 || !o.vastgelegdDoor) return null;
   try {
     const { rows } = await pool.query(
-      `INSERT INTO lab_oordelen (lab_sleutel, lab, status, onderbouwing, bronnen, vastgelegd_door, vastgelegd_op)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO lab_oordelen (lab_sleutel, lab, status, onderbouwing, bronnen, vastgelegd_door, vastgelegd_op, informatie_opgevraagd, informatie_reactie)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (lab_sleutel) DO UPDATE SET
          lab = EXCLUDED.lab, status = EXCLUDED.status,
          onderbouwing = EXCLUDED.onderbouwing, bronnen = EXCLUDED.bronnen,
-         vastgelegd_door = EXCLUDED.vastgelegd_door, vastgelegd_op = EXCLUDED.vastgelegd_op
+         vastgelegd_door = EXCLUDED.vastgelegd_door, vastgelegd_op = EXCLUDED.vastgelegd_op,
+         informatie_opgevraagd = EXCLUDED.informatie_opgevraagd,
+         informatie_reactie = COALESCE(EXCLUDED.informatie_reactie, lab_oordelen.informatie_reactie)
        RETURNING *`,
       [sleutel, String(lab).slice(0, 200), o.status, o.onderbouwing || null,
-       o.bronnen ? JSON.stringify(o.bronnen) : null, o.vastgelegdDoor, Date.now()]
+       o.bronnen ? JSON.stringify(o.bronnen) : null, o.vastgelegdDoor, Date.now(),
+       typeof o.informatieOpgevraagd === 'boolean' ? o.informatieOpgevraagd : null,
+       o.informatieReactie || null]
     );
     return rows[0] || null;
   } catch (e) {
@@ -670,7 +716,9 @@ async function labOordelen() {
     rows.forEach((r) => {
       perSleutel[r.lab_sleutel] = {
         lab: r.lab, status: r.status, onderbouwing: r.onderbouwing,
-        bronnen: r.bronnen || [], vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op)
+        bronnen: r.bronnen || [], vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op),
+        informatieOpgevraagd: r.informatie_opgevraagd, informatieReactie: r.informatie_reactie,
+        bewijskracht: bewijskrachtVanLab({ status: r.status })
       };
     });
     return perSleutel;
@@ -1732,6 +1780,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  bewijskrachtVanLab, LAB_TELT_NIET_MEE,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   ruimDubbeleReferentiesOp,

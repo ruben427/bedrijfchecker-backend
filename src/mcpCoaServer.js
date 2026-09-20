@@ -301,20 +301,26 @@ async function buildServer() {
       description: 'Bewaart een MENSELIJK oordeel over een laboratorium: bestaat het, is het onafhankelijk van de leverancier, of weten we het niet. Gebruik dit alleen na echt onderzoek - kamer van koophandel, domeinregistratie, adres, wie de site beheert - en zet je bronnen erbij. Zodra dit is vastgelegd erft ELKE leverancier die naar dit lab verwijst de bevinding, dus een oordeel "bestaat niet" is zwaar: het maakt elk certificaat dat ernaar wijst waardeloos, hoe echt het er ook uitziet. Vermoeden is geen vaststelling: gebruik dan status onbekend en schrijf in de onderbouwing wat je wel en niet hebt kunnen nagaan.',
       inputSchema: z.object({
         lab: z.string().min(2).describe('De naam van het laboratorium zoals hij op de certificaten staat, bijvoorbeeld "RC Testing"'),
-        status: z.enum(['erkend', 'onbekend', 'niet onafhankelijk', 'bestaat niet']).describe('erkend = bestaand, onafhankelijk lab. onbekend = niet kunnen vaststellen. niet onafhankelijk = bestaat wel maar hoort bij de leverancier of een verbonden partij. bestaat niet = geen bewijs van bestaan gevonden, vermoedelijk verzonnen.'),
+        status: z.enum(['erkend', 'nog niet beoordeeld', 'onvoldoende verifieerbaar', 'niet onafhankelijk', 'bestaat niet']).describe('erkend = bestaand, onafhankelijk lab; bewijs telt mee. onvoldoende verifieerbaar = je hebt gezocht en gevraagd maar kon het lab niet onafhankelijk bevestigen - dit is de stand voor het gewone geval, en hij zegt NIET dat het lab vals is. niet onafhankelijk = bestaat wel maar hoort bij de leverancier of een verbonden partij. bestaat niet = je hebt VASTGESTELD dat het niet bestaat, met bronnen; gebruik dit alleen als je dat echt kunt onderbouwen. LET OP: een COA die er plausibel uitziet is niet hetzelfde als een COA die onafhankelijk geverifieerd is. Bij alles behalve erkend blijven identity, purity en quantity die uitsluitend op dat rapport rusten ONBEVESTIGD - niet weerlegd, wel onbevestigd.'),
         onderbouwing: z.string().min(10).describe('Wat je hebt nagegaan en wat je vond. Schrijf wat je hebt gezien, niet wat je vermoedt.'),
         bronnen: z.array(z.string()).optional().describe('URLs of vindplaatsen: KvK-uittreksel, whois, archiefpagina, adrescontrole'),
+        informatieOpgevraagd: z.boolean().optional().describe('Heb je de leverancier om de bedrijfsgegevens van het lab gevraagd?'),
+        informatieReactie: z.string().optional().describe('Wat kwam daarop terug. Weigeren bewijst niets, maar het is wel het punt waarop de verificatieketen ophoudt - en dat hoort vastgelegd.'),
         vastgelegdDoor: z.string().min(1).describe('Naam van de persoon die dit heeft vastgesteld')
       }).strict(),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
-    async ({ lab, status, onderbouwing, bronnen, vastgelegdDoor }) => {
+    async (a) => {
+      const { lab, status, onderbouwing, bronnen, vastgelegdDoor } = a;
       const opgeslagen = await coaStore.saveLabOordeel(lab, {
-        status, onderbouwing, bronnen: bronnen || [], vastgelegdDoor
+        status, onderbouwing, bronnen: bronnen || [], vastgelegdDoor,
+        informatieOpgevraagd: a.informatieOpgevraagd, informatieReactie: a.informatieReactie
       });
       return {
         content: [{ type: 'text', text: opgeslagen
-          ? ('Vastgelegd: ' + lab + ' - ' + status + '. Telt vanaf nu mee bij elke leverancier die naar dit lab verwijst.')
+          ? ('Vastgelegd: ' + lab + ' - ' + status + '. Telt vanaf nu mee bij elke leverancier die naar dit lab verwijst.' +
+             (status !== 'erkend' && status !== 'nog niet beoordeeld'
+               ? ' Identity, purity en quantity die uitsluitend op rapporten van dit lab rusten gelden daarmee als ONBEVESTIGD.' : ''))
           : 'Opslaan mislukt. Controleer of de status een van de vier toegestane waarden is.' }],
         structuredContent: { lab, status, opgeslagen: !!opgeslagen }
       };
