@@ -348,6 +348,59 @@ function requireAdmin(req, res, next) {
 // task-nummer bij meer dan een shop, en per lab welke shops ernaar wijzen.
 // LET OP: deze route MOET boven /api/admin/coa/:supplierKey blijven staan,
 // anders vangt die parameter-route het pad "kruisverband" op.
+// Stafoverzicht: een regel per leverancier, en per leverancier alles wat we
+// hebben. Bestond nog niet - alles zat in de database maar er was geen plek
+// waar je het zag.
+app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const rijen = await coaStore.leveranciersOverzicht();
+    res.json({
+      aantal: rijen.length,
+      totalen: {
+        referenties: rijen.reduce((n, r) => n + r.referenties, 0),
+        gecontroleerd: rijen.reduce((n, r) => n + r.gecontroleerd, 0),
+        opNaamVanDerde: rijen.reduce((n, r) => n + r.opNaamVanDerde, 0),
+        metVeldverschil: rijen.reduce((n, r) => n + r.metVeldverschil, 0),
+        documenten: rijen.reduce((n, r) => n + r.documenten, 0)
+      },
+      leveranciers: rijen
+    });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Detail van een leverancier: alle labverwijzingen met hun controle, en alle
+// documenten. Dit is wat Annemarie openklapt om te zien wat er werkelijk ligt.
+app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const key = coaStore.supplierKeyFromUrl(req.params.supplierKey);
+    const [referenties, documenten] = await Promise.all([
+      coaStore.referentiesVanLeverancier(key, 500),
+      coaStore.getDocumentsBySupplier(key)
+    ]);
+    referenties.forEach((r) => {
+      r.clientOordeel = (r.controle && r.controle.client)
+        ? coaStore.clientOordeel(r.controle.client, [key])
+        : null;
+    });
+    res.json({
+      supplierKey: key,
+      referenties,
+      documenten: documenten.map((d) => ({
+        sha256: d.sha256, url: d.url, status: d.status, lab: d.lab,
+        taskNumber: d.task_number, klasse: d.authenticity_class,
+        mimetype: d.mimetype, byteSize: d.byte_size,
+        product: (d.extraction && d.extraction.coaRecords && d.extraction.coaRecords[0] && d.extraction.coaRecords[0].product) || null,
+        zuiverheid: (d.extraction && d.extraction.coaRecords && d.extraction.coaRecords[0] && d.extraction.coaRecords[0].purityPercent) || null,
+        eersteAnalyse: d.first_analyzed_at
+      }))
+    });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 app.get('/api/admin/coa/kruisverband', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
   try {
     res.json(await coaStore.crossSupplierOverview());

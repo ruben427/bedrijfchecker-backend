@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Leveranciersoverzicht — Bedrijfchecker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
+
+<style>
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 16px 80px}
+  .top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .top h1{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading);margin:0;font-size:1.6rem}
+  .top .sub{color:var(--text-muted);font-size:.9rem}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg,24px);
+    padding:20px;margin:16px 0;box-shadow:var(--shadow)}
+  label{display:block;font-weight:600;font-size:.85rem;margin:10px 0 4px}
+  input[type=password],input[type=search]{width:100%;box-sizing:border-box;padding:10px 12px;font:inherit;
+    font-size:.92rem;background:var(--surface-2);color:var(--text);border:1px solid var(--border);
+    border-radius:var(--radius-sm,8px)}
+  button{font:inherit;font-weight:600;font-size:.92rem;padding:10px 18px;border:0;cursor:pointer;
+    border-radius:var(--radius-pill,999px);background:var(--accent);color:#fff}
+  button:hover{background:var(--accent-strong)}
+  button[disabled]{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--border);padding:6px 14px;font-size:.82rem}
+
+  .tellers{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0}
+  .teller{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md,14px);
+    padding:10px 14px;min-width:120px}
+  .teller .n{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:1.35rem;font-weight:600;display:block;line-height:1.2}
+  .teller .l{font-size:.75rem;color:var(--text-muted)}
+  .teller.let .n{color:var(--accent)}
+
+  table{width:100%;border-collapse:collapse;font-size:.88rem}
+  th{text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);
+    font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr.lev{cursor:pointer}
+  tr.lev:hover td{background:var(--surface-2)}
+  tr.lev.open td{background:var(--surface-2)}
+  .num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .dom{font-weight:600}
+  .labs{color:var(--text-muted);font-size:.8rem}
+  .caret{display:inline-block;width:13px;color:var(--text-faint)}
+  .vlag{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 8px;border-radius:999px;
+    background:var(--accent);color:#fff;margin-left:6px}
+  .vlag.zacht{background:var(--surface-2);color:var(--text-muted);border:1px solid var(--border)}
+
+  tr.detail > td{padding:0;background:var(--surface-2)}
+  .detailbox{padding:16px 14px 20px}
+  .detailbox h3{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);margin:0 0 2px;font-size:1rem}
+  .detailbox .hint{color:var(--text-muted);font-size:.82rem;margin:0 0 12px}
+  .ref{border:1px solid var(--border);border-radius:var(--radius-md,14px);background:var(--surface);
+    padding:12px 14px;margin-bottom:10px}
+  .ref .kop{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .ref .kop .prod{font-weight:600}
+  .ref .kop .soort{font-size:.75rem;color:var(--text-muted);border:1px solid var(--border);
+    border-radius:999px;padding:1px 8px}
+  .ref .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.78rem;color:var(--text-muted);
+    word-break:break-all}
+  .ref dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:8px 0 0;font-size:.85rem}
+  .ref dt{color:var(--text-muted)}
+  .ref dd{margin:0}
+  .velden{margin-top:9px;border-top:1px solid var(--border);padding-top:8px}
+  .veld{display:grid;grid-template-columns:150px 1fr;gap:4px 10px;font-size:.82rem;padding:2px 0}
+  .veld .naam{color:var(--text-muted)}
+  .veld.verschil .naam,.veld.verschil .waarde{color:var(--accent);font-weight:600}
+  .veld.nietvgl{opacity:.55}
+  .leeg{color:var(--text-faint);font-style:italic;font-size:.88rem}
+  .fout{color:var(--accent);font-weight:600}
+  @media (max-width:760px){
+    .verbergklein{display:none}
+    .veld{grid-template-columns:1fr}
+  }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>Leveranciersoverzicht</h1>
+    <span class="sub">Alles wat we per leverancier hebben, en wat de handmatige controles hebben opgeleverd.</span>
+  </div>
+
+  <div class="panel" id="p-token">
+    <label for="token">Beheerderstoken</label>
+    <input type="password" id="token" autocomplete="off" placeholder="X-Owner-Token">
+    <p class="hint" style="color:var(--text-muted);font-size:.82rem;margin:8px 0 12px">
+      Blijft alleen in dit tabblad staan. Niet opgeslagen, dus na verversen opnieuw invullen.
+    </p>
+    <button id="laden">Overzicht laden</button>
+    <span id="tokenstatus" class="sub"></span>
+  </div>
+
+  <div class="panel" id="p-lijst" hidden>
+    <div class="tellers" id="tellers"></div>
+    <label for="zoek" style="margin-top:16px">Zoeken</label>
+    <input type="search" id="zoek" placeholder="domein, bijvoorbeeld astralabs">
+    <div style="margin-top:10px">
+      <button class="ghost" id="filter-bevindingen">Alleen met bevindingen</button>
+      <button class="ghost" id="filter-alles">Alles tonen</button>
+    </div>
+    <div style="overflow-x:auto;margin-top:14px">
+      <table id="tabel">
+        <thead>
+          <tr>
+            <th>Leverancier</th>
+            <th class="num">Verwijzingen</th>
+            <th class="num">Gecontroleerd</th>
+            <th class="num">Op naam van derde</th>
+            <th class="num">Veldverschil</th>
+            <th class="num verbergklein">Documenten</th>
+            <th class="verbergklein">Laatste controle</th>
+          </tr>
+        </thead>
+        <tbody id="rijen"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
+
+  var elToken = document.getElementById('token');
+  var elStatus = document.getElementById('tokenstatus');
+  var elLijst = document.getElementById('p-lijst');
+  var elRijen = document.getElementById('rijen');
+  var elTellers = document.getElementById('tellers');
+  var elZoek = document.getElementById('zoek');
+
+  var alles = [];
+  var filter = '';
+  var alleenBevindingen = false;
+  var open = {};      // supplierKey -> true
+  var details = {};   // supplierKey -> data of 'laden' of 'fout'
+
+  function token() { return (elToken.value || '').trim(); }
+
+  function haal(pad) {
+    return fetch(API_BASE + pad, { headers: { 'X-Owner-Token': token() } }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error((j && (j.message || j.error)) || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function datum(ms) {
+    if (!ms) return '—';
+    var d = new Date(Number(ms));
+    return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function pct(v) { return (v == null || v === '') ? '—' : (Math.round(Number(v) * 100) / 100) + '%'; }
+
+  // ---- overzicht ----
+
+  function tekenTellers(t) {
+    elTellers.innerHTML =
+      teller(t.referenties, 'labverwijzingen') +
+      teller(t.gecontroleerd, 'gecontroleerd') +
+      teller(t.opNaamVanDerde, 'op naam van derde', true) +
+      teller(t.metVeldverschil, 'met veldverschil', true) +
+      teller(t.documenten, 'documenten');
+  }
+  function teller(n, l, let_) {
+    return '<div class="teller' + (let_ && n ? ' let' : '') + '"><span class="n">' + esc(n) +
+      '</span><span class="l">' + esc(l) + '</span></div>';
+  }
+
+  function zichtbaar() {
+    return alles.filter(function (r) {
+      if (filter && r.supplierKey.indexOf(filter) === -1) return false;
+      if (alleenBevindingen && !(r.opNaamVanDerde || r.metVeldverschil || r.nietOpgelost)) return false;
+      return true;
+    });
+  }
+
+  function tekenLijst() {
+    var rijen = zichtbaar();
+    if (!rijen.length) {
+      elRijen.innerHTML = '<tr><td colspan="7" class="leeg">Geen leveranciers die aan het filter voldoen.</td></tr>';
+      return;
+    }
+    elRijen.innerHTML = rijen.map(function (r) {
+      var labs = Object.keys(r.labs || {}).map(function (l) { return l + ' ' + r.labs[l]; }).join(' · ');
+      var vlaggen = '';
+      if (r.opNaamVanDerde) vlaggen += '<span class="vlag">' + r.opNaamVanDerde + '× derde partij</span>';
+      if (r.alsOpdrachtgever) vlaggen += '<span class="vlag zacht">opdrachtgever van ' + r.alsOpdrachtgever + '</span>';
+      var rij = '<tr class="lev' + (open[r.supplierKey] ? ' open' : '') + '" data-key="' + esc(r.supplierKey) + '">' +
+        '<td><span class="caret">' + (open[r.supplierKey] ? '▾' : '▸') + '</span>' +
+        '<span class="dom">' + esc(r.supplierKey) + '</span>' + vlaggen +
+        (labs ? '<div class="labs">' + esc(labs) + '</div>' : '') + '</td>' +
+        '<td class="num">' + r.referenties + '</td>' +
+        '<td class="num">' + r.gecontroleerd + (r.nietOpgelost ? ' <span class="fout">(' + r.nietOpgelost + ' niet opgelost)</span>' : '') + '</td>' +
+        '<td class="num">' + (r.opNaamVanDerde || '—') + '</td>' +
+        '<td class="num">' + (r.metVeldverschil || '—') + '</td>' +
+        '<td class="num verbergklein">' + (r.documenten || '—') + '</td>' +
+        '<td class="verbergklein">' + datum(r.laatstGecontroleerd) + '</td></tr>';
+      if (open[r.supplierKey]) {
+        rij += '<tr class="detail"><td colspan="7"><div class="detailbox" id="d-' +
+          esc(r.supplierKey).replace(/[^a-z0-9]/gi, '_') + '">' + tekenDetail(r.supplierKey) + '</div></td></tr>';
+      }
+      return rij;
+    }).join('');
+  }
+
+  // ---- detail ----
+
+  function tekenDetail(key) {
+    var d = details[key];
+    if (d === 'laden' || !d) return '<p class="leeg">Details ophalen…</p>';
+    if (d === 'fout') return '<p class="fout">Details konden niet worden opgehaald.</p>';
+
+    var refs = d.referenties || [];
+    var gecontroleerd = refs.filter(function (r) { return r.controle; });
+    var uit = '<h3>' + esc(key) + '</h3>' +
+      '<p class="hint">' + refs.length + ' labverwijzing(en), ' + gecontroleerd.length +
+      ' gecontroleerd, ' + (d.documenten || []).length + ' document(en) in het archief.</p>';
+
+    if (!refs.length && !(d.documenten || []).length) {
+      return uit + '<p class="leeg">Nog niets bekend voor deze leverancier.</p>';
+    }
+
+    // Gecontroleerde eerst: daar zit de informatie.
+    var volgorde = gecontroleerd.concat(refs.filter(function (r) { return !r.controle; }));
+    uit += volgorde.slice(0, 200).map(refBlok).join('');
+    if (volgorde.length > 200) {
+      uit += '<p class="hint">' + (volgorde.length - 200) + ' verwijzing(en) niet getoond.</p>';
+    }
+    return uit;
+  }
+
+  function refBlok(r) {
+    var c = r.controle;
+    var o = r.clientOordeel;
+    var kop = '<div class="kop">' +
+      '<span class="prod">' + esc((c && c.product) || r.testsoort || r.referentie) + '</span>' +
+      (r.testsoort ? '<span class="soort">' + esc(r.testsoort) + '</span>' : '') +
+      (r.relatie === 'opdrachtgever' ? '<span class="vlag zacht">op naam van deze partij</span>' : '') +
+      (o && o.derdePartij ? '<span class="vlag">derde partij</span>' : '') +
+      '</div>';
+
+    var body = '<div class="mono"><a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.url) + '</a></div>';
+
+    if (!c) {
+      return '<div class="ref">' + kop + body + '<p class="leeg" style="margin:8px 0 0">Nog niet gecontroleerd.</p></div>';
+    }
+
+    var dl = '<dl>';
+    function rij(k, v) { if (v == null || v === '') return; dl += '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>'; }
+    rij('Opdrachtgever', c.client);
+    rij('Fabrikant', c.manufacturer);
+    rij('Batch', c.batchnummer);
+    if (c.zuiverheidPct != null) rij('Zuiverheid', pct(c.zuiverheidPct));
+    if (c.vullingPct != null) rij('Vulling', (c.vullingPct > 0 ? '+' : '') + pct(c.vullingPct) + ' t.o.v. etiket');
+    rij('Lost op bij het lab', c.resolvet === true ? 'ja' : (c.resolvet === false ? 'NEE' : 'onbekend'));
+    rij('Klasse', c.klasse || 'nog niet toegekend');
+    rij('Gecontroleerd door', c.checkedBy);
+    if (c.afleidingsnotitie) rij('Let op', c.afleidingsnotitie);
+    if (c.notitie) rij('Notitie', c.notitie);
+    dl += '</dl>';
+
+    var velden = '';
+    if (c.veldvergelijking && c.veldvergelijking.length) {
+      velden = '<div class="velden">' + c.veldvergelijking.map(function (v) {
+        var cls = v.gelijk === false ? 'verschil' : (v.gelijk === null ? 'nietvgl' : '');
+        var waarde;
+        if (v.gelijk === null) {
+          waarde = v.reden ? esc(v.reden) : 'niet vergeleken';
+        } else if (v.gelijk) {
+          waarde = esc(v.bijHetLab);
+        } else {
+          waarde = 'shop: ' + esc(v.opKopieLeverancier) + ' · lab: ' + esc(v.bijHetLab) +
+            (v.bijnaGelijk ? ' <span class="soort">alleen schrijfwijze</span>' : '');
+        }
+        return '<div class="veld ' + cls + '"><span class="naam">' + esc(v.veld) + '</span>' +
+          '<span class="waarde">' + waarde + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    return '<div class="ref">' + kop + body + dl + velden + '</div>';
+  }
+
+  // ---- gedrag ----
+
+  function laadDetail(key) {
+    if (details[key] && details[key] !== 'fout') return;
+    details[key] = 'laden';
+    haal('/api/admin/leveranciers/' + encodeURIComponent(key)).then(function (d) {
+      details[key] = d;
+      tekenLijst();
+    }).catch(function () {
+      details[key] = 'fout';
+      tekenLijst();
+    });
+  }
+
+  elRijen.addEventListener('click', function (e) {
+    var tr = e.target.closest ? e.target.closest('tr.lev') : null;
+    if (!tr) return;
+    if (e.target.tagName === 'A') return;
+    var key = tr.getAttribute('data-key');
+    if (open[key]) { delete open[key]; } else { open[key] = true; laadDetail(key); }
+    tekenLijst();
+  });
+
+  elZoek.addEventListener('input', function () {
+    filter = (elZoek.value || '').trim().toLowerCase();
+    tekenLijst();
+  });
+  document.getElementById('filter-bevindingen').addEventListener('click', function () {
+    alleenBevindingen = true; tekenLijst();
+  });
+  document.getElementById('filter-alles').addEventListener('click', function () {
+    alleenBevindingen = false; tekenLijst();
+  });
+
+  document.getElementById('laden').addEventListener('click', function () {
+    if (!token()) { elStatus.textContent = 'Vul eerst het token in.'; return; }
+    elStatus.textContent = 'Laden…';
+    haal('/api/admin/leveranciers').then(function (d) {
+      alles = d.leveranciers || [];
+      tekenTellers(d.totalen || {});
+      elLijst.hidden = false;
+      elStatus.textContent = alles.length + ' leverancier(s).';
+      tekenLijst();
+    }).catch(function (e) {
+      elStatus.textContent = 'Mislukt: ' + (e && e.message ? e.message : 'onbekende fout');
+    });
+  });
+
+  elToken.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('laden').click();
+  });
+})();
+</script>

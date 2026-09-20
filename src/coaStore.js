@@ -1060,6 +1060,76 @@ async function legOpdrachtgeverVast(lab, referentie, client) {
   }
 }
 
+// Overzicht van alle leveranciers die we kennen, met wat we per stuk hebben.
+// Bedoeld voor de stafpagina: een regel per leverancier, en de kolommen die er
+// toe doen staan vooraan - niet "hoeveel rapporten" maar "hoeveel daarvan zijn
+// gecontroleerd, en wat kwam daaruit".
+async function leveranciersOverzicht() {
+  try {
+    const { rows: refRijen } = await pool.query(
+      `SELECT r.supplier_key, r.lab, r.relatie, r.testsoort,
+              c.id IS NOT NULL AS gecontroleerd, c.resolvet, c.client,
+              c.velden_afwijkend, c.checked_at
+       FROM coa_references r
+       LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie`
+    );
+    const { rows: docRijen } = await pool.query(
+      `SELECT s.supplier_key, COUNT(DISTINCT d.sha256)::int AS documenten,
+              COUNT(DISTINCT d.sha256) FILTER (WHERE d.authenticity_class IS NOT NULL)::int AS metKlasse,
+              MAX(s.last_checked_at) AS laatstGezien
+       FROM coa_sources s JOIN coa_documents d ON d.sha256 = s.sha256
+       GROUP BY s.supplier_key`
+    );
+
+    const perKey = {};
+    const zorg = (k) => (perKey[k] = perKey[k] || {
+      supplierKey: k, labs: {}, testsoorten: {},
+      referenties: 0, alsOpdrachtgever: 0, gecontroleerd: 0, opgelost: 0,
+      nietOpgelost: 0, opNaamVanDerde: 0, metVeldverschil: 0,
+      documenten: 0, documentenMetKlasse: 0, laatstGecontroleerd: null, laatstGezien: null
+    });
+
+    refRijen.forEach((r) => {
+      const b = zorg(r.supplier_key);
+      if (r.relatie === 'opdrachtgever') { b.alsOpdrachtgever++; }
+      else {
+        b.referenties++;
+        const lab = normaliseerLab(r.lab).naam;
+        b.labs[lab] = (b.labs[lab] || 0) + 1;
+        const ts = r.testsoort || '(niet benoemd)';
+        b.testsoorten[ts] = (b.testsoorten[ts] || 0) + 1;
+      }
+      if (!r.gecontroleerd) return;
+      b.gecontroleerd++;
+      if (r.resolvet === true) b.opgelost++;
+      if (r.resolvet === false) b.nietOpgelost++;
+      if (Number(r.velden_afwijkend) > 0) b.metVeldverschil++;
+      if (r.client) {
+        const oordeel = clientOordeel(r.client, [r.supplier_key]);
+        if (oordeel && oordeel.derdePartij) b.opNaamVanDerde++;
+      }
+      if (r.checked_at && (!b.laatstGecontroleerd || r.checked_at > b.laatstGecontroleerd)) {
+        b.laatstGecontroleerd = Number(r.checked_at);
+      }
+    });
+
+    docRijen.forEach((r) => {
+      const b = zorg(r.supplier_key);
+      b.documenten = r.documenten;
+      b.documentenMetKlasse = r.metklasse;
+      b.laatstGezien = r.laatstgezien ? Number(r.laatstgezien) : null;
+    });
+
+    // lab:-sleutels zijn geen leveranciers maar een bijproduct van de resolver.
+    return Object.values(perKey)
+      .filter((b) => !/^lab:/i.test(b.supplierKey))
+      .sort((a, b) => (b.referenties + b.documenten) - (a.referenties + a.documenten));
+  } catch (e) {
+    console.error('coaStore.leveranciersOverzicht:', (e && e.message) || e);
+    return [];
+  }
+}
+
 async function referentiesVanLeverancier(supplierKey, max) {
   if (!supplierKey) return [];
   try {
@@ -1412,6 +1482,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
   clientOordeel,
   referentiesVanLeverancier,
