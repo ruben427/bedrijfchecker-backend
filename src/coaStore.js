@@ -121,6 +121,7 @@ async function initCoaSchema() {
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS methode TEXT NOT NULL DEFAULT 'handmatig';`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
+  await normaliseerBestaandeLabnamen();
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_sha_idx ON coa_sources (sha256);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_events_supplier_idx ON coa_source_events (supplier_key, created_at DESC);`);
@@ -425,6 +426,38 @@ function referentieUitUrl(lab, url) {
   return null;
 }
 
+// Eenmalige opschoning. Referenties die zijn weggeschreven voordat de
+// labnaam genormaliseerd werd dragen nog het hele briefhoofd als labnaam
+// ("ILS Laboratories, 8222 Vickers St, ..."). Daardoor vindt een filter op
+// "ILS Laboratories" ze niet, terwijl een telling ze wel meerekent - precies
+// het soort verschil waar je uren naar zoekt. Loopt bij het opstarten, raakt
+// alleen rijen die daadwerkelijk anders worden.
+async function normaliseerBestaandeLabnamen() {
+  try {
+    const { rows } = await pool.query('SELECT DISTINCT lab FROM coa_references');
+    for (const r of rows) {
+      const net = normaliseerLab(r.lab).naam;
+      if (!net || net === r.lab) continue;
+      const slug = net.toLowerCase().replace(/[^a-z0-9]/g, '') || 'onbekend';
+      // De synthetische labref-URL draagt de labslug, dus die moet mee -
+      // anders verschijnt dezelfde referentie later een tweede keer.
+      await pool.query(
+        `UPDATE coa_references
+         SET lab = $2,
+             url = CASE WHEN url LIKE 'labref://%'
+                        THEN 'labref://' || $3 || '/' || split_part(url, '/', 4)
+                        ELSE url END
+         WHERE lab = $1`,
+        [r.lab, net, slug]
+      );
+      await pool.query('UPDATE coa_reference_checks SET lab = $2 WHERE lab = $1', [r.lab, net]).catch(() => {});
+      console.log('coaStore: labnaam genormaliseerd van "' + String(r.lab).slice(0, 60) + '" naar "' + net + '"');
+    }
+  } catch (e) {
+    console.error('coaStore.normaliseerBestaandeLabnamen:', (e && e.message) || e);
+  }
+}
+
 async function recordReferences(supplierKey, lijst) {
   const items = (lijst || []).filter((v) => v && v.url);
   if (!supplierKey || !items.length) return { opgeslagen: 0, onleesbaar: 0 };
@@ -578,7 +611,7 @@ async function listReferences() {
 async function referentiesMetControle(lab, max) {
   try {
     const params = [Math.max(1, Math.min(Number(max) || 100, 500))];
-    const waar = lab ? 'WHERE r.lab = $2' : '';
+    const waar = lab ? 'WHERE r.lab = $2' : '';  // na de opschoning is de ruwe naam al de nette
     if (lab) params.push(lab);
     const { rows } = await pool.query(
       `SELECT r.lab, r.referentie, r.url,
