@@ -16,7 +16,12 @@ const ilsLab = require('./ilsLab');
 // (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
 // betekent dat alle eerder gelezen COA's opnieuw door vision gaan.
 const COA_EXTRACTOR_VERSION = 'coa-read-1';
-const { runScoringEngine, computeQuantity } = require('./scoringEngine');
+const { runScoringEngine, computeQuantity, CATEGORY_DEFS } = require('./scoringEngine');
+// Het aantal categorieen stond op vier plekken los ingetypt. Hier komt het
+// uit de lijst zelf, zodat het label niet stilletjes verloopt zodra er een
+// categorie bij komt. LET OP: in bedrijfchecker.html en frontend/index.html
+// staat het getal nog wel met de hand - die kunnen deze lijst niet lezen.
+const AANTAL_CATEGORIEEN = CATEGORY_DEFS.length;
 const db = require('./db');
 
 // Hoeveel kandidaat-COA-URL's we per case maximaal automatisch proberen te
@@ -49,7 +54,7 @@ const STEP_DEFS = [
   { key: 'reputatie', label: 'Reputatie' },
   { key: 'regelgeving', label: 'Regelgeving en toezicht' },
   { key: 'tegenbewijs', label: 'Tegenbewijs en positieve signalen' },
-  { key: 'categorize', label: 'Categoriebeoordeling (17 categorieën)' },
+  { key: 'categorize', label: 'Categoriebeoordeling (' + AANTAL_CATEGORIEEN + ' categorieën)' },
   { key: 'reportA', label: 'Evidence Check samenstellen (1/2)' },
   { key: 'reportB', label: 'Evidence Check samenstellen (2/2)' }
 ];
@@ -1303,7 +1308,7 @@ async function runResearchStep(caseId, ctx, key) {
 async function runCategorize(caseId, ctx, tier) {
   const startedAt = Date.now();
   await beginStep(caseId, 'categorize');
-  await meldStap(caseId, 'De 17 categorieen beoordelen op het verzamelde bewijs');
+  await meldStap(caseId, 'De ' + AANTAL_CATEGORIEEN + ' categorieen beoordelen op het verzamelde bewijs');
   const c = await db.getCase(caseId);
   const phaseData = c.phaseData || {};
   const slimPhases = trimPhasesForPrompt(phaseData);
