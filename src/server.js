@@ -352,6 +352,25 @@ function requireLezer(req, res, next) {
   return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders of met een leestoken.' });
 }
 
+// Alle laboratoria die we tegenkomen, met wat we erover weten en twee
+// signalen die geen mens hoeft te bedenken: komt dit lab maar bij een
+// leverancier voor, en is er ook maar een verwijzing die een buitenstaander
+// zelf kan nalopen.
+app.get('/api/admin/laboratoria', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const labs = await coaStore.labSignalen();
+    res.json({
+      aantal: labs.length,
+      bestaatNiet: labs.filter((l) => l.oordeel && l.oordeel.status === 'bestaat niet').map((l) => l.lab),
+      zonderOordeel: labs.filter((l) => !l.oordeel).map((l) => l.lab),
+      teControleren: labs.filter((l) => !l.oordeel && (l.maarEenLeverancier || l.nooitOnafhankelijkTeControleren)).map((l) => l.lab),
+      labs
+    });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Stafoverzicht: een regel per leverancier, en per leverancier alles wat we
 // hebben. Bestond nog niet - alles zat in de database maar er was geen plek
 // waar je het zag.

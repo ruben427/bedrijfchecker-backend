@@ -680,6 +680,64 @@ async function labOordelen() {
   }
 }
 
+// Twee signalen die een mens niet hoeft te bedenken.
+//
+// Aanleiding: RC Testing. Een verzonnen laboratorium met een nette site, een
+// werkend verificatieformulier en zelfs methodisch correcte nuance. Dat
+// rapport haalt onze Evidence Gate moeiteloos: identiteit via LC-MS/MS,
+// zuiverheid, gemeten hoeveelheid, een verificatiedomein. Het zou HOGER
+// scoren dan een shop die eerlijk publiceert dat hij zijn eigen drempel niet
+// haalt. Vaststellen dat het lab niet bestaat blijft mensenwerk, maar deze
+// twee dingen kunnen we wel zelf zien.
+//
+// 1. Een lab dat maar bij EEN leverancier voorkomt. Een echt lab bedient een
+//    markt; een lab dat alleen bij zijn eigen shop opduikt is dat per
+//    definitie niet. Geen bewijs - Bridge Analytical begon bij ons ook met
+//    een leverancier - maar wel het eerste waar je naar kijkt.
+//
+// 2. Een verwijzing die niemand kan nalopen. Bij Janoshik, Bridge en ILS
+//    staat de sleutel in de URL: wie de link heeft, kan het rapport zien. RC
+//    Testing vraagt rapportnummer EN sleutel apart, en zegt erbij dat
+//    resultaten niet in een publieke index komen. Dan is verificatie alleen
+//    mogelijk als de shop je beide waarden geeft - en kun je nooit zien wat
+//    dat lab verder heeft getest, of voor wie. Wij slaan zo'n verwijzing op
+//    als labref://, en dat is precies de vorm die niemand kan controleren.
+async function labSignalen() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT lab,
+              COUNT(DISTINCT supplier_key)::int AS leveranciers,
+              COUNT(*)::int AS verwijzingen,
+              COUNT(*) FILTER (WHERE url LIKE 'labref://%')::int AS zonderPubliekeLink
+       FROM coa_references WHERE relatie = 'toont' GROUP BY lab`
+    );
+    const oordelen = await labOordelen();
+    const perLab = {};
+    rows.forEach((r) => {
+      const naam = normaliseerLab(r.lab).naam;
+      const b = perLab[naam] || (perLab[naam] = {
+        lab: naam, leveranciers: 0, verwijzingen: 0, zonderPubliekeLink: 0
+      });
+      b.leveranciers += r.leveranciers;
+      b.verwijzingen += r.verwijzingen;
+      b.zonderPubliekeLink += r.zonderpubliekelink;
+    });
+    return Object.values(perLab).map((b) => {
+      const o = oordelen[labSleutel(b.lab)] || null;
+      return Object.assign({}, b, {
+        oordeel: o,
+        // Alleen bij een leverancier gezien. Waarneming, geen oordeel.
+        maarEenLeverancier: b.leveranciers === 1,
+        // Geen enkele verwijzing is voor een buitenstaander na te lopen.
+        nooitOnafhankelijkTeControleren: b.verwijzingen > 0 && b.zonderPubliekeLink === b.verwijzingen
+      });
+    }).sort((a, b) => b.verwijzingen - a.verwijzingen);
+  } catch (e) {
+    console.error('coaStore.labSignalen:', (e && e.message) || e);
+    return [];
+  }
+}
+
 // Welke labs gebruikt deze leverancier, en wat is daarover vastgelegd?
 // Een leverancier die naar een niet-bestaand lab verwijst is de zwaarste
 // bevinding in het systeem: elk certificaat dat ernaar wijst is waardeloos.
@@ -1674,6 +1732,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
