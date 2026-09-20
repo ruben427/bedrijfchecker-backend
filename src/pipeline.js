@@ -349,8 +349,8 @@ function stepOpts(key, ctx, waarneming) {
     case 'coaDataset': return {
       key: 'coaDataset', title: 'COA-dataset en -authenticiteit',
       searchQueries: [ctx.naam + ' COA certificate of analysis', ctx.naam + ' COA verification lab report number', ctx.naam + ' lab results batch'],
-      researchQuery: 'Zoek alle publiek vindbare COA\'s (certificates of analysis) van leverancier "' + ctx.naam + '" (website: ' + ctx.website + '). Verzamel per COA: product, geclaimde en gemeten hoeveelheid met eenheid, purity-percentage en meetmethode, batchnummer, report/task-ID, verification key, laboratoriumnaam, order/ontvangst/analyse/rapportdatum, sterility- en endotoxin-testresultaten indien vermeld, overige contaminantentests, en of het rapport extern controleerbaar is (bijv. via een verification key of publiek opzoeksysteem bij het lab).',
-      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"verificatieDomein":string,"verificatieInstructie":string,"accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Ken zelf GEEN authenticiteitsklasse toe en geef geen oordeel over echtheid. Dat gebeurt verderop, door de referentie bij het laboratorium zelf op te lossen of door een mens. Lees in plaats daarvan letterlijk uit: "verificatieDomein" is het webadres dat het rapport noemt om de test te controleren (bijvoorbeeld www.janoshik.com/verify/), exact zoals het er staat - ook als het er vreemd uitziet, want een afwijkend domein is zelf een waarneming. "verificatieInstructie" is de volledige zin waarin dat staat. Null als er niets over verificatie op het rapport staat.'
+      researchQuery: 'Zoek alle publiek vindbare COA\'s (certificates of analysis) van leverancier "' + ctx.naam + '" (website: ' + ctx.website + '). Verzamel per COA: product, geclaimde en gemeten hoeveelheid met eenheid, purity-percentage en meetmethode, batchnummer, report/task-ID, verification key, laboratoriumnaam, order/ontvangst/analyse/rapportdatum, sterility- en endotoxin-testresultaten indien vermeld, overige contaminantentests, en of het rapport extern controleerbaar is (bijv. via een verification key of publiek opzoeksysteem bij het lab). Verzamel daarnaast de kwaliteitsbeloften die de leverancier ZELF op zijn site doet over zuiverheid: elke zin waarin een drempel of ondergrens staat, bijvoorbeeld "batches below 98% purity are rejected" of "minimaal 99% zuiverheid". Neem de zin letterlijk over met de bron-URL.',
+      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"verificatieDomein":string,"verificatieInstructie":string,"accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"kwaliteitsbeloften":[{"belofte":string,"drempelPercent":number|null,"bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. "kwaliteitsbeloften" zijn uitspraken van de LEVERANCIER zelf over een zuiverheidsdrempel, niet van het lab: neem de zin letterlijk over in "belofte" en zet het genoemde percentage in "drempelPercent". Staat er geen percentage in de zin, dan null. Lege lijst als de site geen drempel noemt. Verzin geen cijfers: onbekende velden worden null. Ken zelf GEEN authenticiteitsklasse toe en geef geen oordeel over echtheid. Dat gebeurt verderop, door de referentie bij het laboratorium zelf op te lossen of door een mens. Lees in plaats daarvan letterlijk uit: "verificatieDomein" is het webadres dat het rapport noemt om de test te controleren (bijvoorbeeld www.janoshik.com/verify/), exact zoals het er staat - ook als het er vreemd uitziet, want een afwijkend domein is zelf een waarneming. "verificatieInstructie" is de volledige zin waarin dat staat. Null als er niets over verificatie op het rapport staat.'
     };
     case 'socialAffiliates': return {
       key: 'socialAffiliates', title: 'Social media, affiliates en commerciële relaties',
@@ -442,6 +442,60 @@ async function finishStep(caseId, key, startedAt) {
 // LET OP: wat precies als identiteitsbepaling mag gelden is een methodische
 // vraag die bij Annemarie ligt (A14). Tot die beantwoord is staat hier de
 // conservatieve variant.
+// ---------------------------------------------------------------------------
+// BELOFTE TEGENOVER EIGEN CIJFERS (20 september 2026)
+//
+// Gevonden bij balticpeptides: de site belooft "batches that do not meet our
+// >=99% purity threshold are not released" en noemt elders op dezelfde pagina
+// een >=98%-poort. In de lijst eronder staan vijf producten onder 99% en vier
+// onder 98%, gewoon te koop.
+//
+// Dit is de zeldzame controle die geen oordeel vraagt om te signaleren: de
+// leverancier levert zelf de norm en zelf de meting. Wij leggen ze naast
+// elkaar. Hoe zwaar het weegt is een andere vraag, en die ligt bij Annemarie.
+//
+// Bij meerdere drempels toetsen we tegen de SOEPELSTE. Wie zichzelf
+// tegenspreekt krijgt de voor hem gunstigste lezing; dat de drempels
+// onderling verschillen staat apart gemeld in meerdereDrempels.
+function toetsZuiverheidsbelofte(beloften, records) {
+  const ruw = (beloften || [])
+    .map((b) => Number(b && b.drempelPercent))
+    .filter((n) => Number.isFinite(n) && n > 0 && n <= 100);
+  const drempels = [...new Set(ruw)].sort((a, b) => a - b);
+  if (!drempels.length) return null;
+
+  // LET OP: Number(null) is 0 en Number.isFinite(0) is true. Zonder de
+  // null-check belandde elk record zonder zuiverheid als 0% in de lijst
+  // 'onder de drempel'. Gevonden door de toets op de Baltic-cijfers te
+  // draaien: acht records geteld waar er zeven een percentage hadden.
+  const gemeten = (records || []).filter((r) =>
+    r && r.purityPercent !== null && r.purityPercent !== undefined &&
+    r.purityPercent !== '' && Number.isFinite(Number(r.purityPercent)));
+  if (!gemeten.length) {
+    return { drempels, meerdereDrempels: drempels.length > 1, metZuiverheid: 0, onder: [], aantalOnder: 0 };
+  }
+
+  const soepelste = drempels[0];
+  const onder = gemeten
+    .filter((r) => Number(r.purityPercent) < soepelste)
+    .map((r) => ({
+      product: r.product || null,
+      purityPercent: Number(r.purityPercent),
+      bronUrl: r.bronUrl || null
+    }))
+    .sort((a, b) => a.purityPercent - b.purityPercent);
+
+  return {
+    drempels,
+    meerdereDrempels: drempels.length > 1,
+    soepelsteDrempel: soepelste,
+    strengsteDrempel: drempels[drempels.length - 1],
+    metZuiverheid: gemeten.length,
+    onder,
+    aantalOnder: onder.length
+  };
+}
+
 function heeftIdentiteitsbepaling(r) {
   if (!r) return false;
   if (r.identiteitBevestigd === true) return true;
@@ -1117,6 +1171,9 @@ async function runResearchStep(caseId, ctx, key) {
         : null;
     });
 
+    const beloften = (phase.data && phase.data.kwaliteitsbeloften) || [];
+    const beloftetoets = toetsZuiverheidsbelofte(beloften, records);
+
     const intake = records.map((r, i) => {
       const fields = [];
       if (r.purityPercent != null) fields.push('purity');
@@ -1164,7 +1221,7 @@ async function runResearchStep(caseId, ctx, key) {
       beperkingen: (crawl && crawl.notes) || ['crawl niet uitgevoerd'],
       diagnose: (crawl && crawl.diagnose) || []
     };
-    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties }) };
+    result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets }) };
   } else if (key === 'laboratorium') {
     // Begin bij wat de COA-stap al gezien heeft. Draait deze stap zonder
     // voorafgaande COA-stap, dan is waarneming gewoon leeg en valt stepOpts
@@ -1352,5 +1409,6 @@ async function runDeepTier(caseId, ctx) {
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
-  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument
+  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,
+  toetsZuiverheidsbelofte
 };
