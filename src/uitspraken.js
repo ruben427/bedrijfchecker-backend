@@ -24,28 +24,168 @@ const VASTGESTELD_DOOR = 'Annemarie';
 // 20% meer dan wat er op het label staat. Zeker wanneer iemand doseert op
 // basis van dat label vind ik dat relevante informatie."
 //
-// LET OP: absolute waarde. Overvulling is geen bonus. Dat is een besluit, geen
-// implementatiedetail - de engine kende al signalGt10, maar niets gebruikte
-// het en niemand had gezegd dat +20% net zo goed telt als -20%.
+// WAARTEGEN (comment Annemarie, 20 sep 19:39): "De 10% meten we altijd tegen
+// de hoeveelheid die de leverancier voor dat specifieke product claimt."
+//
+// PER VIAAL, NIET TEGEN HET GEMIDDELDE: "Als meerdere vials uit dezelfde
+// test/batch zijn gemeten, wil ik niet alleen het gemiddelde gebruiken. Iedere
+// gemeten vial telt afzonderlijk. Anders kan een afwijkende vial verdwijnen in
+// een mooi gemiddelde." Het gemiddelde mag er als extra informatie bij staan.
+//
+// Dat is een wijziging op wat de server deed: vullingUit() rekende het
+// percentage uit het GEMIDDELDE van de vialen. Bij Uther #214044 maakt dat
+// niets uit - alle drie zitten ruim boven de drempel - maar bij een reeks
+// waarin er een uitschiet, verdween die in het gemiddelde.
+//
+// "Als vials uiteenlopen, wil ik dat juist kunnen zien. Bijvoorbeeld: 3 vials
+// getest, waarvan 1 meer dan 10% afwijkt. Dan is dat de bevinding, niet
+// automatisch dat de hele batch meer dan 10% afwijkt."
 const VULLING_DREMPEL_PCT = 10;
 
-function vullingOordeel(pct) {
-  if (pct == null || Number.isNaN(Number(pct))) {
-    return { bevinding: false, tonen: false, reden: 'geen vergelijkbare meting' };
+// Hoe betrouwbaar is de waarde waar we iets over zeggen? (comment Annemarie,
+// 20 sep 19:41): "Een waarde die alleen door de AI-leesstap uit een COA is
+// gehaald en niet is gecontroleerd, wil ik niet als harde 'gemeten afwijking'
+// aan de gebruiker tonen. De AI mag deze waarden wel uitlezen en intern
+// gebruiken als signaal (...) Dus ook onder de 10% geldt: alleen tonen als
+// feit wanneer de onderliggende waarde voldoende is geverifieerd."
+//
+// Drie herkomsten, oplopend in gewicht. Alleen de bovenste twee mogen als
+// feit naar buiten.
+const HERKOMST = {
+  handmatig: { feit: true,  label: 'door een mens gecontroleerd' },
+  resolver:  { feit: true,  label: 'bij het laboratorium opgehaald' },
+  gelezen:   { feit: false, label: 'uit het document gelezen, niet geverifieerd' }
+};
+function magAlsFeit(herkomst) {
+  const h = HERKOMST[herkomst];
+  return !!(h && h.feit);
+}
+
+// Een enkele meting tegen de claim van dat product.
+function vullingVanEen(gemetenMg, geclaimdMg, herkomst) {
+  const g = Number(gemetenMg), c = Number(geclaimdMg);
+  if (!Number.isFinite(g) || !Number.isFinite(c) || c <= 0) {
+    return { toetsbaar: false, reden: 'geen geclaimde hoeveelheid om tegen te meten' };
   }
-  const p = Number(pct);
-  const afwijking = Math.abs(p);
-  if (afwijking >= VULLING_DREMPEL_PCT) {
+  const pct = ((g - c) / c) * 100;
+  const buiten = Math.abs(pct) >= VULLING_DREMPEL_PCT;
+  return {
+    toetsbaar: true, gemetenMg: g, geclaimdMg: c,
+    pct: Math.round(pct * 100) / 100,
+    buitenDrempel: buiten,
+    richting: pct > 0 ? 'boven' : (pct < 0 ? 'onder' : 'gelijk'),
+    // Mag dit getal als feit op het scherm? Zie HERKOMST.
+    alsFeit: magAlsFeit(herkomst),
+    herkomst: herkomst || null
+  };
+}
+
+// Een rapport kan een vial meten of meerdere. Iedere vial telt afzonderlijk.
+// metingen: [{gemetenMg}] of een enkel getal; geclaimdMg is wat de leverancier
+// voor DIT product zegt dat erin zit.
+function vullingOordeel(metingen, geclaimdMg, herkomst) {
+  const lijst = Array.isArray(metingen) ? metingen : [{ gemetenMg: metingen }];
+  const per = lijst.map((m) => vullingVanEen(m && m.gemetenMg != null ? m.gemetenMg : m, geclaimdMg, herkomst));
+  const toetsbaar = per.filter((x) => x.toetsbaar);
+  if (!toetsbaar.length) {
+    return { bevinding: false, tonen: false, perViaal: per, reden: per[0] ? per[0].reden : 'niets te toetsen' };
+  }
+  const buiten = toetsbaar.filter((x) => x.buitenDrempel);
+  const alsFeit = magAlsFeit(herkomst);
+
+  // Het gemiddelde mag erbij als EXTRA informatie - nooit als de toets zelf.
+  const gemiddeld = Math.round((toetsbaar.reduce((a, b) => a + b.gemetenMg, 0) / toetsbaar.length) * 1000) / 1000;
+  const gemiddeldPct = Math.round((((gemiddeld - toetsbaar[0].geclaimdMg) / toetsbaar[0].geclaimdMg) * 100) * 100) / 100;
+
+  let zin = null;
+  if (buiten.length && alsFeit) {
+    if (toetsbaar.length === 1) {
+      const x = buiten[0];
+      zin = 'De gemeten hoeveelheid ligt ' + Math.abs(Math.round(x.pct * 10) / 10) + '% ' + x.richting +
+        ' wat de aanbieder voor dit product claimt (' + x.gemetenMg + ' mg tegen ' + x.geclaimdMg + ' mg).';
+    } else if (buiten.length === toetsbaar.length) {
+      zin = 'Alle ' + toetsbaar.length + ' gemeten vials wijken meer dan ' + VULLING_DREMPEL_PCT +
+        '% af van wat de aanbieder voor dit product claimt (' + toetsbaar[0].geclaimdMg + ' mg): ' +
+        toetsbaar.map((x) => x.gemetenMg + ' mg').join(', ') + '.';
+    } else {
+      // Precies het geval dat zij wilde kunnen zien.
+      zin = 'Van de ' + toetsbaar.length + ' gemeten vials wijk' + (buiten.length === 1 ? 't er 1' : 'en er ' + buiten.length) +
+        ' meer dan ' + VULLING_DREMPEL_PCT + '% af van de geclaimde ' + toetsbaar[0].geclaimdMg + ' mg: ' +
+        buiten.map((x) => x.gemetenMg + ' mg (' + (x.pct > 0 ? '+' : '') + x.pct + '%)').join(', ') +
+        '. De overige ' + (toetsbaar.length - buiten.length) + ' liggen binnen de ' + VULLING_DREMPEL_PCT + '%.';
+    }
+  }
+  return {
+    bevinding: buiten.length > 0 && alsFeit,
+    // Niet als feit tonen wanneer de waarde alleen gelezen is. Intern blijft
+    // alles staan - perViaal is er altijd - maar naar buiten niets.
+    tonen: alsFeit,
+    internSignaal: buiten.length > 0 && !alsFeit,
+    aantalGemeten: toetsbaar.length,
+    aantalBuitenDrempel: buiten.length,
+    perViaal: per,
+    gemiddelde: toetsbaar.length > 1 ? { mg: gemiddeld, pct: gemiddeldPct, rol: 'extra informatie, niet de toets' } : null,
+    herkomst: herkomst || null,
+    zin,
+    reden: alsFeit ? null : 'waarde is ' + ((HERKOMST[herkomst] || {}).label || 'van onbekende herkomst') +
+      '; nog niet als feit te tonen'
+  };
+}
+
+// Blends. (comment Annemarie): "Bij blends zoals GLOW moeten we nog een aparte
+// regel maken. Als alleen '70 mg totaal' wordt geclaimd en nergens staat
+// hoeveel van iedere afzonderlijke stof erin hoort te zitten, kunnen we de
+// afzonderlijke componenten niet eerlijk tegen een geclaimde hoeveelheid
+// toetsen. Dan kunnen we alleen toetsen wat daadwerkelijk wordt geclaimd."
+//
+// Dus: is er een claim per stof, dan toetst elke stof apart. Is die er niet,
+// dan is de som tegen de totaalclaim het enige dat eerlijk te toetsen is - en
+// de componenten blijven waarneming.
+function vullingBlend(componenten, totaalGeclaimdMg, herkomst, lijstIsCompleet) {
+  const comps = (componenten || []).filter(Boolean);
+  if (!comps.length) return null;
+  const metClaim = comps.filter((c) => Number(c.geclaimdMg) > 0);
+  if (metClaim.length === comps.length) {
     return {
-      bevinding: true, tonen: true, pct: p, richting: p > 0 ? 'boven' : 'onder',
-      zin: 'De gemeten hoeveelheid ligt ' + Math.abs(Math.round(p * 10) / 10) + '% ' +
-        (p > 0 ? 'boven' : 'onder') + ' wat het etiket claimt.'
+      wijze: 'per stof',
+      perStof: comps.map((c) => Object.assign({ stof: c.stof }, vullingVanEen(c.gemetenMg, c.geclaimdMg, herkomst)))
     };
   }
-  // Onder de drempel: wel laten zien, geen aandachtspunt van maken.
+  const som = comps.reduce((a, c) => a + (Number(c.gemetenMg) || 0), 0);
+  const ontbreekt = comps.filter((c) => !(Number(c.gemetenMg) > 0));
+  // LET OP: een som is alleen eerlijk als we ALLE stoffen hebben. Leest de
+  // leesstap er twee van de vijf, dan telt de som op tot een fractie van het
+  // etiket en ziet een blend eruit als zwaar ondervuld - terwijl er niets aan
+  // de hand hoeft te zijn. Dat is precies de conclusie die groter is dan het
+  // bewijs. Dus: geen totaaltoets zonder de zekerheid dat de lijst compleet is.
+  // Die zekerheid moet de aanroeper geven (volledigeComponentenlijst), omdat
+  // alleen daar bekend is of het rapport is uitgelezen of overgetypt.
+  // Expliciet bevestigen, niet afleiden. Eerst stond hier een check die op
+  // 'niet false' testte, en undefined is niet false - dus een lijst waarvan
+  // niemand iets had gezegd gold als compleet. Precies de stille aanname die
+  // we hier niet willen: de aanroeper moet ZEGGEN dat hij alles heeft.
+  const volledig = lijstIsCompleet === true && !ontbreekt.length;
+  let totaal;
+  if (!(Number(totaalGeclaimdMg) > 0)) {
+    totaal = { toetsbaar: false, reden: 'geen totaalclaim gevonden' };
+  } else if (!volledig) {
+    totaal = {
+      toetsbaar: false, somMg: Math.round(som * 1000) / 1000,
+      reden: ontbreekt.length
+        ? 'van ' + ontbreekt.length + ' van de ' + comps.length + ' stoffen is geen hoeveelheid gelezen; ' +
+          'de som zegt dan niets over de vulling'
+        : 'niet vastgesteld dat alle stoffen van deze blend zijn gelezen; ' +
+          'een onvolledige som leest als ondervulling die er niet hoeft te zijn'
+    };
+  } else {
+    totaal = Object.assign({ somMg: Math.round(som * 1000) / 1000 }, vullingVanEen(som, totaalGeclaimdMg, herkomst));
+  }
   return {
-    bevinding: false, tonen: true, pct: p, richting: p > 0 ? 'boven' : 'onder',
-    zin: null, reden: 'afwijking onder ' + VULLING_DREMPEL_PCT + '%'
+    wijze: 'alleen het totaal',
+    reden: 'de aanbieder claimt geen hoeveelheid per stof, alleen een totaal; ' +
+      'de stoffen afzonderlijk zijn daarom niet tegen een claim te toetsen',
+    perStofWaarneming: comps.map((c) => ({ stof: c.stof, gemetenMg: c.gemetenMg })),
+    totaal
   };
 }
 
@@ -78,23 +218,30 @@ function dekking(gecontroleerd, getoond) {
 }
 
 // --- A-1 -------------------------------------------------------------------
-// LET OP: Annemarie vinkte "akkoord, met wijziging" aan en liet de toelichting
-// leeg. De tekst hieronder is dus het CONCEPT waar zij iets aan wil veranderen;
-// wat precies is nog niet teruggekoppeld. Daarom definitief: false. De bijvraag
-// is wel beantwoord: de naam van het lab wordt genoemd.
+// Door Annemarie herschreven en vastgesteld. Drie dingen veranderden ten
+// opzichte van mijn concept, en ze zijn geen van drieen cosmetisch:
+//
+//  1. Haar naam staat in de tekst. "Anne heeft dit laboratorium uitgebreid
+//     onderzocht" - de lezer hoort te weten dat hier een mens naar heeft
+//     gekeken, niet een regel.
+//  2. Scherper wat er niet kon: niet "het lab niet bevestigd" maar "niet
+//     kunnen verifieren dat het daadwerkelijk als laboratorium opereert".
+//     Het bedrijf kan bestaan; de vraag is of het een lab is.
+//  3. Een slotzin die mijn versie miste: "Wel stopt hier de onafhankelijke
+//     verificatie." Zonder die zin leest de disclaimer als een vrijspraak.
 const LAB_NAAM_NOEMEN = true;
 
 function labNietVerifieerbaar(labnaam, oordeel) {
   if (!oordeel || oordeel.status === 'erkend') return null;
   const naam = LAB_NAAM_NOEMEN && labnaam ? labnaam : 'het laboratorium dat deze aanbieder gebruikt';
   return {
-    definitief: false,
-    wachtOp: 'A-1: wijziging door Annemarie nog niet doorgegeven',
+    definitief: true, vastgesteldOp: VASTGESTELD_OP, vastgesteldDoor: VASTGESTELD_DOOR,
     regels: [
       'De laboratoriumrapporten van deze aanbieder komen van ' + naam +
-        '. Wij hebben dit laboratorium niet onafhankelijk kunnen bevestigen, en de aanbieder heeft de bedrijfsgegevens van het laboratorium op verzoek niet verstrekt.',
-      'Daarmee zijn identiteit, zuiverheid en hoeveelheid die uitsluitend op deze rapporten rusten onbevestigd. Niet weerlegd - onbevestigd.',
-      'Dit zegt niet dat het laboratorium niet bestaat, en niet dat de rapporten onjuist zijn.'
+        '. Anne heeft dit laboratorium uitgebreid onderzocht, maar kon niet onafhankelijk verifieren dat het daadwerkelijk als laboratorium opereert. ' +
+        'Ook na meerdere verzoeken heeft de aanbieder geen aanvullende bedrijfsgegevens van het lab verstrekt.',
+      'Daarmee blijven identiteit, zuiverheid en hoeveelheid die uitsluitend op deze rapporten rusten onbevestigd. Niet weerlegd, maar ook niet onafhankelijk bevestigd.',
+      'Dit betekent niet dat het laboratorium niet bestaat of dat de rapporten onjuist zijn. Wel stopt hier de onafhankelijke verificatie.'
     ]
   };
 }
@@ -181,37 +328,38 @@ function openheidNaastBevinding(publiceertZelf) {
 // --- C-2 -------------------------------------------------------------------
 // "PepProof moet niet alleen laten zien wat er niet klopt. Als Anne iets
 // grondig heeft onderzocht en daarbij geen afwijkingen vindt, mag dat juist
-// ook duidelijk worden benoemd. Wel alleen voor de onderdelen die
-// daadwerkelijk zijn gecontroleerd, zonder daar meteen een algemeen oordeel
-// over de leverancier van te maken."
+// ook duidelijk worden benoemd."
 //
-// LET OP - hier zit een open vraag onder (terug te koppelen). "In orde" over
-// een rapport van een lab dat nog NIET is beoordeeld zegt niets: we weten dan
-// niet of het lab deugt. Vandaag heeft alleen RC Testing een oordeel; Janoshik,
-// Bridge Analytical en ILS staan op "nog niet beoordeeld". Tot Annemarie dat
-// beslist is de veilige stand: geen "in orde" zonder labooordeel, met de reden
-// erbij. Anders zou de eerste groene uitspraak van het product rusten op een
-// lab waar niemand naar heeft gekeken.
+// En op mijn vraag of dat ook mag bij een lab zonder oordeel (comment
+// Annemarie, 20 sep 19:44): "Nee. 'Gecontroleerd en in orde' mag alleen worden
+// gezegd over een onderdeel dat daadwerkelijk is beoordeeld. 'Nog niet
+// beoordeeld' is dus niet hetzelfde als 'in orde'. C2 hoeft niet te wachten
+// tot alle labs zijn beoordeeld. Als er nog niets voldoende is beoordeeld om
+// positief te benoemen, dan doet C2 simpelweg nog niets."
+//
+// Daarom null en geen status. Mijn eerste versie gaf "niet vast te stellen"
+// terug met een reden erbij, en dat is alsnog een uitspraak die ergens op het
+// scherm kan belanden. Zij vroeg om zwijgen, niet om een nette lege doos.
+//
+// De vorm van de positieve zin is de hare: "Anne controleerde de beschikbare
+// rapporten en kon deze rechtstreeks bij het genoemde laboratorium
+// verifieren." Concreet benoemen wat er is geverifieerd, geen algemeen oordeel.
 function inOrde(onderdeel, gecontroleerd, labBeoordeeld) {
-  if (!gecontroleerd) return null;
-  if (!labBeoordeeld) {
-    return {
-      status: 'niet vast te stellen',
-      reden: 'het laboratorium achter deze rapporten is nog niet beoordeeld; ' +
-        'zonder dat oordeel kunnen wij niet zeggen dat dit onderdeel in orde is'
-    };
-  }
+  // "nog niet beoordeeld" mag nooit automatisch tot een positieve conclusie
+  // leiden. Beide voorwaarden zijn hard.
+  if (!gecontroleerd || !labBeoordeeld) return null;
   return {
-    status: 'gecontroleerd, geen afwijking gevonden',
+    definitief: true, vastgesteldOp: VASTGESTELD_OP, vastgesteldDoor: VASTGESTELD_DOOR,
     onderdeel,
-    // Nooit doortrekken naar de leverancier als geheel.
+    zin: 'Anne controleerde ' + onderdeel + ' en kon dit rechtstreeks bij het genoemde laboratorium verifieren.',
     reikwijdte: 'Dit geldt voor ' + onderdeel + ', niet voor de aanbieder als geheel.'
   };
 }
 
 module.exports = {
   VASTGESTELD_OP, VASTGESTELD_DOOR,
-  VULLING_DREMPEL_PCT, vullingOordeel,
+  VULLING_DREMPEL_PCT, vullingOordeel, vullingVanEen, vullingBlend,
+  HERKOMST, magAlsFeit,
   dekking,
   LAB_NAAM_NOEMEN, labNietVerifieerbaar,
   opdrachtgeverRegels,
