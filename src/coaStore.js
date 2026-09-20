@@ -131,6 +131,10 @@ async function initCoaSchema() {
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS zuiverheid_pct NUMERIC;`);
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vulling TEXT;`);
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vulling_pct NUMERIC;`);
+  // Wat er stond toen we er geen getal uit kregen. Zonder dit ziet een
+  // mislukte afleiding er hetzelfde uit als een veld dat nooit is ingevuld,
+  // en leest 'geen getal' als 'geen bezwaar'. Niet leeg = mensenoog nodig.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS afleidingsnotitie TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -535,14 +539,28 @@ function percentageUit(tekst) {
   return null;
 }
 
+// Welke velden hadden wel tekst maar leverden geen getal op? Dat vastleggen
+// in plaats van stil laten verdwijnen.
+function afleidingsnotitieVoor(c) {
+  const regels = [];
+  for (const paar of [['zuiverheid', c.zuiverheid], ['vulling', c.vulling]]) {
+    const naam = paar[0], tekst = paar[1];
+    if (!tekst) continue;
+    if (percentageUit(tekst) === null) {
+      regels.push(naam + ': "' + String(tekst).slice(0, 120) + '" - hier kwam geen percentage uit; tekst bewaard, getal leeg');
+    }
+  }
+  return regels.length ? regels.join(' | ') : null;
+}
+
 async function saveReferenceCheck(lab, referentie, check) {
   if (!lab || !referentie || !check) return null;
   const c = check;
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
-         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -556,6 +574,7 @@ async function saveReferenceCheck(lab, referentie, check) {
          zuiverheid_pct = COALESCE(EXCLUDED.zuiverheid_pct, coa_reference_checks.zuiverheid_pct),
          vulling = COALESCE(EXCLUDED.vulling, coa_reference_checks.vulling),
          vulling_pct = COALESCE(EXCLUDED.vulling_pct, coa_reference_checks.vulling_pct),
+         afleidingsnotitie = COALESCE(EXCLUDED.afleidingsnotitie, coa_reference_checks.afleidingsnotitie),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -567,7 +586,7 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, c.methode || 'handmatig', Date.now(),
        c.rapport ? JSON.stringify(c.rapport) : null,
        c.zuiverheid || null, percentageUit(c.zuiverheid),
-       c.vulling || null, percentageUit(c.vulling)]
+       c.vulling || null, percentageUit(c.vulling), afleidingsnotitieVoor(c)]
     );
     return rows[0] || null;
   } catch (e) {
@@ -720,13 +739,13 @@ async function referentiesMetControle(lab, max) {
               array_agg(DISTINCT r.supplier_key) AS leveranciers,
               c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
               c.notitie, c.checked_by, c.methode, c.checked_at,
-              c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct
+              c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
        ${waar}
        GROUP BY r.lab, r.referentie, r.url, c.resolvet, c.klasse, c.client, c.product,
                 c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at,
-                c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct
+                c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $1`,
       params
@@ -739,7 +758,8 @@ async function referentiesMetControle(lab, max) {
         batchnummer: r.batchnummer, notitie: r.notitie, checkedBy: r.checked_by,
         methode: r.methode, checkedAt: r.checked_at,
         zuiverheid: r.zuiverheid, zuiverheidPct: r.zuiverheid_pct,
-        vulling: r.vulling, vullingPct: r.vulling_pct
+        vulling: r.vulling, vullingPct: r.vulling_pct,
+        afleidingsnotitie: r.afleidingsnotitie
       } : null
     }));
   } catch (e) {
