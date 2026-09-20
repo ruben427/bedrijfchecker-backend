@@ -400,6 +400,11 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
 app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
   try {
     const rijen = await coaStore.referentiesMetControle(req.query.lab || null, req.query.max);
+    // LET OP: rijen is een PAGINA (standaard 100, cap 500), gesorteerd op
+    // laatst gecontroleerd. Tellen over die pagina geeft een te rooskleurig
+    // beeld, want het gecontroleerde werk staat vooraan. De echte aantallen
+    // komen uit een aparte telling over de hele tabel.
+    const totalen = await coaStore.referentieTotalen(req.query.lab || null);
     const metControle = rijen.filter((r) => r.controle);
     const perLab = {};
     rijen.forEach((r) => { const k = r.labNet || r.lab || 'onbekend'; perLab[k] = (perLab[k] || 0) + 1; });
@@ -410,12 +415,20 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdm
     });
     res.json({
       lab: req.query.lab || 'alle',
-      totaal: rijen.length,
-      gecontroleerd: metControle.length,
-      opgelost: metControle.filter((r) => r.controle.resolvet === true).length,
-      nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
-      perLab,
+      // Wat er werkelijk in het archief staat.
+      totaal: totalen.totaal,
+      gecontroleerd: totalen.gecontroleerd,
+      opgelost: totalen.opgelost,
+      handmatigGecontroleerd: totalen.handmatig,
+      openstaand: totalen.openstaand,
+      perLab: totalen.perLab,
+      // Wat deze pagina laat zien. Eerder heette dit 'totaal' en telde het
+      // alleen de opgehaalde pagina - dat leek een totaal maar was het niet.
+      getoond: rijen.length,
+      getoondPerLab: perLab,
+      afgekapt: rijen.length < totalen.totaal,
       perOpdrachtgever: clients,
+      nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
       referenties: rijen
     });
   } catch (e) {

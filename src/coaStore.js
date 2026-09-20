@@ -623,6 +623,52 @@ async function listReferences() {
   }
 }
 
+// Echte aantallen, los van de paginalimiet. referentiesMetControle geeft
+// maximaal 100 (cap 500) rijen terug, gesorteerd op checked_at DESC. Een
+// telling over die pagina is dus niet alleen onvolledig maar ook scheef: de
+// gecontroleerde referenties staan vooraan, dus het lijkt alsof er veel meer
+// af is dan werkelijk. Deze query telt de hele tabel.
+async function referentieTotalen(lab) {
+  try {
+    const params = [];
+    const waar = lab ? 'WHERE r.lab = $1' : '';
+    if (lab) params.push(lab);
+    const { rows } = await pool.query(
+      `SELECT r.lab,
+              COUNT(DISTINCT r.referentie) AS totaal,
+              COUNT(DISTINCT CASE WHEN c.id IS NOT NULL THEN r.referentie END) AS gecontroleerd,
+              COUNT(DISTINCT CASE WHEN c.resolvet = true THEN r.referentie END) AS opgelost,
+              COUNT(DISTINCT CASE WHEN c.methode = 'handmatig' THEN r.referentie END) AS handmatig
+       FROM coa_references r
+       LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       ${waar}
+       GROUP BY r.lab`,
+      params
+    );
+    // Labnamen samenvoegen op hun nette vorm, anders telt hetzelfde lab
+    // onder twee schrijfwijzen als twee labs.
+    const perLab = {};
+    let totaal = 0, gecontroleerd = 0, opgelost = 0, handmatig = 0;
+    rows.forEach((r) => {
+      const k = normaliseerLab(r.lab).naam || 'onbekend';
+      const b = perLab[k] || (perLab[k] = { totaal: 0, gecontroleerd: 0, opgelost: 0, handmatig: 0, openstaand: 0 });
+      b.totaal += Number(r.totaal) || 0;
+      b.gecontroleerd += Number(r.gecontroleerd) || 0;
+      b.opgelost += Number(r.opgelost) || 0;
+      b.handmatig += Number(r.handmatig) || 0;
+      b.openstaand = b.totaal - b.gecontroleerd;
+    });
+    Object.values(perLab).forEach((b) => {
+      totaal += b.totaal; gecontroleerd += b.gecontroleerd;
+      opgelost += b.opgelost; handmatig += b.handmatig;
+    });
+    return { perLab, totaal, gecontroleerd, opgelost, handmatig, openstaand: totaal - gecontroleerd };
+  } catch (e) {
+    console.error('coaStore.referentieTotalen:', (e && e.message) || e);
+    return { perLab: {}, totaal: 0, gecontroleerd: 0, opgelost: 0, handmatig: 0, openstaand: 0 };
+  }
+}
+
 async function referentiesMetControle(lab, max) {
   try {
     const params = [Math.max(1, Math.min(Number(max) || 100, 500))];
@@ -920,6 +966,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  referentieTotalen,
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation, publiekeBronVoorDocument,
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
