@@ -40,6 +40,41 @@ function isPlausibleToken(token) {
   return typeof token === 'string' && token.length >= 32 && token.length <= 512 && /^[A-Za-z0-9_-]+$/.test(token);
 }
 
+// Leestoken (VIEWER_TOKEN): alleen kijken, niets veranderen.
+//
+// Waarom apart van ADMIN_TOKEN: wie meekijkt hoeft niet te kunnen uploaden,
+// verifieren of resolvers starten. En als een leestoken uitlekt hoeft alleen
+// dat ene token vervangen te worden, niet de sleutel waar alles aan hangt.
+//
+// Het mag een wachtwoordzin zijn in plaats van een willekeurige sleutel - het
+// is hetzelfde mechanisme, een gedeeld geheim. Maar korter dan 16 tekens
+// weigert de server, anders is "leestoken" een mooi woord voor een zwak
+// wachtwoord. Vier willekeurige woorden achter elkaar is prima en typt beter
+// dan een sleutel.
+const MIN_LEESTOKEN = 16;
+
+function leestokenGeldig() {
+  const t = process.env.VIEWER_TOKEN;
+  if (!t) return null;
+  if (String(t).length < MIN_LEESTOKEN) {
+    console.warn('[auth] VIEWER_TOKEN is korter dan ' + MIN_LEESTOKEN + ' tekens en wordt genegeerd.');
+    return null;
+  }
+  if (process.env.ADMIN_TOKEN && String(t) === String(process.env.ADMIN_TOKEN)) {
+    console.warn('[auth] VIEWER_TOKEN is gelijk aan ADMIN_TOKEN en wordt genegeerd.');
+    return null;
+  }
+  return String(t);
+}
+
+function isViewer(req) {
+  const lees = leestokenGeldig();
+  if (!lees) return false;
+  const token = readToken(req);
+  if (!token) return false;
+  return safeEqual(token, lees);
+}
+
 function isAdmin(req) {
   const admin = process.env.ADMIN_TOKEN;
   if (!admin) return false;
@@ -51,7 +86,8 @@ function isAdmin(req) {
 // Vereist een geldig owner token. Zet req.ownerTokenHash / req.isAdmin.
 function requireOwnerToken(req, res, next) {
   req.isAdmin = isAdmin(req);
-  if (req.isAdmin) {
+  req.isViewer = !req.isAdmin && isViewer(req);
+  if (req.isAdmin || req.isViewer) {
     req.ownerTokenHash = null;
     return next();
   }
@@ -86,4 +122,4 @@ function requireCaseAccess(db) {
   };
 }
 
-module.exports = { hashToken, readToken, isAdmin, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual };
+module.exports = { hashToken, readToken, isAdmin, isViewer, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual, MIN_LEESTOKEN };

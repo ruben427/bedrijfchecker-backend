@@ -344,14 +344,18 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-// Kruisverband over alle leveranciers heen: hetzelfde bestand of hetzelfde
-// task-nummer bij meer dan een shop, en per lab welke shops ernaar wijzen.
-// LET OP: deze route MOET boven /api/admin/coa/:supplierKey blijven staan,
-// anders vangt die parameter-route het pad "kruisverband" op.
+// Alleen lezen. Beheerders mogen alles, houders van VIEWER_TOKEN mogen kijken.
+// Uitsluitend op routes die niets veranderen - een leestoken hoort nooit een
+// upload, een verificatie of een resolver te kunnen starten.
+function requireLezer(req, res, next) {
+  if (req.isAdmin || req.isViewer) return next();
+  return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders of met een leestoken.' });
+}
+
 // Stafoverzicht: een regel per leverancier, en per leverancier alles wat we
 // hebben. Bestond nog niet - alles zat in de database maar er was geen plek
 // waar je het zag.
-app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const rijen = await coaStore.leveranciersOverzicht();
     res.json({
@@ -372,7 +376,7 @@ app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireAdmin
 
 // Detail van een leverancier: alle labverwijzingen met hun controle, en alle
 // documenten. Dit is wat Annemarie openklapt om te zien wat er werkelijk ligt.
-app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const key = coaStore.supplierKeyFromUrl(req.params.supplierKey);
     const [referenties, documenten] = await Promise.all([
@@ -401,7 +405,11 @@ app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken,
   }
 });
 
-app.get('/api/admin/coa/kruisverband', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+// Kruisverband over alle leveranciers heen: hetzelfde bestand of hetzelfde
+// task-nummer bij meer dan een shop, en per lab welke shops ernaar wijzen.
+// LET OP: deze route MOET boven /api/admin/coa/:supplierKey blijven staan,
+// anders vangt die parameter-route het pad "kruisverband" op.
+app.get('/api/admin/coa/kruisverband', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     res.json(await coaStore.crossSupplierOverview());
   } catch (e) {
@@ -450,7 +458,7 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
 // alleen GEDEELDE referenties toont, en een lab met een enkele shop die per
 // definitie niet heeft - de 45 opgeloste Bridge-rapporten waren daardoor
 // nergens terug te zien.
-app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const rijen = await coaStore.referentiesMetControle(req.query.lab || null, req.query.max);
     // LET OP: rijen is een PAGINA (standaard 100, cap 500), gesorteerd op
