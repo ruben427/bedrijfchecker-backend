@@ -372,6 +372,35 @@ textarea{ min-height:80px; resize:vertical; }
 .progress-item .spinner{ width:11px; height:11px; border-width:2px; flex-shrink:0; }
 .progress-item.stale .dot{ background:var(--warn); }
 .progress-item.stale{ color:var(--text-muted); }
+
+/* Live-tussenstand binnen de lopende stap. Uitklapbaar, want de meeste mensen
+   willen alleen weten dat er iets gebeurt; wie twijfelt klapt hem open. */
+.stap-log{ margin:-2px 0 4px 19px; font-size:.82rem; }
+.stap-log.leeg{ color:var(--text-faint); font-style:italic; }
+.stap-log > summary{
+  cursor:pointer; list-style:none; color:var(--text-muted);
+  padding:3px 0; display:flex; align-items:center; gap:7px;
+}
+.stap-log > summary::-webkit-details-marker{ display:none; }
+.stap-log > summary::before{
+  content:""; width:5px; height:5px; border-radius:50%; background:var(--accent);
+  flex:none; animation:stap-pols 1.4s ease-in-out infinite;
+}
+.stap-log > summary::after{ content:"tussenstand"; margin-left:auto; color:var(--text-faint); font-size:.72rem; }
+.stap-log[open] > summary::after{ content:"inklappen"; }
+@keyframes stap-pols{ 0%,100%{ opacity:1; } 50%{ opacity:.25; } }
+@media (prefers-reduced-motion: reduce){ .stap-log > summary::before{ animation:none; } }
+.stap-log-body{
+  margin-top:6px; padding-left:12px; border-left:2px solid var(--border);
+  display:flex; flex-direction:column; gap:5px;
+}
+.stap-log-regel{ display:flex; gap:10px; align-items:baseline; color:var(--text-muted); }
+.stap-log-regel.nieuwste{ color:var(--text); font-weight:600; }
+.stap-log-tijd{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.72rem;
+  color:var(--text-faint); white-space:nowrap; flex:none; min-width:74px;
+}
+.stap-log-tekst{ line-height:1.4; }
 .step-label{ flex:1; }
 .step-hint{ color:var(--text-muted); font-size:.78rem; font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .step-retry{ padding:2px 9px; font-size:.72rem; font-weight:600; border:1px solid var(--border); border-radius:6px; flex-shrink:0; }

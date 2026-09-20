@@ -389,11 +389,36 @@ async function ensureNotStopped(caseId) {
   }
 }
 async function stopAudit(caseId) {
+  stapLog.delete(caseId);
   await db.updateCase(caseId, { status: 'gestopt', currentStep: null });
 }
 
+// Live-voortgang binnen een stap. Reden: een stap kan minuten duren en tot nu
+// toe stond er alleen "bezig". Dan is niet te zien of er nog iets gebeurt of
+// dat het vastloopt, en dat is precies het moment waarop iemand het tabblad
+// sluit. Het logje gaat mee in currentStep, dus de frontend krijgt het bij
+// elke poll mee zonder nieuw endpoint.
+//
+// In het geheugen, niet uit de database teruggelezen: een case draait in een
+// proces achter elkaar. Na een herstart is het logje leeg en staat er weer
+// alleen "bezig" - vervelend, niet fout.
+const stapLog = new Map();
+const STAP_LOG_MAX = 14;
+
+async function meldStap(caseId, tekst) {
+  if (!caseId || !tekst) return;
+  const huidig = stapLog.get(caseId);
+  if (!huidig) return;
+  huidig.log.push({ t: Date.now(), tekst: String(tekst).slice(0, 200) });
+  if (huidig.log.length > STAP_LOG_MAX) huidig.log = huidig.log.slice(-STAP_LOG_MAX);
+  huidig.detail = String(tekst).slice(0, 200);
+  await db.updateCase(caseId, { currentStep: Object.assign({}, huidig) }).catch(() => {});
+}
+
 async function beginStep(caseId, key) {
-  await db.updateCase(caseId, { currentStep: { key, label: stepLabel(key), startedAt: Date.now() } });
+  const stap = { key, label: stepLabel(key), startedAt: Date.now(), detail: null, log: [] };
+  stapLog.set(caseId, stap);
+  await db.updateCase(caseId, { currentStep: stap });
 }
 async function finishStep(caseId, key, startedAt) {
   const durationMs = Date.now() - startedAt;
@@ -523,7 +548,10 @@ async function runResearchStep(caseId, ctx, key) {
     // een willekeurige greep - bij een testrun 2 documenten waarvan 1 van een
     // andere leverancier, terwijl er 26 op de eigen site stonden. Deze stap
     // haalt de site zelf op en pakt alles wat er werkelijk staat.
+    await meldStap(caseId, 'De website van de leverancier doorzoeken op een certificatenpagina');
     const crawl = await coaCrawler.crawlCoaIndex(ctx.website).catch(() => null);
+    await meldStap(caseId, ((crawl && crawl.documents || []).length) + ' document(en) en ' +
+      ((crawl && crawl.verificatieLinks || []).length) + ' labverwijzing(en) gevonden op de site');
     const bestaandeBronnen = new Set(records.map((r) => r && r.bronUrl).filter(Boolean));
     const crawlRecords = ((crawl && crawl.documents) || [])
       .filter((d) => !bestaandeBronnen.has(d.url))
@@ -610,13 +638,21 @@ async function runResearchStep(caseId, ctx, key) {
       uitkomsten: []
     };
     const noteer = (url, wat) => { if (lusLog.uitkomsten.length < 40) lusLog.uitkomsten.push({ url: String(url).slice(-60), wat }); };
-    for (const { url, idx } of autofetchCandidates.slice(0, COA_AUTOFETCH_MAX)) {
+    const teBehandelen = autofetchCandidates.slice(0, COA_AUTOFETCH_MAX);
+    await meldStap(caseId, teBehandelen.length + ' document(en) ophalen en uitlezen' +
+      (autofetchCandidates.length > teBehandelen.length
+        ? (' (van de ' + autofetchCandidates.length + ' gevonden; de limiet staat op ' + COA_AUTOFETCH_MAX + ')')
+        : ''));
+    let behandeldNr = 0;
+    for (const { url, idx } of teBehandelen) {
       lusLog.behandeld++;
+      behandeldNr++;
       // Stap 1: kennen we dit document al? Zo ja, hergebruik de analyse en
       // sla zowel de download als de (dure) vision-call over. Dit is het hele
       // punt van het archief — elk uniek COA-document gaat exact één keer
       // door vision, ooit, voor alle gebruikers en leveranciers samen.
       let cached = null;
+      await meldStap(caseId, 'Document ' + behandeldNr + ' van ' + teBehandelen.length + ': ' + String(url).slice(-70));
       const head = await coaStore.checkUnchanged(url).catch(() => null);
       if (head && head.unchanged && head.sha256) {
         cached = await coaStore.getExtraction(head.sha256, COA_EXTRACTOR_VERSION);
@@ -658,6 +694,8 @@ async function runResearchStep(caseId, ctx, key) {
 
       if (cached) {
         archiefTelling.hergebruikt++;
+        await meldStap(caseId, 'Dit rapport kenden we al uit het archief - niet opnieuw uitgelezen (' +
+          archiefTelling.hergebruikt + ' hergebruikt tot nu toe)');
         noteer(url, 'uit archief');
         const cachedRecords = ((cached && cached.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'archief' }));
         if (cachedRecords.length) {
@@ -687,6 +725,8 @@ async function runResearchStep(caseId, ctx, key) {
           records[idx] = autofetchRecords[0];
           if (autofetchRecords.length > 1) records = records.concat(autofetchRecords.slice(1));
           archiefTelling.opnieuwGelezen++;
+          await meldStap(caseId, 'Nieuw rapport uitgelezen (' + archiefTelling.opnieuwGelezen +
+            ' nieuw, ' + archiefTelling.hergebruikt + ' uit het archief)');
           noteer(url, 'gelezen: ' + autofetchRecords.length + ' record(s)');
         } else if (records[idx] && records[idx].uit === 'crawl') {
           records[idx] = Object.assign({}, records[idx], { accessStatus: 'unreadable' });
@@ -716,6 +756,8 @@ async function runResearchStep(caseId, ctx, key) {
       if (!r || (!r.reportId && !r.verificationKey && !r.verificationUrl)) continue;
       if (verificatieTeller >= LAB_VERIFY_MAX) break;
       verificatieTeller++;
+      await meldStap(caseId, 'Verificatie bij het laboratorium, poging ' + verificatieTeller +
+        (r.laboratorium ? (' (' + String(r.laboratorium).slice(0, 40) + ')') : ''));
       const res = await janoshik.resolveer(r).catch(() => null);
       if (!res) continue;
 
@@ -989,6 +1031,7 @@ async function runResearchStep(caseId, ctx, key) {
 async function runCategorize(caseId, ctx, tier) {
   const startedAt = Date.now();
   await beginStep(caseId, 'categorize');
+  await meldStap(caseId, 'De 17 categorieen beoordelen op het verzamelde bewijs');
   const c = await db.getCase(caseId);
   const phaseData = c.phaseData || {};
   const slimPhases = trimPhasesForPrompt(phaseData);
@@ -1088,9 +1131,11 @@ async function runFreeTier(caseId, ctx) {
     await applyScoringEngine(caseId);
     await ensureNotStopped(caseId);
     await runSynthesis(caseId, ctx, 'gratis');
+    stapLog.delete(caseId);
     await db.updateCase(caseId, { status: 'gratis_klaar', tier: 'gratis', currentStep: null });
   } catch (e) {
     if (!e || !e.stopped) {
+      stapLog.delete(caseId);
       await db.updateCase(caseId, { status: 'fout', error: (e && e.message) || 'onbekende fout', currentStep: null });
     }
   }
@@ -1113,9 +1158,11 @@ async function runDeepTier(caseId, ctx) {
     await applyScoringEngine(caseId);
     await ensureNotStopped(caseId);
     await runSynthesis(caseId, ctx, 'deep');
+    stapLog.delete(caseId);
     await db.updateCase(caseId, { status: 'klaar', tier: 'deep', currentStep: null });
   } catch (e) {
     if (!e || !e.stopped) {
+      stapLog.delete(caseId);
       await db.updateCase(caseId, { status: 'fout', error: (e && e.message) || 'onbekende fout', currentStep: null });
     }
   }
@@ -1124,5 +1171,5 @@ async function runDeepTier(caseId, ctx) {
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
-  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties
+  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap
 };

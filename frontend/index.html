@@ -752,7 +752,8 @@
         return '<div class="run-step active"><span class="step-icon active"></span>' +
           '<span class="run-step-label">' + escapeHtml(s.label) + '</span>' +
           '<span class="run-step-meta">bezig ' + fmtDuration(Date.now() - c.currentStep.startedAt) +
-          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span></span></div>';
+          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(s.key)) + '</span></span></div>' +
+          renderStapLog(c);
       }
       return '<div class="run-step pending"><span class="step-icon pending"></span>' +
         '<span class="run-step-label">' + escapeHtml(s.label) + '</span></div>';
@@ -793,6 +794,27 @@
         alert('Stoppen is mislukt: ' + (e && e.message ? e.message : 'onbekende fout'));
       });
     });
+  }
+
+  // Live-logje binnen de lopende stap. Zonder dit staat er minutenlang alleen
+  // "bezig" en is niet te zien of er nog iets gebeurt. De tijdstempels zijn
+  // het eigenlijke signaal: lopen die op, dan leeft hij nog.
+  function renderStapLog(c){
+    var st = c && c.currentStep;
+    var log = (st && Array.isArray(st.log)) ? st.log : [];
+    if (!st) return '';
+    if (!log.length){
+      return '<div class="stap-log leeg">Nog geen tussenstand van deze stap.</div>';
+    }
+    var regels = log.slice().reverse().map(function(r, i){
+      var sinds = fmtDuration(Date.now() - r.t);
+      return '<div class="stap-log-regel' + (i === 0 ? ' nieuwste' : '') + '">' +
+        '<span class="stap-log-tijd">' + escapeHtml(sinds) + ' geleden</span>' +
+        '<span class="stap-log-tekst">' + escapeHtml(r.tekst) + '</span></div>';
+    }).join('');
+    return '<details class="stap-log"><summary>' +
+      escapeHtml(st.detail || log[log.length - 1].tekst) +
+      '</summary><div class="stap-log-body">' + regels + '</div></details>';
   }
 
   function renderProgress(c){
@@ -844,7 +866,8 @@
       var marker = isRetryingThis
         ? '<span class="spinner" aria-hidden="true"></span>'
         : '<span class="dot"></span>';
-      return '<div class="progress-item ' + cls + '">' + marker + '<span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
+      var rij = '<div class="progress-item ' + cls + '">' + marker + '<span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
+      return isCurrent ? (rij + renderStapLog(c)) : rij;
     }).join('');
 
     var stuckBanner = '';
