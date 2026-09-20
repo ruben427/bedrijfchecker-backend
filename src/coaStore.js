@@ -1551,7 +1551,9 @@ async function referentiesVanLeverancier(supplierKey, max) {
     const { rows } = await pool.query(
       `SELECT r.lab, r.referentie, r.url, r.testsoort, r.context, r.relatie,
               c.resolvet, c.klasse, c.client, c.manufacturer, c.product, c.batchnummer,
-              c.zuiverheid, c.zuiverheid_pct, c.vulling_pct, c.datum_analyse,
+              c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct,
+              c.gemeten_mg, c.etiket_mg, c.datum_analyse,
+              c.vialen, c.vial_spreiding, c.componenten, c.metaalcomplex,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend,
               c.vergeleken_met, c.afleidingsnotitie, c.notitie,
               c.checked_by, c.methode, c.checked_at
@@ -1568,7 +1570,16 @@ async function referentiesVanLeverancier(supplierKey, max) {
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, manufacturer: r.manufacturer,
         product: r.product, batchnummer: r.batchnummer,
-        zuiverheid: r.zuiverheid, zuiverheidPct: r.zuiverheid_pct, vullingPct: r.vulling_pct,
+        zuiverheid: r.zuiverheid, zuiverheidPct: r.zuiverheid_pct,
+        // LET OP: vullingPct stond hier al, maar gemeten en etiket niet. Een
+        // percentage zonder de twee getallen eronder is niet na te rekenen -
+        // en wie het terugleest kan niet zien of de vulling uit een meting of
+        // uit een afleiding komt. Vialen, componenten en het metaalcomplex
+        // ontbraken helemaal: ze werden wel weggeschreven en nooit getoond.
+        vulling: r.vulling, vullingPct: r.vulling_pct,
+        gemetenMg: r.gemeten_mg, etiketMg: r.etiket_mg,
+        vialen: r.vialen, vialSpreiding: r.vial_spreiding,
+        componenten: r.componenten, metaalcomplex: r.metaalcomplex,
         datumAnalyse: r.datum_analyse, veldvergelijking: r.veldvergelijking,
         veldenVergeleken: r.velden_vergeleken, veldenAfwijkend: r.velden_afwijkend,
         vergelekenMet: r.vergeleken_met, afleidingsnotitie: r.afleidingsnotitie,
@@ -1594,6 +1605,7 @@ async function referentiesMetControle(lab, max) {
               c.notitie, c.checked_by, c.methode, c.checked_at,
               c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
               c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
+              c.vialen, c.vial_spreiding, c.componenten, c.metaalcomplex,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
@@ -1602,6 +1614,7 @@ async function referentiesMetControle(lab, max) {
                 c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at,
                 c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
               c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
+              c.vialen, c.vial_spreiding, c.componenten, c.metaalcomplex,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $1`,
@@ -1624,6 +1637,8 @@ async function referentiesMetControle(lab, max) {
         afleidingsnotitie: r.afleidingsnotitie,
         manufacturer: r.manufacturer, gemetenMg: r.gemeten_mg, etiketMg: r.etiket_mg,
         datumAnalyse: r.datum_analyse, vergelekenMet: r.vergeleken_met,
+        vialen: r.vialen, vialSpreiding: r.vial_spreiding,
+        componenten: r.componenten, metaalcomplex: r.metaalcomplex,
         veldvergelijking: r.veldvergelijking,
         veldenVergeleken: r.velden_vergeleken, veldenAfwijkend: r.velden_afwijkend
       } : null
