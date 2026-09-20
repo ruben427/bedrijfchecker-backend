@@ -222,12 +222,53 @@ function labBevindingenUitWaarneming(w) {
 // Plakt het externe onderzoek per lab terug op de telling. Matcht op de
 // genormaliseerde naam, zodat een andere schrijfwijze in het zoekresultaat
 // niet tot een tweede lab leidt.
-function koppelLabBeoordelingen(labs, beoordelingen) {
+// Wat het model over een lab vond, naast wat een MENS erover heeft
+// vastgesteld. De volgorde is niet vrijblijvend: het oordeel van de mens is
+// het oordeel, het model levert hoogstens achtergrond.
+//
+// Waarom dat hier moest: op 20 september stond in het bronnenregister van
+// peptidekliniek.nl een ISO 17025-accreditatie op naam van 'RCI Asia
+// Assayers', en in een volgende run 'RC Testing Service (rctesting.com) -
+// cleanroom en apparatuurtesting'. Geen van beide is het lab op de
+// certificaten. Het model zoekt op de labnaam, vindt een bedrijf dat erop
+// lijkt, en levert accreditatiemateriaal aan. Naast een menselijk oordeel
+// 'onvoldoende verifieerbaar' leest dat als tegenspraak.
+//
+// Zodra een mens iets heeft vastgelegd dat niet 'erkend' is, gaan de
+// bevestigende velden van het model eruit. Ze zijn niet weerlegd; ze slaan
+// mogelijk op een ander bedrijf, en dat is precies het punt.
+const MODEL_BEVESTIGT = ['bestaatAantoonbaar', 'accreditaties', 'publiekVerificatiesysteem',
+  'werktOokVoorAndereOpdrachtgevers', 'onafhankelijkVanLeverancier'];
+
+function koppelLabBeoordelingen(labs, beoordelingen, menselijkeOordelen) {
   const perNaam = new Map();
   (beoordelingen || []).forEach((b) => {
     if (b && b.naam) perNaam.set(normaliseerLabnaam(b.naam), b);
   });
-  return (labs || []).map((l) => Object.assign({}, l, { extern: perNaam.get(normaliseerLabnaam(l.naam)) || null }));
+  const oordelen = menselijkeOordelen || {};
+  return (labs || []).map((l) => {
+    const netteNaam = coaStore.normaliseerLab(l.naam).naam;
+    const oordeel = oordelen[coaStore.labSleutel(netteNaam)] || null;
+    let extern = perNaam.get(normaliseerLabnaam(l.naam)) || null;
+    let externOnderdrukt = null;
+    if (extern && oordeel && oordeel.status !== 'erkend') {
+      const gestript = Object.assign({}, extern);
+      MODEL_BEVESTIGT.forEach((k) => { delete gestript[k]; });
+      externOnderdrukt = 'Een mens heeft dit lab beoordeeld als "' + oordeel.status +
+        '". Wat het model op naam vond is daarmee geen bevestiging: de kans is reeel dat het een ander bedrijf met een gelijkende naam betreft. Alleen de omschrijving en bron zijn blijven staan.';
+      extern = gestript;
+    }
+    return Object.assign({}, l, {
+      // LEIDEND. Dit is wat naar buiten gaat.
+      oordeel: oordeel ? {
+        status: oordeel.status, onderbouwing: oordeel.onderbouwing,
+        vastgelegdDoor: oordeel.vastgelegdDoor || oordeel.vastgelegd_door || null,
+        bronnen: oordeel.bronnen || null
+      } : null,
+      // Achtergrond van het model. Nooit leidend.
+      extern, externOnderdrukt
+    });
+  });
 }
 
 function trimList(arr, maxItems, maxChars) {
@@ -1386,7 +1427,10 @@ async function runResearchStep(caseId, ctx, key) {
     const gevonden = Array.isArray(data.bevindingen) ? data.bevindingen : [];
     // Waarnemingen eerst: die zijn geteld, de rest is onderzoek.
     data.bevindingen = labBevindingenUitWaarneming(waarneming).concat(gevonden);
-    data.labs = koppelLabBeoordelingen(waarneming.labs, data.labBeoordelingen);
+    // Het menselijke oordeel erbij, zodat het modelmateriaal eronder kan
+    // worden geplaatst in plaats van ernaast.
+    const oordelenVoorLabs = await coaStore.labOordelen().catch(() => ({}));
+    data.labs = koppelLabBeoordelingen(waarneming.labs, data.labBeoordelingen, oordelenVoorLabs);
     data.labWaarneming = { gelezenRapporten: waarneming.gelezenRapporten, rapportenZonderLabnaam: waarneming.zonderLabnaam };
     if (!data.laboratoriumNaam && waarneming.labs.length) data.laboratoriumNaam = waarneming.labs[0].naam;
     delete data.labBeoordelingen;

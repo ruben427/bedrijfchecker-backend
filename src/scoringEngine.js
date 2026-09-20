@@ -124,8 +124,33 @@ function evidenceGate(intake) {
   intake = intake || [];
   const found = intake.filter((i) => i.found);
   if (!found.length) return { status: 'FAIL', code: 'NO_COA_FOUND', foundCount: 0, usableCount: 0 };
-  const usable = found.filter((i) => i.access_status === 'readable' && i.parse_status !== 'failed' && (i.analytical_fields_usable || []).length > 0);
-  if (!usable.length) return { status: 'FAIL', code: 'COA_ACCESS_OR_PARSE_BLOCKED', foundCount: found.length, usableCount: 0 };
+  const leesbaar = found.filter((i) => i.access_status === 'readable' && i.parse_status !== 'failed');
+  const usable = leesbaar.filter((i) => (i.analytical_fields_usable || []).length > 0);
+  if (!usable.length) {
+    // WAAROM is er niets bruikbaars? Dat waren twee heel verschillende
+    // situaties in een code. Op 20 september viel peptidekliniek.nl om als
+    // COA_ACCESS_OR_PARSE_BLOCKED - 'we konden de bestanden niet openen' -
+    // terwijl alle dertig rapporten prima gelezen waren. Ze telden niet mee
+    // omdat het laboratorium niet te verifieren is. De gebruiker kreeg
+    // daardoor de raad om zijn documenten te uploaden, en dat lost niets op:
+    // hetzelfde lab staat er dan nog steeds onder.
+    //
+    // Een rapport dat is gelezen maar waarvan de velden zijn onderdrukt heeft
+    // analytical_fields_gelezen gevuld en analytical_fields_usable leeg.
+    const doorLab = leesbaar.filter((i) => i.bewijskracht === 'onbevestigd' &&
+      (i.analytical_fields_gelezen || []).length > 0);
+    if (doorLab.length) {
+      return {
+        status: 'FAIL', code: 'LAB_NOT_VERIFIABLE',
+        foundCount: found.length, usableCount: 0,
+        gelezenCount: leesbaar.length, doorLabCount: doorLab.length,
+        // De reden zoals die bij het labooordeel is vastgelegd, zodat de
+        // uitleg naar buiten niet opnieuw wordt bedacht.
+        labReden: doorLab[0].bewijskracht_reden || null
+      };
+    }
+    return { status: 'FAIL', code: 'COA_ACCESS_OR_PARSE_BLOCKED', foundCount: found.length, usableCount: 0, gelezenCount: leesbaar.length };
+  }
   const core = ['identity', 'purity', 'quantity'];
   const coreOk = core.every((f) => usable.some((i) => (i.analytical_fields_usable || []).indexOf(f) !== -1));
   return { status: coreOk ? 'PASS' : 'PARTIAL', code: null, foundCount: found.length, usableCount: usable.length };

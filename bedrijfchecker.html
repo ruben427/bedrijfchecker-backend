@@ -421,7 +421,15 @@
           var es = c.engineResult && c.engineResult.evidenceScore;
           if (vlaggen > 0) chip = '<span class="chip danger">' + vlaggen + ' rode vlag' + (vlaggen === 1 ? '' : 'gen') + '</span>';
           else if (es && es.published) chip = '<span class="chip ok">Evidence Score ' + es.value + '</span>';
+          else if (c.engineResult && c.engineResult.gate && c.engineResult.gate.code === 'LAB_NOT_VERIFIABLE') chip = '<span class="chip warn">Lab niet verifieerbaar</span>';
           else if (c.engineResult && c.engineResult.gate && (c.engineResult.gate.code === 'NO_COA_FOUND' || c.engineResult.gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED')) chip = '<span class="chip grey">Geen bruikbare COA</span>';
+          // LET OP: dit is de laatste tak, dus alles wat hierboven niet is
+          // afgevangen komt hier terecht. 'Geen rode vlaggen' is groen en leest
+          // als een goedkeuring; een case die om een andere reden geen score
+          // haalt hoort daar niet te belanden. Op 20 september stond
+          // peptidekliniek.nl zo op groen met dertig rapporten van een lab dat
+          // niemand kan verifieren.
+          else if (c.engineResult && c.engineResult.gate && c.engineResult.gate.status === 'FAIL') chip = '<span class="chip warn">Niet beoordeeld</span>';
           else chip = '<span class="chip ok">Geen rode vlaggen</span>';
           if (c.status === 'gratis_klaar') chip += ' <span class="chip grey">Gratis</span>';
           else if (c.tier === 'deep') chip += ' <span class="chip grey">Deep Dive</span>';
@@ -966,6 +974,23 @@
     if (gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED'){
       return '<div class="banner"><strong>' + escapeHtml(UI_STATES.unreadableCoa.title) + '</strong><br>' + escapeHtml(UI_STATES.unreadableCoa.text) + '</div>';
     }
+    // De rapporten zijn wel gelezen; ze tellen niet mee omdat het lab
+    // eronder niet te verifieren is. Dat stond eerder onder de vorige tak, en
+    // die raadt aan de bestanden te uploaden - wat hier niets oplost, want
+    // hetzelfde lab staat er dan nog steeds onder. De tekst hieronder stond al
+    // in UI_STATES maar werd nergens gebruikt.
+    if (gate.code === 'LAB_NOT_VERIFIABLE'){
+      var aantal = gate.doorLabCount || gate.gelezenCount || gate.foundCount;
+      var telling = aantal
+        ? ('Van de ' + gate.foundCount + ' gevonden rapporten zijn er ' + (gate.gelezenCount || aantal) +
+           ' gelezen; geen daarvan telt als onafhankelijk bewijs.')
+        : '';
+      return '<div class="banner"><strong>' + escapeHtml(UI_STATES.independenceInsufficient.title) + '</strong><br>' +
+        escapeHtml(UI_STATES.independenceInsufficient.text) +
+        (telling ? '<br>' + escapeHtml(telling) : '') +
+        (gate.labReden ? '<br>' + escapeHtml(gate.labReden) : '') +
+        '<br>Uploaden van de bestanden verandert dit niet: de rapporten zijn leesbaar, het laboratorium erachter is niet te bevestigen.</div>';
+    }
     var chip = gate.status === 'PASS' ? 'ok' : 'warn';
     var note = gate.status === 'PASS'
       ? 'Identity, Purity en Quantity zijn elk door minstens één bruikbare COA gedekt.'
@@ -982,11 +1007,16 @@
   // De drie balken in het Stats URL-block. Bewust nog los van de engine: de
   // getallen staan hier, zodat er straks maar een plek is om ze aan een
   // uitkomst te koppelen.
-  var STAT_BALKEN = [
-    { titel: 'Titel onderdeel', pct: 33, uitleg: 'Korte uitleg over deze score' },
-    { titel: 'Titel onderdeel', pct: 82, uitleg: 'Korte uitleg over deze score' },
-    { titel: 'Titel onderdeel', pct: 66, uitleg: 'Korte uitleg over deze score' }
-  ];
+  // UIT tot A1 is besloten. Hier stond 'Titel onderdeel - 0% - Korte uitleg
+  // over deze score', drie keer, boven in elk rapport dat een gebruiker te
+  // zien kreeg. De percentages waren vaste getallen uit de Figma-opzet en
+  // hingen aan niets; de waarde erboven stond hoe dan ook op 0%. Een lezer
+  // ziet drie balken op nul en leest dat als een uitkomst.
+  //
+  // Niet ingevuld met iets anders, want welke drie blokken hier horen en of
+  // het percentages of statussen worden, is precies A1 - en dat besluit ligt
+  // bij Annemarie. Liever niets dan een verzonnen cijfer.
+  var STAT_BALKEN = [];
 
   // Hoeveel regels blijven staan voordat er wordt ingeklapt. Alleen in de
   // tekstblokken van het tweede deel; de COA-blokken staan er helemaal uit.
@@ -1122,6 +1152,7 @@
   }
 
   function statBalkenHtml(){
+    if (!STAT_BALKEN.length) return '';
     return '<div class="stat-bars">' + STAT_BALKEN.map(function(b){
       return '<div class="stat-bar" data-pct="' + b.pct + '" style="--pct:' + b.pct + '">' +
         '<div class="stat-bar-head"><span class="stat-bar-title">' + escapeHtml(b.titel) + '</span>' +

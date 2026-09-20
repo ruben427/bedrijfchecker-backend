@@ -46,7 +46,7 @@ function caseSummary(c) {
     report: rode ? { rodeVlaggen: rode.map((v) => ({ titel: (v && (v.titel || v.title)) || null })) } : null,
     engineResult: {
       evidenceScore: score ? { value: score.value == null ? null : score.value, published: !!score.published } : null,
-      gate: er.gate ? { status: er.gate.status, code: er.gate.code } : null
+      gate: er.gate ? { status: er.gate.status, code: er.gate.code, gelezenCount: er.gate.gelezenCount != null ? er.gate.gelezenCount : null, doorLabCount: er.gate.doorLabCount != null ? er.gate.doorLabCount : null, labReden: er.gate.labReden || null } : null
     }
   };
 }
@@ -83,7 +83,7 @@ function publicCase(c) {
       protocol: er.protocolVersion || null,
       workflow: er.workflowVersion || null
     },
-    gate: er.gate ? { status: er.gate.status, code: er.gate.code } : null,
+    gate: er.gate ? { status: er.gate.status, code: er.gate.code, gelezenCount: er.gate.gelezenCount != null ? er.gate.gelezenCount : null, doorLabCount: er.gate.doorLabCount != null ? er.gate.doorLabCount : null, labReden: er.gate.labReden || null } : null,
     assessments: Array.isArray(er.assessments)
       ? er.assessments.map((a) => ({
           id: a.id,
