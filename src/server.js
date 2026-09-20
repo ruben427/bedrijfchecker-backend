@@ -475,10 +475,22 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
     if (b.klasse && !['A', 'B', 'C', 'D'].includes(b.klasse)) {
       return res.status(400).json({ error: 'ongeldige_klasse', message: 'klasse moet A, B, C of D zijn.' });
     }
-    if (!b.checkedBy) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie de controle heeft uitgevoerd.' });
+    // gecontroleerdDoor is de naam die de MCP-tool gebruikt. Beide worden
+    // geaccepteerd, zodat dezelfde json langs beide routes werkt.
+    const checkedBy = b.checkedBy || b.gecontroleerdDoor || null;
+    if (!checkedBy) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie de controle heeft uitgevoerd (checkedBy of gecontroleerdDoor).' });
+    // Dezelfde eis als in de MCP-tool: een klasse zonder verwijzing naar
+    // waartegen is vergeleken rust nergens op.
+    if (b.klasse && !b.vergelekenMet) {
+      return res.status(400).json({ error: 'geen_vergelijking', message: 'Bij een klasse hoort vergelekenMet: de URL van de kopie bij de shop, of het sha256 van het document.' });
+    }
     // Task, sample en sleutel zitten al in de referentie; die hoeft de
     // aanroeper niet los mee te sturen. Wat wel wordt meegegeven wint.
     const ontleed = coaStore.referentieUitUrl(lab, referentie) || {};
+    // Deze route gaf eerder maar zeven velden door terwijl saveReferenceCheck
+    // er veel meer kent. Wie via curl schreef verloor stilzwijgend zuiverheid,
+    // vulling, vialen, componenten en de veldvergelijking. Nu dezelfde velden
+    // als de MCP-tool, zodat de schrijfroute niet uitmaakt voor wat er staat.
     const opgeslagen = await coaStore.saveReferenceCheck(lab, referentie, {
       taskNumber: b.taskNumber || ontleed.taskNumber || null,
       resolvet: typeof b.resolvet === 'boolean' ? b.resolvet : null,
@@ -486,10 +498,22 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
       client: b.client || null,
       product: b.product || null,
       batchnummer: b.batchnummer || null,
+      zuiverheid: b.zuiverheid || null,
+      vulling: b.vulling || null,
+      gemetenMg: typeof b.gemetenMg === 'number' ? b.gemetenMg : undefined,
+      etiketMg: typeof b.etiketMg === 'number' ? b.etiketMg : undefined,
+      vialen: Array.isArray(b.vialen) ? b.vialen : null,
+      componenten: Array.isArray(b.componenten) ? b.componenten : null,
+      metaalcomplex: b.metaalcomplex || null,
+      manufacturer: b.manufacturer || null,
+      datumAnalyse: b.datumAnalyse || null,
+      vergelekenMet: b.vergelekenMet || null,
+      kopieShop: b.kopieShop || null,
+      bijLab: b.bijLab || null,
       resolvedUrl: b.resolvedUrl || (/^https?:\/\//i.test(referentie) ? referentie : null) ||
         (/janoshik/i.test(lab) && ontleed.referentie ? 'https://verify.janoshik.com/tests/' + encodeURIComponent(ontleed.referentie) : null),
       notitie: b.notitie || null,
-      checkedBy: b.checkedBy
+      checkedBy
     });
     if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'De controle kon niet worden opgeslagen.' });
     res.json({ ok: true, controle: opgeslagen });
