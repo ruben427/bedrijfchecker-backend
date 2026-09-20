@@ -178,6 +178,7 @@ async function initCoaSchema() {
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
+  await ruimDubbeleReferentiesOp();
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_sha_idx ON coa_sources (sha256);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_events_supplier_idx ON coa_source_events (supplier_key, created_at DESC);`);
@@ -595,6 +596,58 @@ async function testsoortDekking(supplierKey) {
   }
 }
 
+// Eén rapport, één rij.
+//
+// Een Janoshik-referentie mag met of zonder sample: 217995-GHKCU_50mg_XWFW...
+// en 217995-_XWFW... geven hetzelfde rapport. Dat is expres zo (zie
+// bouwReferentie), maar het betekent dat hetzelfde rapport twee rijen krijgt
+// zodra we hem van de LINK halen en daarna nog eens van het DOCUMENT.
+// Gezien bij europapeptides: 4 verwijzingen voor 2 rapporten.
+//
+// Taaknummer plus sleutel identificeren het rapport; het sampledeel is
+// versiering. Bij een dubbeling houden we de variant MET sample - die leest
+// prettiger en toont het product.
+async function bestaandeVariant(supplierKey, lab, taskNumber, refKey) {
+  if (!taskNumber || !refKey) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, referentie, url, sample FROM coa_references
+       WHERE supplier_key = $1 AND lab = $2 AND task_number = $3 AND ref_key = $4
+       LIMIT 1`,
+      [supplierKey, lab, taskNumber, refKey]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Eenmalige opschoning: sample-loze dubbelen weghalen waar een rijkere
+// variant naast ligt. Alleen rijen ZONDER controle - een vastgelegde
+// menselijke controle raken we nooit aan, ook niet als hij aan de magere
+// variant hangt.
+async function ruimDubbeleReferentiesOp() {
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM coa_references mager
+       WHERE (mager.sample IS NULL OR mager.sample = '')
+         AND EXISTS (
+           SELECT 1 FROM coa_references rijk
+           WHERE rijk.supplier_key = mager.supplier_key AND rijk.lab = mager.lab
+             AND rijk.task_number = mager.task_number AND rijk.ref_key = mager.ref_key
+             AND rijk.sample IS NOT NULL AND rijk.sample <> ''
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM coa_reference_checks c
+           WHERE c.lab = mager.lab AND c.referentie = mager.referentie
+         )`
+    );
+    if (rowCount) console.log('[coaStore] ' + rowCount + ' dubbele labverwijzing(en) opgeruimd.');
+  } catch (e) {
+    console.error('coaStore.ruimDubbeleReferentiesOp:', (e && e.message) || e);
+  }
+}
+
 async function recordReferences(supplierKey, lijst) {
   const items = (lijst || []).filter((v) => v && v.url);
   if (!supplierKey || !items.length) return { opgeslagen: 0, onleesbaar: 0 };
@@ -610,6 +663,24 @@ async function recordReferences(supplierKey, lijst) {
     const p = referentieUitUrl(lab, v.url);
     if (!p) { onleesbaar++; continue; }
     try {
+      // Zelfde rapport al bekend onder een andere schrijfwijze? Dan deze rij
+      // verrijken in plaats van ernaast zetten.
+      const zelfde = await bestaandeVariant(supplierKey, lab, p.taskNumber || null, p.key || null);
+      if (zelfde && zelfde.referentie !== p.referentie) {
+        const heeftSample = zelfde.sample && String(zelfde.sample).trim();
+        if (!heeftSample && p.sample) {
+          await pool.query(
+            `UPDATE coa_references SET referentie = $2, url = $3, sample = $4, last_seen_at = $5,
+                    testsoort = COALESCE($6, testsoort), context = COALESCE($7, context) WHERE id = $1`,
+            [zelfde.id, p.referentie, v.url, p.sample, now,
+             testsoortUit(v.context) || testsoortUit(v.url), (v.context || '').slice(0, 300) || null]
+          ).catch(() => {});
+        } else {
+          await pool.query('UPDATE coa_references SET last_seen_at = $2 WHERE id = $1', [zelfde.id, now]).catch(() => {});
+        }
+        opgeslagen++;
+        continue;
+      }
       await pool.query(
         `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at, testsoort)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12)
@@ -896,6 +967,23 @@ async function recordReferencesUitDocumenten(supplierKey, items) {
     const url = v.url || ('labref://' + labSlug + '/' + encodeURIComponent(v.referentie));
     if (!v.url) zonderUrl++;
     try {
+      // Kennen we dit rapport al onder een andere schrijfwijze van dezelfde
+      // referentie? Dan geen tweede rij. Wel de sample aanvullen als die er
+      // nog niet was: de variant met productnaam leest prettiger.
+      const zelfde = await bestaandeVariant(supplierKey, lab, v.taskNumber || null, v.key || null);
+      if (zelfde) {
+        const heeftSample = zelfde.sample && String(zelfde.sample).trim();
+        if (!heeftSample && v.sample) {
+          await pool.query(
+            `UPDATE coa_references SET referentie = $2, url = $3, sample = $4, last_seen_at = $5 WHERE id = $1`,
+            [zelfde.id, v.referentie, url, v.sample, now]
+          ).catch(() => {});
+        } else {
+          await pool.query('UPDATE coa_references SET last_seen_at = $2 WHERE id = $1', [zelfde.id, now]).catch(() => {});
+        }
+        opgeslagen++;
+        continue;
+      }
       await pool.query(
         `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
@@ -1482,6 +1570,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
   clientOordeel,
