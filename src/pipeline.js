@@ -478,7 +478,9 @@ async function resolveerLabReferenties(lab, max) {
     // ILS geeft gestructureerde JSON terug in plaats van een PDF. Dat scheelt
     // de dure leesstap volledig - geen vision, geen kosten per rapport, en de
     // velden hoeven niet uit een plaatje geraden te worden.
-    if (/ils/i.test(labNaam)) {
+    // Exacte labnaam, geen losse /ils/: dat matchte ook 'Silsbee' en elke
+    // andere naam waar i-l-s toevallig in staat.
+    if (/^ils laboratories$/i.test(String(labNaam).trim())) {
       const res = await ilsLab.resolveer(r.referentie).catch(() => null);
       if (!res || res.resolved !== true) {
         await coaStore.saveReferenceCheck(labNaam, r.referentie, {
