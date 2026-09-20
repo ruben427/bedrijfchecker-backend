@@ -49,7 +49,14 @@ const LABS = [
   // moeten weten of we daar uberhaupt bij kunnen. (2) ILS staat op de
   // twijfellijst, terwijl de eigen site ISO/IEC 17025 claimt; die claim is
   // pas iets waard als het portaal bereikbaar en controleerbaar is.
-  { lab: 'ILS Laboratories', soort: 'portaal', url: 'https://portal.ils-lab.com/' },
+  // Correctie 20 sep: portal.ils-lab.com is een KLANTPORTAAL met inlog en een
+  // registratie die ILS eerst goedkeurt - geen verificatiesysteem. De meting
+  // van 19 sep gaf daar 200 en dat is toen ten onrechte als "verificatie
+  // open" gelezen. Een 200 zegt dat er een pagina laadt, niet welke.
+  // De echte publieke verificatie zit op ils-lab.com/verify: een formulier
+  // voor een toegangscode van 7 a 8 tekens, zonder inlog.
+  { lab: 'ILS Laboratories', soort: 'verificatie', url: 'https://ils-lab.com/verify' },
+  { lab: 'ILS Laboratories', soort: 'klantportaal (geen verificatie)', url: 'https://portal.ils-lab.com/' },
   { lab: 'ILS Laboratories', soort: 'bestanden', url: 'https://files.ils-lab.com/' },
   { lab: 'ILS Laboratories', soort: 'homepage', url: 'https://ils-lab.com/' },
 

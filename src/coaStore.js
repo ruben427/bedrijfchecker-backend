@@ -502,6 +502,44 @@ async function listReferenceChecks() {
   }
 }
 
+// Referenties die op het DOCUMENT gedrukt staan, niet als link gepubliceerd.
+// Tot 20 september kwamen alleen gelinkte verwijzingen in het archief, en dat
+// is precies andersom dan hoe de meeste shops het doen: ILS-rapporten worden
+// zelf gehost met een toegangscode in de kop, Janoshik-rapporten dragen task
+// en sleutel op het vel. Zonder deze stap heeft een labadapter alleen de
+// referenties die een shop toevallig aanklikbaar maakte.
+//
+// De URL is hier vaak onbekend, want niet elk lab heeft een URL-vorm die wij
+// kennen. In dat geval een synthetische sleutel 'labref://<lab>/<referentie>',
+// net als bij admin-uploads: alleen om de UNIQUE-constraint te bedienen, en
+// herkenbaar als "referentie zonder bekende verificatie-URL".
+async function recordReferencesUitDocumenten(supplierKey, items) {
+  const lijst = (items || []).filter((v) => v && v.lab && v.referentie);
+  if (!supplierKey || !lijst.length) return { opgeslagen: 0, zonderUrl: 0 };
+  const now = Date.now();
+  let opgeslagen = 0;
+  let zonderUrl = 0;
+  for (const v of lijst) {
+    const labSlug = String(v.lab).toLowerCase().replace(/[^a-z0-9]/g, '') || 'onbekend';
+    const url = v.url || ('labref://' + labSlug + '/' + encodeURIComponent(v.referentie));
+    if (!v.url) zonderUrl++;
+    try {
+      await pool.query(
+        `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
+         ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+        [uuidv4(), supplierKey, v.lab, v.referentie, v.taskNumber || null, v.sample || null,
+         v.key || null, url, (v.context || 'gelezen van het document zelf').slice(0, 300),
+         v.gevondenOp || null, now]
+      );
+      opgeslagen++;
+    } catch (e) {
+      console.error('coaStore.recordReferencesUitDocumenten:', (e && e.message) || e);
+    }
+  }
+  return { opgeslagen, zonderUrl };
+}
+
 async function listReferences() {
   try {
     const { rows } = await pool.query(
@@ -814,7 +852,7 @@ module.exports = {
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
   crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
-  recordReferences, listReferences, saveReferenceCheck, listReferenceChecks, openstaandeReferenties,
+  recordReferences, recordReferencesUitDocumenten, listReferences, saveReferenceCheck, listReferenceChecks, openstaandeReferenties,
   referentiesMetControle,
   referentieUitUrl
 };

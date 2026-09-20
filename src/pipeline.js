@@ -856,6 +856,44 @@ async function runResearchStep(caseId, ctx, key) {
       });
     });
 
+    // Referenties die op de documenten zelf staan vastleggen. De gelinkte
+    // verwijzingen gingen al eerder het archief in; dit zijn de gedrukte.
+    // Voor Janoshik kennen we de URL-vorm en bouwen we een echte link; voor
+    // andere labs bewaren we alleen de referentie, zodat een adapter die er
+    // later komt meteen een werkvoorraad heeft.
+    const docReferenties = [];
+    const gezieneRefs = new Set();
+    records.forEach((r) => {
+      if (!r || r.uit === 'labverwijzing') return;
+      const lab = r.laboratorium ? String(r.laboratorium).trim() : '';
+      if (!lab) return;
+      const sleutel = r.verificationKey ? String(r.verificationKey).trim() : '';
+      const task = r.reportId ? String(r.reportId).replace(/^#/, '').trim() : '';
+      if (!sleutel && !task) return;
+
+      let item = null;
+      if (/janoshik/i.test(lab)) {
+        const ref = janoshik.bouwReferentie(r);
+        if (ref) {
+          item = {
+            lab: 'Janoshik', referentie: ref.referentie, taskNumber: ref.taskNumber,
+            sample: ref.sample, key: ref.key, url: janoshik.resolveUrl(ref)
+          };
+        }
+      }
+      if (!item) {
+        const referentie = sleutel || task;
+        item = { lab, referentie, taskNumber: task || null, sample: null, key: sleutel || null, url: null };
+      }
+      const uniek = item.lab.toLowerCase() + '|' + item.referentie.toLowerCase();
+      if (gezieneRefs.has(uniek)) return;
+      gezieneRefs.add(uniek);
+      item.gevondenOp = r.bronUrl || null;
+      docReferenties.push(item);
+    });
+    const docRefOpslag = await coaStore.recordReferencesUitDocumenten(refSupplierKey, docReferenties)
+      .catch(() => ({ opgeslagen: 0, zonderUrl: 0 }));
+
     const intake = records.map((r, i) => {
       const fields = [];
       if (r.purityPercent != null) fields.push('purity');
@@ -893,6 +931,8 @@ async function runResearchStep(caseId, ctx, key) {
       directeLabverwijzingen: ((crawl && crawl.verificatieLinks) || []).length,
       verwijzingenVastgelegd: refOpslag.opgeslagen,
       verwijzingenOnleesbaar: refOpslag.onleesbaar,
+      referentiesUitDocumenten: docRefOpslag.opgeslagen,
+      referentiesZonderBekendeUrl: docRefOpslag.zonderUrl,
       nieuwTenOpzichteVanZoekstap: crawlRecords.length,
       maximaalOpgehaald: COA_AUTOFETCH_MAX,
       nietGeprobeerdWegensLimiet: nietGeprobeerd,
