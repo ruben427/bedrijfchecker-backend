@@ -999,7 +999,7 @@ async function referentiesMetControle(lab, max) {
     const waar = lab ? 'WHERE r.lab = $2' : '';  // na de opschoning is de ruwe naam al de nette
     if (lab) params.push(lab);
     const { rows } = await pool.query(
-      `SELECT r.lab, r.referentie, r.url,
+      `SELECT r.lab, r.referentie, r.url, r.testsoort,
               array_agg(DISTINCT r.supplier_key) AS leveranciers,
               c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
               c.notitie, c.checked_by, c.methode, c.checked_at,
@@ -1009,7 +1009,7 @@ async function referentiesMetControle(lab, max) {
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
        ${waar}
-       GROUP BY r.lab, r.referentie, r.url, c.resolvet, c.klasse, c.client, c.product,
+       GROUP BY r.lab, r.referentie, r.url, r.testsoort, c.resolvet, c.klasse, c.client, c.product,
                 c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at,
                 c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
               c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
@@ -1020,7 +1020,8 @@ async function referentiesMetControle(lab, max) {
     );
     return rows.map((r) => ({
       lab: r.lab, labNet: normaliseerLab(r.lab).naam,
-      referentie: r.referentie, url: r.url, leveranciers: r.leveranciers || [],
+      referentie: r.referentie, url: r.url, testsoort: r.testsoort || null,
+      leveranciers: r.leveranciers || [],
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, product: r.product,
         batchnummer: r.batchnummer, notitie: r.notitie, checkedBy: r.checked_by,
