@@ -135,6 +135,10 @@ async function initCoaSchema() {
   // mislukte afleiding er hetzelfde uit als een veld dat nooit is ingevuld,
   // en leest 'geen getal' als 'geen bezwaar'. Niet leeg = mensenoog nodig.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS afleidingsnotitie TEXT;`);
+  // Peptiden die als metaalcomplex worden geleverd, zoals GHK-Cu. Drie
+  // getallen: totaal, peptidegehalte, metaalgehalte. Los van zwareMetalen -
+  // daar gaat het om verontreiniging, hier hoort het metaal in het product.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS metaalcomplex JSONB;`);
   // Velden die tot nu in de notitie belandden of alleen in een JSON-blob
   // stonden. Eigen kolommen, want in proza kun je niet filteren.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS manufacturer TEXT;`);
@@ -1037,6 +1041,24 @@ function vullingUit(c) {
     }
   }
 
+  // Een peptide dat als metaalcomplex wordt geleverd (GHK-Cu en verwanten)
+  // heeft TWEE gemeten getallen: het complex en het peptidegehalte. Welke het
+  // etiket bedoelt staat er zelden bij, en het verschil is groot: bij een
+  // vial van 50 mg gaf het complex +23,5% en het peptidegehalte +3,4%.
+  // Daarom geen getal. Een gok is hier erger dan een leeg veld, want beide
+  // uitkomsten zijn plausibel en ze vertellen een ander verhaal.
+  const mc = c.metaalcomplex;
+  if (mc && (mc.totaalMg != null || mc.peptideMg != null)) {
+    const t = mc.totaalMg, pep = mc.peptideMg, m = mc.metaal || 'een metaal';
+    return {
+      gemetenMg: null, etiketMg: null, pct: null,
+      reden: 'complex met ' + m + ': het rapport geeft ' +
+        (t != null ? (t + ' mg totaal') : 'geen totaal') +
+        (pep != null ? (' en ' + pep + ' mg peptide') : '') +
+        '. Welke van beide het etiket claimt staat er niet bij, dus geen vulling berekend'
+    };
+  }
+
   if (lijktIu) return { gemetenMg: null, etiketMg: null, pct: null, reden: 'iu-eenheid: niet in mg uit te drukken' };
   if (lijktBlend) return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: 'blend: som van meerdere peptides, geen vulling van een enkele stof' };
   if (gemeten === null || etiket === null) {
@@ -1067,8 +1089,8 @@ async function saveReferenceCheck(lab, referentie, check) {
       `INSERT INTO coa_reference_checks
          (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie,
           manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met,
-          veldvergelijking, velden_vergeleken, velden_afwijkend)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -1091,6 +1113,7 @@ async function saveReferenceCheck(lab, referentie, check) {
          veldvergelijking = COALESCE(EXCLUDED.veldvergelijking, coa_reference_checks.veldvergelijking),
          velden_vergeleken = COALESCE(EXCLUDED.velden_vergeleken, coa_reference_checks.velden_vergeleken),
          velden_afwijkend = COALESCE(EXCLUDED.velden_afwijkend, coa_reference_checks.velden_afwijkend),
+         metaalcomplex = COALESCE(EXCLUDED.metaalcomplex, coa_reference_checks.metaalcomplex),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -1105,7 +1128,8 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.vulling || null, vul.pct, afleidingsnotitieVoor(c, vul),
        c.manufacturer || null, vul.gemetenMg, vul.etiketMg,
        c.datumAnalyse || null, c.vergelekenMet || null,
-       vv.velden ? JSON.stringify(vv.velden) : null, vv.vergeleken, vv.afwijkend]
+       vv.velden ? JSON.stringify(vv.velden) : null, vv.vergeleken, vv.afwijkend,
+       c.metaalcomplex ? JSON.stringify(c.metaalcomplex) : null]
     );
     // Is de opdrachtgever een partij die we nog niet kennen? Dan krijgt die
     // zijn eigen plek, zodat hij later op te vragen is als elke leverancier.
