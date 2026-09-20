@@ -987,7 +987,27 @@ async function runResearchStep(caseId, ctx, key) {
     // later komt meteen een werkvoorraad heeft.
     const docReferenties = [];
     const gezieneRefs = new Set();
-    records.forEach((r) => {
+
+    // Ook uit het ARCHIEF, niet alleen uit de records van deze run. Reden,
+    // gemeten 20 sep bij nextgenpeptides: hun ILS-rapporten staan op een
+    // ander domein en zijn grotendeels van de site verdwenen (status 'gone').
+    // Die documenten zitten met sleutel en al in het archief, maar kwamen
+    // nergens meer terug - terwijl een rapport dat is weggehaald juist het
+    // document is dat je bij het lab wil natrekken.
+    const archiefDocs = await coaStore.getDocumentsBySupplier(refSupplierKey).catch(() => []);
+    const uitArchief = archiefDocs.map((d) => {
+      const ext = (d.extraction && d.extraction.coaRecords && d.extraction.coaRecords[0]) || {};
+      return {
+        laboratorium: ext.laboratorium || d.lab || null,
+        verificationKey: ext.verificationKey || null,
+        reportId: ext.reportId || d.task_number || null,
+        sample: ext.sample || d.sample_number || null,
+        bronUrl: d.url && /^https?:/i.test(d.url) ? d.url : null,
+        uit: 'archief'
+      };
+    });
+
+    [].concat(records, uitArchief).forEach((r) => {
       if (!r || r.uit === 'labverwijzing') return;
       const lab = r.laboratorium ? String(r.laboratorium).trim() : '';
       if (!lab) return;
