@@ -162,6 +162,12 @@ async function initCoaSchema() {
   ]) {
     await pool.query('ALTER TABLE coa_documents ADD COLUMN IF NOT EXISTS ' + kolom + ';');
   }
+  // Sommige shops splitsen per batch in losse rapporten: een voor zuiverheid,
+  // een voor zware metalen, een voor endotoxinen. Gezien bij omegapeptides:
+  // 74 certificaten voor een stuk of 25 batches. Zonder testsoort tellen we
+  // die als 74 losse rapporten en zien we niet dat een batch volledig is -
+  // of juist alleen op zuiverheid is getest.
+  await pool.query(`ALTER TABLE coa_references ADD COLUMN IF NOT EXISTS testsoort TEXT;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -526,6 +532,62 @@ async function normaliseerBestaandeLabnamen() {
   }
 }
 
+// Welke test is dit? Afgeleid uit de rijtekst naast de verwijzing. Alleen als
+// de shop het zelf benoemt - we raden niet. null betekent 'niet benoemd',
+// niet 'niet getest'.
+const TESTSOORTEN = [
+  ['zware metalen', /\bmetals?\b|\bheavy[\s-]*metals?\b|metaaltest|zware\s*metalen|\bmetal\s*test\b/i],
+  ['endotoxinen', /\bendotox/i],
+  ['steriliteit', /\bsterilit|\bsterility\b|\bbioburden\b/i],
+  ['identiteit', /\bidentity\b|\bidentiteit\b|\bid\s*test\b/i],
+  ['zuiverheid', /\bpurity\b|\bzuiverheid\b|\bhplc\b/i]
+];
+
+function testsoortUit(tekst) {
+  const t = String(tekst || '');
+  if (!t.trim()) return null;
+  for (const paar of TESTSOORTEN) {
+    if (paar[1].test(t)) return paar[0];
+  }
+  return null;
+}
+
+// Het batchnummer NIET uit de rijtekst raden. Geprobeerd en verworpen op
+// 20 september: de heuristiek pakte '500mg' en 'IGF1-LR3' als batchnummer.
+// Een fout batchnummer groepeert de verkeerde rapporten bij elkaar, en dat
+// is erger dan geen groepering. De batch komt uit het labrapport zelf, bij
+// het oplossen van de referentie of bij een handmatige controle.
+
+// Welke soorten tests heeft deze leverancier laten doen, en hoeveel van elk?
+// Bij een shop die per batch in losse rapporten splitst zegt "74 certificaten"
+// niets; "25 op zuiverheid, 24 op zware metalen, 23 op endotoxinen" wel.
+// Referenties zonder benoemde soort tellen apart - niet benoemd is iets anders
+// dan niet getest.
+async function testsoortDekking(supplierKey) {
+  if (!supplierKey) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT COALESCE(testsoort, '(niet benoemd)') AS soort, COUNT(*)::int AS aantal
+       FROM coa_references WHERE supplier_key = $1 GROUP BY 1 ORDER BY 2 DESC`,
+      [supplierKey]
+    );
+    const perSoort = {};
+    let totaal = 0;
+    rows.forEach((r) => { perSoort[r.soort] = r.aantal; totaal += r.aantal; });
+    return {
+      perSoort, totaal,
+      zwareMetalen: perSoort['zware metalen'] || 0,
+      endotoxinen: perSoort['endotoxinen'] || 0,
+      steriliteit: perSoort['steriliteit'] || 0,
+      zuiverheid: perSoort['zuiverheid'] || 0,
+      nietBenoemd: perSoort['(niet benoemd)'] || 0
+    };
+  } catch (e) {
+    console.error('coaStore.testsoortDekking:', (e && e.message) || e);
+    return null;
+  }
+}
+
 async function recordReferences(supplierKey, lijst) {
   const items = (lijst || []).filter((v) => v && v.url);
   if (!supplierKey || !items.length) return { opgeslagen: 0, onleesbaar: 0 };
@@ -542,11 +604,16 @@ async function recordReferences(supplierKey, lijst) {
     if (!p) { onleesbaar++; continue; }
     try {
       await pool.query(
-        `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
-         ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
+        `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at, testsoort)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11,$12)
+         ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at,
+           testsoort = COALESCE(EXCLUDED.testsoort, coa_references.testsoort),
+           context = COALESCE(EXCLUDED.context, coa_references.context)`,
         [uuidv4(), supplierKey, lab, p.referentie, p.taskNumber, p.sample || null, p.key,
-         v.url, (v.context || '').slice(0, 300) || null, v.gevondenOp || null, now]
+         v.url, (v.context || '').slice(0, 300) || null, v.gevondenOp || null, now,
+         // De testsoort staat meestal in de rij; anders soms in de referentie
+         // zelf ("...-NAD_500mg_METAL_...").
+         testsoortUit(v.context) || testsoortUit(v.url)]
       );
       opgeslagen++;
     } catch (e) {
@@ -1196,6 +1263,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  testsoortDekking,
   referentieTotalen,
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation, publiekeBronVoorDocument,
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,

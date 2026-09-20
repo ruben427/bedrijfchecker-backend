@@ -343,7 +343,20 @@ async function crawlCoaIndex(website) {
       if (verificatieLinks.size >= MAX_DOCUMENTS) break;
       const labVanLink = labVanVerificatielink(l.url);
       if (labVanLink && !verificatieLinks.has(l.url)) {
-        verificatieLinks.set(l.url, { url: l.url, lab: labVanLink, context: (l.text || '').slice(0, 200), gevondenOp: page.finalUrl });
+        // LET OP: de linktekst zelf is vaak niets - bij omegapeptides is het
+        // een pijltje. Alles wat we willen weten (product, batch, testsoort,
+        // zuiverheid) staat in de RIJ eromheen. Documenten gebruikten die
+        // rijtekst allang; verificatielinks niet, en daar ging de context dus
+        // verloren.
+        let context = (l.text || '').trim();
+        for (const [href, text] of rows) {
+          if (absolutise(page.finalUrl, href) === l.url) { context = (text || context); break; }
+        }
+        verificatieLinks.set(l.url, {
+          url: l.url, lab: labVanLink,
+          context: String(context || '').slice(0, 300),
+          gevondenOp: page.finalUrl
+        });
       }
     }
     // Een COA-overzichtspagina die zelf geen verwijzingen draagt, linkt ze vaak
