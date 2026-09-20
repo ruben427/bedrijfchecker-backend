@@ -152,6 +152,16 @@ async function initCoaSchema() {
   // iemand vult. Als een gemiddelde was opgeslagen, was juist dat weg.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vialen JSONB;`);
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vial_spreiding JSONB;`);
+  // Wat voor test het volgens het LAB is. coa_references.testsoort komt uit
+  // de linktekst van de SHOP; dit komt van de verificatiepagina zelf. Die twee
+  // apart houden is het punt: noemt een shop iets een zuiverheidstest terwijl
+  // het lab "Sterility testing (TAMC+TYMC)" zegt, dan is juist dat verschil de
+  // waarneming. Het een het ander laten overschrijven maakt hem onzichtbaar.
+  //
+  // Meervoud, want een rapport meet vaak meer dan een ding: "Assessment of a
+  // peptide vial or vials" bij Uther levert zuiverheid en gehalte tegelijk.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS testnaam TEXT;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS testsoorten JSONB;`);
   // Velden die tot nu in de notitie belandden of alleen in een JSON-blob
   // stonden. Eigen kolommen, want in proza kun je niet filteren.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS manufacturer TEXT;`);
@@ -614,6 +624,31 @@ function testsoortUit(tekst) {
     if (paar[1].test(t)) return paar[0];
   }
   return null;
+}
+
+// Dezelfde lijst, maar ALLE treffers. testsoortUit geeft er een, omdat de
+// linktekst van een shop meestal ook maar een test aankondigt. De naam die op
+// de labpagina staat dekt vaak meer: "Assessment of a peptide vial or vials"
+// is bij Uther zuiverheid en gehalte in een rapport. Alleen de eerste bewaren
+// zou de tweede test laten verdwijnen.
+function testsoortenUit(tekst) {
+  const t = String(tekst || '');
+  if (!t.trim()) return [];
+  return TESTSOORTEN.filter((paar) => paar[1].test(t)).map((paar) => paar[0]);
+}
+
+// Wat legt de controleur vast als testsoort? Wat hij zelf meegeeft wint; geeft
+// hij alleen de letterlijke testnaam, dan leiden we de soorten daaruit af.
+// Leeg blijft leeg - niet benoemd is iets anders dan niet getest.
+function testsoortenVoor(c) {
+  if (Array.isArray(c.testsoorten) && c.testsoorten.length) {
+    const geldig = c.testsoorten
+      .map((x) => String(x || '').trim().toLowerCase())
+      .filter((x) => TESTSOORTEN.some((paar) => paar[0] === x));
+    if (geldig.length) return Array.from(new Set(geldig));
+  }
+  const afgeleid = testsoortenUit(c.testnaam);
+  return afgeleid.length ? afgeleid : null;
 }
 
 // Het batchnummer NIET uit de rijtekst raden. Geprobeerd en verworpen op
@@ -1171,13 +1206,15 @@ async function saveReferenceCheck(lab, referentie, check) {
   const c = check;
   const vul = vullingUit(c);
   const vv = veldvergelijkingUit(c);
+  const ts = testsoortenVoor(c);
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
          (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie,
           manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met,
-          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex, componenten, vialen, vial_spreiding)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex, componenten, vialen, vial_spreiding,
+          testnaam, testsoorten)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -1204,6 +1241,8 @@ async function saveReferenceCheck(lab, referentie, check) {
          componenten = COALESCE(EXCLUDED.componenten, coa_reference_checks.componenten),
          vialen = COALESCE(EXCLUDED.vialen, coa_reference_checks.vialen),
          vial_spreiding = COALESCE(EXCLUDED.vial_spreiding, coa_reference_checks.vial_spreiding),
+         testnaam = COALESCE(EXCLUDED.testnaam, coa_reference_checks.testnaam),
+         testsoorten = COALESCE(EXCLUDED.testsoorten, coa_reference_checks.testsoorten),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -1222,7 +1261,8 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.metaalcomplex ? JSON.stringify(c.metaalcomplex) : null,
        c.componenten ? JSON.stringify(c.componenten) : null,
        c.vialen ? JSON.stringify(c.vialen) : null,
-       vul.spreiding ? JSON.stringify(vul.spreiding) : null]
+       vul.spreiding ? JSON.stringify(vul.spreiding) : null,
+       c.testnaam || null, ts ? JSON.stringify(ts) : null]
     );
     // Is de opdrachtgever een partij die we nog niet kennen? Dan krijgt die
     // zijn eigen plek, zodat hij later op te vragen is als elke leverancier.
@@ -1554,6 +1594,7 @@ async function referentiesVanLeverancier(supplierKey, max) {
               c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct,
               c.gemeten_mg, c.etiket_mg, c.datum_analyse,
               c.vialen, c.vial_spreiding, c.componenten, c.metaalcomplex,
+              c.testnaam, c.testsoorten,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend,
               c.vergeleken_met, c.afleidingsnotitie, c.notitie,
               c.checked_by, c.methode, c.checked_at
@@ -1580,6 +1621,7 @@ async function referentiesVanLeverancier(supplierKey, max) {
         gemetenMg: r.gemeten_mg, etiketMg: r.etiket_mg,
         vialen: r.vialen, vialSpreiding: r.vial_spreiding,
         componenten: r.componenten, metaalcomplex: r.metaalcomplex,
+        testnaam: r.testnaam, testsoortenBijLab: r.testsoorten,
         datumAnalyse: r.datum_analyse, veldvergelijking: r.veldvergelijking,
         veldenVergeleken: r.velden_vergeleken, veldenAfwijkend: r.velden_afwijkend,
         vergelekenMet: r.vergeleken_met, afleidingsnotitie: r.afleidingsnotitie,
@@ -1606,6 +1648,7 @@ async function referentiesMetControle(lab, max) {
               c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
               c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
               c.vialen, c.vial_spreiding, c.componenten, c.metaalcomplex,
+              c.testnaam, c.testsoorten,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
@@ -1615,6 +1658,7 @@ async function referentiesMetControle(lab, max) {
                 c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
               c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
               c.vialen, c.vial_spreiding, c.componenten, c.metaalcomplex,
+              c.testnaam, c.testsoorten,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $1`,
@@ -1639,6 +1683,7 @@ async function referentiesMetControle(lab, max) {
         datumAnalyse: r.datum_analyse, vergelekenMet: r.vergeleken_met,
         vialen: r.vialen, vialSpreiding: r.vial_spreiding,
         componenten: r.componenten, metaalcomplex: r.metaalcomplex,
+        testnaam: r.testnaam, testsoortenBijLab: r.testsoorten,
         veldvergelijking: r.veldvergelijking,
         veldenVergeleken: r.velden_vergeleken, veldenAfwijkend: r.velden_afwijkend
       } : null
@@ -1922,6 +1967,7 @@ module.exports = {
   clientOordeel,
   referentiesVanLeverancier,
   testsoortDekking,
+  testsoortenUit,
   referentieTotalen,
   initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation, publiekeBronVoorDocument,
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,

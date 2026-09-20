@@ -185,6 +185,9 @@ async function buildServer() {
         klasse: z.enum(['A', 'B', 'C', 'D']).optional().describe('ALLEEN invullen als er een kopie van de shop naast het labrapport ligt en je vergelekenMet meegeeft - een klasse op een kale referentie zegt niets. LET OP: welke definitie voor A-D geldt is nog niet besloten (A15, ligt bij Annemarie). Tot dat besluit: laat dit leeg en leg alleen de waarnemingen vast. Wat je nu als letter wegschrijft moet je na het besluit herzien; waarnemingen niet.'),
         client: z.string().optional().describe('De opdrachtgever zoals letterlijk op het rapport vermeld'),
         product: z.string().optional(),
+        testnaam: z.string().optional().describe('Hoe het LAB de test noemt, letterlijk overgetypt van de verificatiepagina - bijvoorbeeld "Sterility testing (TAMC+TYMC)" of "Assessment of a peptide vial or vials". Overtypen, niet samenvatten. Dit staat los van wat de shop de test noemt in zijn linktekst; juist het verschil daartussen is een waarneming, dus het een overschrijft het ander niet.'),
+        testsoorten: z.array(z.enum(['zware metalen', 'endotoxinen', 'steriliteit', 'identiteit', 'oplosmiddelresten', 'watergehalte', 'tfa', 'ph', 'gehalte', 'zuiverheid']))
+          .optional().describe('Wat er in dit rapport daadwerkelijk is gemeten, uit de vaste lijst. Meerdere mag: een rapport meet vaak meer dan een ding. Leeg laten kan - dan wordt het uit testnaam afgeleid. LET OP: een steriliteitstest is GEEN zuiverheidstest. Als hier steriliteit staat en geen zuiverheid, horen zuiverheid en vulling leeg te blijven; die zijn dan niet gemeten, niet slecht.'),
         batchnummer: z.string().optional().describe('Het batch- of lotnummer zoals het lab het noemt. Heeft een eigen kolom: niet in de notitie zetten.'),
         zuiverheid: z.string().optional().describe('De zuiverheid letterlijk zoals hij op de pagina staat, bijvoorbeeld "99.14%". Overtypen wat er staat; het percentage wordt er zelf uit afgeleid.'),
         vulling: z.string().optional().describe('De gemeten hoeveelheid tegenover de geclaimde, letterlijk zoals het er staat, bijvoorbeeld "10.6 mg / 10 mg". Gemeten en etiket worden hieruit afgeleid als je ze niet los meegeeft.'),
@@ -240,6 +243,7 @@ async function buildServer() {
         taskNumber: p ? p.taskNumber : null,
         resolvet, klasse: klasse || null, client: client || null,
         product: product || null, batchnummer: batchnummer || null,
+        testnaam: a.testnaam || null, testsoorten: a.testsoorten || null,
         zuiverheid: zuiverheid || null, vulling: vulling || null,
         gemetenMg: a.gemetenMg, etiketMg: a.etiketMg, metaalcomplex: a.metaalcomplex || null,
         componenten: a.componenten || null, vialen: a.vialen || null,

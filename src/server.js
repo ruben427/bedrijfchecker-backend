@@ -502,6 +502,8 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
       client: b.client || null,
       product: b.product || null,
       batchnummer: b.batchnummer || null,
+      testnaam: b.testnaam || null,
+      testsoorten: Array.isArray(b.testsoorten) ? b.testsoorten : null,
       zuiverheid: b.zuiverheid || null,
       vulling: b.vulling || null,
       gemetenMg: typeof b.gemetenMg === 'number' ? b.gemetenMg : undefined,
