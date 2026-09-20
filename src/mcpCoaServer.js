@@ -290,6 +290,37 @@ async function buildServer() {
     }
   );
 
+  // Zesde tool, 20 september. Aanleiding: peptidekliniek.nl verwijst naar
+  // "RC Testing" met een referentienummer, maar dat laboratorium bestaat niet.
+  // Nagetrokken bij de KvK en elders - onderzoekswerk dat geen enkele
+  // heuristiek kan doen.
+  server.registerTool(
+    'beoordeel_laboratorium',
+    {
+      title: 'Leg vast wat je over een laboratorium hebt vastgesteld',
+      description: 'Bewaart een MENSELIJK oordeel over een laboratorium: bestaat het, is het onafhankelijk van de leverancier, of weten we het niet. Gebruik dit alleen na echt onderzoek - kamer van koophandel, domeinregistratie, adres, wie de site beheert - en zet je bronnen erbij. Zodra dit is vastgelegd erft ELKE leverancier die naar dit lab verwijst de bevinding, dus een oordeel "bestaat niet" is zwaar: het maakt elk certificaat dat ernaar wijst waardeloos, hoe echt het er ook uitziet. Vermoeden is geen vaststelling: gebruik dan status onbekend en schrijf in de onderbouwing wat je wel en niet hebt kunnen nagaan.',
+      inputSchema: z.object({
+        lab: z.string().min(2).describe('De naam van het laboratorium zoals hij op de certificaten staat, bijvoorbeeld "RC Testing"'),
+        status: z.enum(['erkend', 'onbekend', 'niet onafhankelijk', 'bestaat niet']).describe('erkend = bestaand, onafhankelijk lab. onbekend = niet kunnen vaststellen. niet onafhankelijk = bestaat wel maar hoort bij de leverancier of een verbonden partij. bestaat niet = geen bewijs van bestaan gevonden, vermoedelijk verzonnen.'),
+        onderbouwing: z.string().min(10).describe('Wat je hebt nagegaan en wat je vond. Schrijf wat je hebt gezien, niet wat je vermoedt.'),
+        bronnen: z.array(z.string()).optional().describe('URLs of vindplaatsen: KvK-uittreksel, whois, archiefpagina, adrescontrole'),
+        vastgelegdDoor: z.string().min(1).describe('Naam van de persoon die dit heeft vastgesteld')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ lab, status, onderbouwing, bronnen, vastgelegdDoor }) => {
+      const opgeslagen = await coaStore.saveLabOordeel(lab, {
+        status, onderbouwing, bronnen: bronnen || [], vastgelegdDoor
+      });
+      return {
+        content: [{ type: 'text', text: opgeslagen
+          ? ('Vastgelegd: ' + lab + ' - ' + status + '. Telt vanaf nu mee bij elke leverancier die naar dit lab verwijst.')
+          : 'Opslaan mislukt. Controleer of de status een van de vier toegestane waarden is.' }],
+        structuredContent: { lab, status, opgeslagen: !!opgeslagen }
+      };
+    }
+  );
+
   return server;
 }
 

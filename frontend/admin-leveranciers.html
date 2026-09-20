@@ -68,6 +68,12 @@
   .veld .naam{color:var(--text-muted)}
   .veld.verschil .naam,.veld.verschil .waarde{color:var(--accent);font-weight:600}
   .veld.nietvgl{opacity:.55}
+  .alarm{border:2px solid var(--accent);border-radius:var(--radius-md,14px);background:var(--surface);
+    padding:12px 14px;margin:0 0 14px;font-size:.88rem}
+  .alarm strong{color:var(--accent);display:block;margin-bottom:4px;font-size:.95rem}
+  .alarm.zacht{border-width:1px;border-color:var(--border)}
+  .alarm.zacht strong{color:var(--text)}
+  .alarm .klein{color:var(--text-muted);font-size:.8rem;margin-top:4px}
   .leeg{color:var(--text-faint);font-style:italic;font-size:.88rem}
   .fout{color:var(--accent);font-weight:600}
   @media (max-width:760px){
@@ -222,7 +228,34 @@
 
     var refs = d.referenties || [];
     var gecontroleerd = refs.filter(function (r) { return r.controle; });
-    var uit = '<h3>' + esc(key) + '</h3>' +
+
+    // Zwaarste bevinding bovenaan, niet ergens tussen de rijen. Een lab dat
+    // niet bestaat maakt elk certificaat eronder waardeloos.
+    var alarm = '';
+    var lo = d.laboordeel;
+    if (lo && lo.bestaatNiet && lo.bestaatNiet.length) {
+      alarm += lo.bestaatNiet.map(function (l) {
+        return '<div class="alarm"><strong>Laboratorium bestaat niet: ' + esc(l.lab) + '</strong>' +
+          '<div>' + l.aantal + ' verwijzing(en) van deze leverancier wijzen ernaar. ' +
+          'Elk certificaat dat dit lab noemt is daarmee waardeloos, hoe echt het er ook uitziet.</div>' +
+          (l.oordeel && l.oordeel.onderbouwing ? '<div class="klein">' + esc(l.oordeel.onderbouwing) + '</div>' : '') +
+          (l.oordeel ? '<div class="klein">Vastgesteld door ' + esc(l.oordeel.vastgelegdDoor) + '</div>' : '') +
+          ((l.oordeel && l.oordeel.bronnen && l.oordeel.bronnen.length)
+            ? ('<div class="klein">Bronnen: ' + l.oordeel.bronnen.map(function (b) {
+                return '<a href="' + esc(b) + '" target="_blank" rel="noopener">' + esc(b) + '</a>';
+              }).join(' · ') + '</div>') : '') +
+          '</div>';
+      }).join('');
+    }
+    if (lo && lo.nietOnafhankelijk && lo.nietOnafhankelijk.length) {
+      alarm += lo.nietOnafhankelijk.map(function (l) {
+        return '<div class="alarm zacht"><strong>Laboratorium niet onafhankelijk: ' + esc(l.lab) + '</strong>' +
+          '<div>' + l.aantal + ' verwijzing(en). ' +
+          (l.oordeel && l.oordeel.onderbouwing ? esc(l.oordeel.onderbouwing) : '') + '</div></div>';
+      }).join('');
+    }
+
+    var uit = alarm + '<h3>' + esc(key) + '</h3>' +
       '<p class="hint">' + refs.length + ' labverwijzing(en), ' + gecontroleerd.length +
       ' gecontroleerd, ' + (d.documenten || []).length + ' document(en) in het archief.</p>';
 

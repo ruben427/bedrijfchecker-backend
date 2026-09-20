@@ -379,9 +379,10 @@ app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireLezer
 app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const key = coaStore.supplierKeyFromUrl(req.params.supplierKey);
-    const [referenties, documenten] = await Promise.all([
+    const [referenties, documenten, laboordeel] = await Promise.all([
       coaStore.referentiesVanLeverancier(key, 500),
-      coaStore.getDocumentsBySupplier(key)
+      coaStore.getDocumentsBySupplier(key),
+      coaStore.laboordeelVoorLeverancier(key)
     ]);
     referenties.forEach((r) => {
       r.clientOordeel = (r.controle && r.controle.client)
@@ -390,6 +391,9 @@ app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken,
     });
     res.json({
       supplierKey: key,
+      // Zwaarste bevinding die we kennen: verwijst deze leverancier naar een
+      // laboratorium waarvan een mens heeft vastgesteld dat het niet bestaat?
+      laboordeel,
       referenties,
       documenten: documenten.map((d) => ({
         sha256: d.sha256, url: d.url, status: d.status, lab: d.lab,

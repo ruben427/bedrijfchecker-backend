@@ -175,6 +175,31 @@ async function initCoaSchema() {
   // Ze scheiden is noodzakelijk: zonder dit zou Uther ineens 55 referenties
   // 'delen' met beide shops en klopt de kruisverbandtelling niet meer.
   await pool.query(`ALTER TABLE coa_references ADD COLUMN IF NOT EXISTS relatie TEXT NOT NULL DEFAULT 'toont';`);
+  // Menselijke oordelen over laboratoria.
+  //
+  // Aanleiding: peptidekliniek.nl verwijst naar "RC Testing" met een
+  // referentienummer, maar dat laboratorium bestaat niet - een door de
+  // leverancier zelf verzonnen lab, nagetrokken bij de KvK en elders.
+  //
+  // Dit is bewust GEEN afgeleide. Vaststellen dat een laboratorium niet
+  // bestaat is onderzoekswerk met bronnen erbij; geen enkele heuristiek mag
+  // dat oordeel vellen. Wel propageren we het: zodra een lab hier staat,
+  // erft elke leverancier die ernaar verwijst de bevinding.
+  //
+  // Het is ook de zwaarste bevinding die we kennen. Een veldverschil zegt iets
+  // over een kopie; een niet-bestaand lab maakt elk certificaat dat ernaar
+  // verwijst waardeloos, hoe echt het er ook uitziet.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lab_oordelen (
+      lab_sleutel TEXT PRIMARY KEY,
+      lab TEXT NOT NULL,
+      status TEXT NOT NULL,
+      onderbouwing TEXT,
+      bronnen JSONB,
+      vastgelegd_door TEXT NOT NULL,
+      vastgelegd_op BIGINT NOT NULL
+    );
+  `);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -607,6 +632,85 @@ async function testsoortDekking(supplierKey) {
 // Taaknummer plus sleutel identificeren het rapport; het sampledeel is
 // versiering. Bij een dubbeling houden we de variant MET sample - die leest
 // prettiger en toont het product.
+// De vier standen die een laboratorium kan hebben. Bewust grof: dit is een
+// menselijk oordeel, geen schaal.
+const LAB_STATUSSEN = ['erkend', 'onbekend', 'niet onafhankelijk', 'bestaat niet'];
+
+function labSleutel(naam) {
+  return String(naam || '').toLowerCase().replace(/[^a-z0-9]/g, '') || null;
+}
+
+async function saveLabOordeel(lab, oordeel) {
+  const sleutel = labSleutel(lab);
+  const o = oordeel || {};
+  if (!sleutel || LAB_STATUSSEN.indexOf(o.status) === -1 || !o.vastgelegdDoor) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO lab_oordelen (lab_sleutel, lab, status, onderbouwing, bronnen, vastgelegd_door, vastgelegd_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (lab_sleutel) DO UPDATE SET
+         lab = EXCLUDED.lab, status = EXCLUDED.status,
+         onderbouwing = EXCLUDED.onderbouwing, bronnen = EXCLUDED.bronnen,
+         vastgelegd_door = EXCLUDED.vastgelegd_door, vastgelegd_op = EXCLUDED.vastgelegd_op
+       RETURNING *`,
+      [sleutel, String(lab).slice(0, 200), o.status, o.onderbouwing || null,
+       o.bronnen ? JSON.stringify(o.bronnen) : null, o.vastgelegdDoor, Date.now()]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    console.error('coaStore.saveLabOordeel:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function labOordelen() {
+  try {
+    const { rows } = await pool.query('SELECT * FROM lab_oordelen');
+    const perSleutel = {};
+    rows.forEach((r) => {
+      perSleutel[r.lab_sleutel] = {
+        lab: r.lab, status: r.status, onderbouwing: r.onderbouwing,
+        bronnen: r.bronnen || [], vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op)
+      };
+    });
+    return perSleutel;
+  } catch (e) {
+    console.error('coaStore.labOordelen:', (e && e.message) || e);
+    return {};
+  }
+}
+
+// Welke labs gebruikt deze leverancier, en wat is daarover vastgelegd?
+// Een leverancier die naar een niet-bestaand lab verwijst is de zwaarste
+// bevinding in het systeem: elk certificaat dat ernaar wijst is waardeloos.
+async function laboordeelVoorLeverancier(supplierKey) {
+  if (!supplierKey) return null;
+  try {
+    const [{ rows }, oordelen] = await Promise.all([
+      pool.query(
+        `SELECT lab, COUNT(*)::int AS aantal FROM coa_references
+         WHERE supplier_key = $1 AND relatie = 'toont' GROUP BY lab`,
+        [supplierKey]
+      ),
+      labOordelen()
+    ]);
+    const labs = rows.map((r) => {
+      const naam = normaliseerLab(r.lab).naam;
+      const o = oordelen[labSleutel(naam)] || oordelen[labSleutel(r.lab)] || null;
+      return { lab: naam, aantal: r.aantal, oordeel: o };
+    });
+    return {
+      labs,
+      bestaatNiet: labs.filter((l) => l.oordeel && l.oordeel.status === 'bestaat niet'),
+      nietOnafhankelijk: labs.filter((l) => l.oordeel && l.oordeel.status === 'niet onafhankelijk'),
+      zonderOordeel: labs.filter((l) => !l.oordeel).map((l) => l.lab)
+    };
+  } catch (e) {
+    console.error('coaStore.laboordeelVoorLeverancier:', (e && e.message) || e);
+    return null;
+  }
+}
+
 async function bestaandeVariant(supplierKey, lab, taskNumber, refKey) {
   if (!taskNumber || !refKey) return null;
   try {
@@ -1570,6 +1674,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
