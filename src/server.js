@@ -423,6 +423,25 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdm
   }
 });
 
+// Eén document opnieuw laten lezen, cache overgeslagen. Gereedschap om aan de
+// leesprompt te kunnen sleutelen: pas hem aan, draai dit op het document dat
+// niet goed gelezen werd, en zie meteen of het hielp. Zonder dit zou je de
+// extractorversie moeten ophogen en alles opnieuw laten lezen.
+//
+// ?kijken=1 leest wel, maar schrijft niets naar het archief.
+app.post('/api/admin/coa/documents/:sha256/herlees', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const r = await pipeline.herleesDocument(req.params.sha256, {
+      naam: (req.body && req.body.naam) || null,
+      alleenKijken: req.query.kijken === '1' || !!(req.body && req.body.alleenKijken)
+    });
+    if (r && r.fout) return res.status(400).json(r);
+    res.json(r);
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Labreferenties automatisch oplossen bij het laboratorium. Alleen zinvol bij
 // labs die onze server binnenlaten; Janoshik doet dat niet (403, Cloudflare).
 // Bewust met een expliciete aanroep en een maximum per keer: elk opgehaald

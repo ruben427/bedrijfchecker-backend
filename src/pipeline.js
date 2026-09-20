@@ -535,6 +535,88 @@ async function resolveerLabReferenties(lab, max) {
   return { lab: labNaam, behandeld: openstaand.length, uitkomsten };
 }
 
+// Een enkel document opnieuw laten lezen, met de cache overgeslagen.
+//
+// Waarom dit bestaat: het archief slaat een uitlezing op onder sha256 plus
+// extractorversie, en dat is precies de bedoeling - een document gaat een
+// keer door de dure leesstap, ooit, voor alle leveranciers samen. Maar het
+// maakt sleutelen aan de leesprompt onmogelijk: een herdraai pakt de cache en
+// je ziet nooit of je aanpassing hielp. De extractorversie ophogen leest alles
+// opnieuw en dat is een botte bijl voor een gerichte vraag.
+//
+// Aanleiding (20 sep): 13 van de 14 ILS-rapporten van nextgenpeptides leveren
+// geen verificatiesleutel op, terwijl ILS zegt dat die in de kop en de
+// voettekst staat. Zonder deze functie is dat niet te onderzoeken.
+//
+// Het document wordt opnieuw opgehaald bij de bron - het archief bewaart de
+// bytes niet. Verandert de hash, dan is het bestand bij de leverancier
+// gewijzigd. Dat is zelf een bevinding en wordt als zodanig teruggegeven.
+async function herleesDocument(sha256, opties) {
+  const o = opties || {};
+  const doc = await coaStore.getDocument(sha256);
+  if (!doc) return { fout: 'onbekend_document', bericht: 'Dit sha256 staat niet in het archief.' };
+
+  const bron = await coaStore.publiekeBronVoorDocument(sha256);
+  if (!bron) {
+    return {
+      fout: 'geen_ophaalbare_bron',
+      bericht: 'Voor dit document is geen http(s)-bron bekend; het kwam van een upload of een gedrukte referentie. Opnieuw lezen kan alleen via een nieuwe upload.'
+    };
+  }
+
+  const bestand = await fetchRemoteDocument(bron.url);
+  if (!bestand) {
+    return { fout: 'niet_op_te_halen', bericht: 'Het document is niet meer op te halen van ' + bron.url, bronUrl: bron.url };
+  }
+
+  const nieuweHash = coaStore.sha256Of(bestand.buffer);
+  const gewijzigd = nieuweHash !== sha256;
+
+  const naam = o.naam || bron.supplier_key || 'deze leverancier';
+  const prompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, opgehaald van ' + bron.url +
+    ', dat een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + naam +
+    '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is.\n\n' +
+    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"verificatieDomein":string,"verificatieInstructie":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}]}]}';
+
+  const data = await sampleJsonSafe(prompt, { documents: [bestand], label: 'herlezen' });
+  const eerste = (data && data.coaRecords && data.coaRecords[0]) || null;
+
+  // Alleen opslaan als het nog hetzelfde bestand is. Is het gewijzigd, dan
+  // hoort dat via de normale waarneemroute het archief in, niet stilletjes
+  // onder de oude hash.
+  let opgeslagen = false;
+  if (!gewijzigd && data && !o.alleenKijken) {
+    await coaStore.saveExtraction(sha256, COA_EXTRACTOR_VERSION, data, {
+      lab: (eerste && eerste.laboratorium) || doc.lab || null,
+      taskNumber: (eerste && eerste.reportId) || doc.task_number || null,
+      keyHash: (eerste && eerste.verificationKey)
+        ? coaStore.sha256Of(Buffer.from(String(eerste.verificationKey))) : null
+    }).catch(() => {});
+    opgeslagen = true;
+  }
+
+  const oudRec = (doc.extraction && doc.extraction.coaRecords && doc.extraction.coaRecords[0]) || {};
+  return {
+    sha256, bronUrl: bron.url, leverancier: bron.supplier_key,
+    bestandGewijzigd: gewijzigd,
+    nieuweHash: gewijzigd ? nieuweHash : null,
+    opgeslagen,
+    // Naast elkaar, want de vraag is meestal "leest hij het nu wel?"
+    was: {
+      laboratorium: oudRec.laboratorium || null, reportId: oudRec.reportId || null,
+      verificationKey: oudRec.verificationKey || null, product: oudRec.product || null
+    },
+    nu: eerste ? {
+      laboratorium: eerste.laboratorium || null, reportId: eerste.reportId || null,
+      verificationKey: eerste.verificationKey || null, product: eerste.product || null,
+      verificatieDomein: eerste.verificatieDomein || null,
+      verificatieInstructie: eerste.verificatieInstructie || null,
+      identiteitsmethode: eerste.identiteitsmethode || null,
+      identiteitBevestigd: typeof eerste.identiteitBevestigd === 'boolean' ? eerste.identiteitBevestigd : null
+    } : null
+  };
+}
+
 async function runResearchStep(caseId, ctx, key) {
   const startedAt = Date.now();
   await beginStep(caseId, key);
@@ -1171,5 +1253,5 @@ async function runDeepTier(caseId, ctx) {
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
-  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap
+  extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument
 };

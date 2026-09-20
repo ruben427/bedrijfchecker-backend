@@ -157,6 +157,24 @@ async function getSource(url) {
   return rows[0] || null;
 }
 
+// Een ophaalbare bron voor dit document. Het archief bewaart de bytes niet,
+// alleen de hash - dus opnieuw lezen betekent opnieuw downloaden. Synthetische
+// bronnen (admin-upload://, labref://) vallen af: daar valt niets te halen.
+async function publiekeBronVoorDocument(sha256) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT url, supplier_key FROM coa_sources
+       WHERE sha256 = $1 AND url LIKE 'http%'
+       ORDER BY last_checked_at DESC NULLS LAST LIMIT 1`,
+      [sha256]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    console.error('coaStore.publiekeBronVoorDocument:', (e && e.message) || e);
+    return null;
+  }
+}
+
 async function getDocument(sha256) {
   const { rows } = await pool.query('SELECT * FROM coa_documents WHERE sha256 = $1', [sha256]);
   return rows[0] || null;
@@ -854,7 +872,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
-  initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation,
+  initCoaSchema, supplierKeyFromUrl, sha256Of, checkUnchanged, recordObservation, publiekeBronVoorDocument,
   reconcileSupplierIndex, saveExtraction, getExtraction, supplierHistory, getSource, getDocument,
   saveVerification, getDocumentsBySupplier, listVerifiedDocumentsForSupplier,
   crossSupplierOverview, andereLeveranciersVoor, normaliseerLab,
