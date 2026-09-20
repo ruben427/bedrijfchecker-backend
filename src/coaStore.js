@@ -139,6 +139,10 @@ async function initCoaSchema() {
   // getallen: totaal, peptidegehalte, metaalgehalte. Los van zwareMetalen -
   // daar gaat het om verontreiniging, hier hoort het metaal in het product.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS metaalcomplex JSONB;`);
+  // Blends: een vial met meer dan een stof, met per stof een eigen gemeten
+  // hoeveelheid. Een blend als een getal opslaan gooit precies weg wat een
+  // koper wil weten - hoeveel BPC-157 zit erin.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS componenten JSONB;`);
   // Velden die tot nu in de notitie belandden of alleen in een JSON-blob
   // stonden. Eigen kolommen, want in proza kun je niet filteren.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS manufacturer TEXT;`);
@@ -1047,6 +1051,7 @@ function vullingUit(c) {
   // vial van 50 mg gaf het complex +23,5% en het peptidegehalte +3,4%.
   // Daarom geen getal. Een gok is hier erger dan een leeg veld, want beide
   // uitkomsten zijn plausibel en ze vertellen een ander verhaal.
+  const comp = Array.isArray(c.componenten) ? c.componenten.filter(Boolean) : [];
   const mc = c.metaalcomplex;
   if (mc && (mc.totaalMg != null || mc.peptideMg != null)) {
     const t = mc.totaalMg, pep = mc.peptideMg, m = mc.metaal || 'een metaal';
@@ -1060,6 +1065,23 @@ function vullingUit(c) {
   }
 
   if (lijktIu) return { gemetenMg: null, etiketMg: null, pct: null, reden: 'iu-eenheid: niet in mg uit te drukken' };
+  // Een blend met uitgesplitste componenten kunnen we precies beschrijven,
+  // alleen niet tot een vulling herleiden: bij GLOW van omegapeptides staat
+  // 68,27 mg GHK-Cu naast 59,83 mg GHK-gehalte, en welke van de twee in het
+  // etikettotaal meetelt staat er niet bij. Optellen zou een getal geven dat
+  // klopt maar iets anders betekent dan het lijkt.
+  if (comp.length) {
+    const omschrijving = comp.map((k) => {
+      const mc = k && k.metaalcomplex;
+      return (k.stof || 'onbekend') + ' ' + (k.gemetenMg != null ? (k.gemetenMg + ' mg') : 'zonder gemeten waarde') +
+        (mc && mc.peptideMg != null ? (' (waarvan ' + mc.peptideMg + ' mg ' + (k.stof || 'peptide') + ', ' + (mc.metaalMg != null ? mc.metaalMg + ' mg ' : '') + (mc.metaal || 'metaal') + ')') : '');
+    }).join(' + ');
+    return {
+      gemetenMg: null, etiketMg: etiket, pct: null,
+      reden: 'blend met ' + comp.length + ' componenten: ' + omschrijving +
+        '. Geen vulling berekend - welk totaal het etiket claimt staat er niet bij'
+    };
+  }
   if (lijktBlend) return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: 'blend: som van meerdere peptides, geen vulling van een enkele stof' };
   if (gemeten === null || etiket === null) {
     return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: tekst ? 'uit "' + tekst.slice(0, 80) + '" kwamen geen twee vergelijkbare gewichten' : null };
@@ -1089,8 +1111,8 @@ async function saveReferenceCheck(lab, referentie, check) {
       `INSERT INTO coa_reference_checks
          (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie,
           manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met,
-          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex, componenten)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -1114,6 +1136,7 @@ async function saveReferenceCheck(lab, referentie, check) {
          velden_vergeleken = COALESCE(EXCLUDED.velden_vergeleken, coa_reference_checks.velden_vergeleken),
          velden_afwijkend = COALESCE(EXCLUDED.velden_afwijkend, coa_reference_checks.velden_afwijkend),
          metaalcomplex = COALESCE(EXCLUDED.metaalcomplex, coa_reference_checks.metaalcomplex),
+         componenten = COALESCE(EXCLUDED.componenten, coa_reference_checks.componenten),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -1129,7 +1152,8 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.manufacturer || null, vul.gemetenMg, vul.etiketMg,
        c.datumAnalyse || null, c.vergelekenMet || null,
        vv.velden ? JSON.stringify(vv.velden) : null, vv.vergeleken, vv.afwijkend,
-       c.metaalcomplex ? JSON.stringify(c.metaalcomplex) : null]
+       c.metaalcomplex ? JSON.stringify(c.metaalcomplex) : null,
+       c.componenten ? JSON.stringify(c.componenten) : null]
     );
     // Is de opdrachtgever een partij die we nog niet kennen? Dan krijgt die
     // zijn eigen plek, zodat hij later op te vragen is als elke leverancier.

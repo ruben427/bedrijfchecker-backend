@@ -189,6 +189,14 @@ async function buildServer() {
         zuiverheid: z.string().optional().describe('De zuiverheid letterlijk zoals hij op de pagina staat, bijvoorbeeld "99.14%". Overtypen wat er staat; het percentage wordt er zelf uit afgeleid.'),
         vulling: z.string().optional().describe('De gemeten hoeveelheid tegenover de geclaimde, letterlijk zoals het er staat, bijvoorbeeld "10.6 mg / 10 mg". Gemeten en etiket worden hieruit afgeleid als je ze niet los meegeeft.'),
         gemetenMg: z.number().optional().describe('De gemeten hoeveelheid in mg. Alleen invullen als je het cijfer zelf hebt gezien.'),
+        componenten: z.array(z.object({
+          stof: z.string().describe('De stofnaam zoals het rapport hem noemt'),
+          gemetenMg: z.number().optional(),
+          metaalcomplex: z.object({
+            metaal: z.string().optional(), totaalMg: z.number().optional(),
+            peptideMg: z.number().optional(), metaalMg: z.number().optional()
+          }).optional()
+        })).optional().describe('Alleen bij blends: een vial met meer dan een stof, zoals GLOW of KLOW. Neem elke regel van het rapport over als eigen component. Is een component zelf een metaalcomplex, zet het complex dan BIJ DIE COMPONENT. Niet optellen tot een totaal - dat gebeurt verderop, en alleen als duidelijk is wat het etiket claimt.'),
         metaalcomplex: z.object({
           metaal: z.string().optional().describe('Bijvoorbeeld koper'),
           totaalMg: z.number().optional().describe('Het totaal van het complex, bijvoorbeeld 61.77'),
@@ -229,6 +237,7 @@ async function buildServer() {
         product: product || null, batchnummer: batchnummer || null,
         zuiverheid: zuiverheid || null, vulling: vulling || null,
         gemetenMg: a.gemetenMg, etiketMg: a.etiketMg, metaalcomplex: a.metaalcomplex || null,
+        componenten: a.componenten || null,
         manufacturer: a.manufacturer || null, datumAnalyse: a.datumAnalyse || null,
         vergelekenMet: a.vergelekenMet || null,
         kopieShop: a.kopieShop || null, bijLab: a.bijLab || null,
