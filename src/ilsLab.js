@@ -180,4 +180,4 @@ function heeftEchteNorm(limiet) {
   return !/^(report\s*(only|result)|n\/?a)$/i.test(l);
 }
 
-module.exports = { resolveer, verifyUrl, lijktOpQrCodeId, isOfficieleHost, OFFICIELE_HOSTS };
+module.exports = { resolveer, verifyUrl, lijktOpQrCodeId, isOfficieleHost, OFFICIELE_HOSTS, zelfdeStof, heeftEchteNorm };
