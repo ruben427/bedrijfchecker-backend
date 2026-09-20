@@ -143,6 +143,15 @@ async function initCoaSchema() {
   // hoeveelheid. Een blend als een getal opslaan gooit precies weg wat een
   // koper wil weten - hoeveel BPC-157 zit erin.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS componenten JSONB;`);
+  // Meerdere vialen van HETZELFDE product in een rapport. Niet te verwarren
+  // met componenten: dat zijn verschillende stoffen in een vial, dit is een
+  // stof in meerdere vialen. Uther levert zo drie metingen op een regel:
+  // 25.29; 25.19; 25.41 mg bij 99.829%; 99.810%; 99.795%.
+  //
+  // De spreiding tussen die vialen is zelf bewijs - het zegt hoe consistent
+  // iemand vult. Als een gemiddelde was opgeslagen, was juist dat weg.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vialen JSONB;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vial_spreiding JSONB;`);
   // Velden die tot nu in de notitie belandden of alleen in een JSON-blob
   // stonden. Eigen kolommen, want in proza kun je niet filteren.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS manufacturer TEXT;`);
@@ -581,11 +590,20 @@ async function normaliseerBestaandeLabnamen() {
 // Welke test is dit? Afgeleid uit de rijtekst naast de verwijzing. Alleen als
 // de shop het zelf benoemt - we raden niet. null betekent 'niet benoemd',
 // niet 'niet getest'.
+// Bij Janoshik is een referentie precies EEN test, dus elke testvorm moet
+// hier een waarde hebben - anders valt een heel rapport onder '(niet
+// benoemd)'. Volgorde telt: de eerste die matcht wint, dus de specifieke
+// vormen staan boven de algemene.
 const TESTSOORTEN = [
   ['zware metalen', /\bmetals?\b|\bheavy[\s-]*metals?\b|metaaltest|zware\s*metalen|\bmetal\s*test\b/i],
   ['endotoxinen', /\bendotox/i],
-  ['steriliteit', /\bsterilit|\bsterility\b|\bbioburden\b/i],
-  ['identiteit', /\bidentity\b|\bidentiteit\b|\bid\s*test\b/i],
+  ['steriliteit', /\bsterilit|\bsterility\b|\bbioburden\b|\btamc\b|\btymc\b|microbial/i],
+  ['identiteit', /\bidentity\b|\bidentiteit\b|\bid\s*test\b|\bms\s*identity\b/i],
+  ['oplosmiddelresten', /residual\s*solvent|\bsolvent\s*residue|\bros\b/i],
+  ['watergehalte', /karl\s*fischer|water\s*content|\bmoisture\b|vochtgehalte/i],
+  ['tfa', /\btfa\b|trifluoroacetic/i],
+  ['ph', /\bph\s*(test|value|meting)\b|\bph-test\b/i],
+  ['gehalte', /net\s*peptide\s*content|peptide\s*content|\bcontent\s*test\b|\bquantity\b|\bmass\s*test\b|hoeveelheid/i],
   ['zuiverheid', /\bpurity\b|\bzuiverheid\b|\bhplc\b/i]
 ];
 
@@ -1010,6 +1028,36 @@ function veldvergelijkingUit(c) {
   };
 }
 
+// Spreiding over meerdere vialen van hetzelfde product.
+//
+// Het gemiddelde is de eerlijke representant voor de vulling - drie metingen
+// van hetzelfde ding middelen is gewoon hoe je dat rapporteert, geen gok. Maar
+// het gemiddelde alleen gooit weg wat deze data juist interessant maakt, dus
+// de losse waarden en het bereik blijven staan.
+function vialSpreidingUit(vialen) {
+  const lijst = (Array.isArray(vialen) ? vialen : []).filter(Boolean);
+  if (lijst.length < 1) return null;
+  const getal = (x) => (x == null || x === '' || !Number.isFinite(Number(x))) ? null : Number(x);
+  const mg = lijst.map((v) => getal(v.gemetenMg)).filter((x) => x != null);
+  const zp = lijst.map((v) => getal(v.purityPercent)).filter((x) => x != null);
+  const rond = (x) => Math.round(x * 1000) / 1000;
+  const uit = { aantal: lijst.length };
+  if (mg.length) {
+    const min = Math.min(...mg), max = Math.max(...mg);
+    const gem = mg.reduce((a, b) => a + b, 0) / mg.length;
+    uit.gemetenMg = { n: mg.length, min: rond(min), max: rond(max), gemiddeld: rond(gem),
+      // Hoe ver liggen de vialen uit elkaar, als percentage van het gemiddelde.
+      spreidingPct: gem > 0 ? Math.round(((max - min) / gem) * 10000) / 100 : null };
+  }
+  if (zp.length) {
+    const min = Math.min(...zp), max = Math.max(...zp);
+    uit.zuiverheidPct = { n: zp.length, min: rond(min), max: rond(max),
+      gemiddeld: rond(zp.reduce((a, b) => a + b, 0) / zp.length),
+      spreidingPunten: Math.round((max - min) * 1000) / 1000 };
+  }
+  return uit;
+}
+
 // Vulling: hoeveel wijkt de gemeten hoeveelheid af van wat het etiket claimt?
 //
 // LET OP - dit is een AFWIJKING, geen verhouding. 10,6 mg in een vial van
@@ -1029,8 +1077,18 @@ function vullingUit(c) {
   // plus met een woord erachter telt, zoals 'CJC-1295 + Ipamorelin'.
   const lijktBlend = /\bblend\b/i.test(product) || /\+\s*[a-z]{2,}/i.test(product) || /\bblend\b/i.test(tekst);
   const lijktIu = /\biu\b/i.test(tekst) || /\biu\b/i.test(product);
+  const comp = Array.isArray(c.componenten) ? c.componenten.filter(Boolean) : [];
+  const spreiding = vialSpreidingUit(c.vialen);
+  // Meerdere vialen van dezelfde stof: het gemiddelde is de representant,
+  // met het bereik erbij in de notitie. Dat is geen gok maar de gebruikelijke
+  // manier om herhaalde metingen samen te vatten.
+  let gemiddeldeUitVialen = null;
+  if (spreiding && spreiding.gemetenMg && spreiding.gemetenMg.n > 1) {
+    gemiddeldeUitVialen = spreiding.gemetenMg;
+  }
 
   let gemeten = Number.isFinite(Number(c.gemetenMg)) && c.gemetenMg !== null && c.gemetenMg !== '' ? Number(c.gemetenMg) : null;
+  if (gemeten === null && gemiddeldeUitVialen) gemeten = gemiddeldeUitVialen.gemiddeld;
   let etiket = Number.isFinite(Number(c.etiketMg)) && c.etiketMg !== null && c.etiketMg !== '' ? Number(c.etiketMg) : null;
 
   if ((gemeten === null || etiket === null) && tekst) {
@@ -1051,7 +1109,6 @@ function vullingUit(c) {
   // vial van 50 mg gaf het complex +23,5% en het peptidegehalte +3,4%.
   // Daarom geen getal. Een gok is hier erger dan een leeg veld, want beide
   // uitkomsten zijn plausibel en ze vertellen een ander verhaal.
-  const comp = Array.isArray(c.componenten) ? c.componenten.filter(Boolean) : [];
   const mc = c.metaalcomplex;
   if (mc && (mc.totaalMg != null || mc.peptideMg != null)) {
     const t = mc.totaalMg, pep = mc.peptideMg, m = mc.metaal || 'een metaal';
@@ -1064,7 +1121,7 @@ function vullingUit(c) {
     };
   }
 
-  if (lijktIu) return { gemetenMg: null, etiketMg: null, pct: null, reden: 'iu-eenheid: niet in mg uit te drukken' };
+  if (lijktIu) return { gemetenMg: null, etiketMg: null, pct: null, spreiding, reden: 'iu-eenheid: niet in mg uit te drukken' };
   // Een blend met uitgesplitste componenten kunnen we precies beschrijven,
   // alleen niet tot een vulling herleiden: bij GLOW van omegapeptides staat
   // 68,27 mg GHK-Cu naast 59,83 mg GHK-gehalte, en welke van de twee in het
@@ -1087,7 +1144,15 @@ function vullingUit(c) {
     return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: tekst ? 'uit "' + tekst.slice(0, 80) + '" kwamen geen twee vergelijkbare gewichten' : null };
   }
   if (!(etiket > 0)) return { gemetenMg: gemeten, etiketMg: etiket, pct: null, reden: 'etiketwaarde is nul of negatief' };
-  return { gemetenMg: gemeten, etiketMg: etiket, pct: Math.round(((gemeten - etiket) / etiket) * 10000) / 100, reden: null };
+  return {
+    gemetenMg: gemeten, etiketMg: etiket,
+    pct: Math.round(((gemeten - etiket) / etiket) * 10000) / 100,
+    spreiding,
+    reden: gemiddeldeUitVialen
+      ? ('gemiddelde van ' + gemiddeldeUitVialen.n + ' vialen (' + gemiddeldeUitVialen.min +
+         ' tot ' + gemiddeldeUitVialen.max + ' mg, spreiding ' + gemiddeldeUitVialen.spreidingPct + '%)')
+      : null
+  };
 }
 
 // Welke velden hadden wel tekst maar leverden geen getal op? Dat vastleggen
@@ -1111,8 +1176,8 @@ async function saveReferenceCheck(lab, referentie, check) {
       `INSERT INTO coa_reference_checks
          (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie,
           manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met,
-          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex, componenten)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+          veldvergelijking, velden_vergeleken, velden_afwijkend, metaalcomplex, componenten, vialen, vial_spreiding)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -1137,6 +1202,8 @@ async function saveReferenceCheck(lab, referentie, check) {
          velden_afwijkend = COALESCE(EXCLUDED.velden_afwijkend, coa_reference_checks.velden_afwijkend),
          metaalcomplex = COALESCE(EXCLUDED.metaalcomplex, coa_reference_checks.metaalcomplex),
          componenten = COALESCE(EXCLUDED.componenten, coa_reference_checks.componenten),
+         vialen = COALESCE(EXCLUDED.vialen, coa_reference_checks.vialen),
+         vial_spreiding = COALESCE(EXCLUDED.vial_spreiding, coa_reference_checks.vial_spreiding),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -1153,7 +1220,9 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.datumAnalyse || null, c.vergelekenMet || null,
        vv.velden ? JSON.stringify(vv.velden) : null, vv.vergeleken, vv.afwijkend,
        c.metaalcomplex ? JSON.stringify(c.metaalcomplex) : null,
-       c.componenten ? JSON.stringify(c.componenten) : null]
+       c.componenten ? JSON.stringify(c.componenten) : null,
+       c.vialen ? JSON.stringify(c.vialen) : null,
+       vul.spreiding ? JSON.stringify(vul.spreiding) : null]
     );
     // Is de opdrachtgever een partij die we nog niet kennen? Dan krijgt die
     // zijn eigen plek, zodat hij later op te vragen is als elke leverancier.
@@ -1828,6 +1897,7 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  vialSpreidingUit,
   bewijskrachtVanLab, LAB_TELT_NIET_MEE,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,

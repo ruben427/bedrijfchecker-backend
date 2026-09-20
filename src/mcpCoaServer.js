@@ -189,9 +189,14 @@ async function buildServer() {
         zuiverheid: z.string().optional().describe('De zuiverheid letterlijk zoals hij op de pagina staat, bijvoorbeeld "99.14%". Overtypen wat er staat; het percentage wordt er zelf uit afgeleid.'),
         vulling: z.string().optional().describe('De gemeten hoeveelheid tegenover de geclaimde, letterlijk zoals het er staat, bijvoorbeeld "10.6 mg / 10 mg". Gemeten en etiket worden hieruit afgeleid als je ze niet los meegeeft.'),
         gemetenMg: z.number().optional().describe('De gemeten hoeveelheid in mg. Alleen invullen als je het cijfer zelf hebt gezien.'),
+        vialen: z.array(z.object({
+          gemetenMg: z.number().optional(),
+          purityPercent: z.number().optional()
+        })).optional().describe('Alleen als het rapport HETZELFDE product in meerdere vialen meet, bijvoorbeeld "25.29 mg; 25.19 mg; 25.41 mg" met "99.829%; 99.810%; 99.795%". Elke viaal apart. Niet verwarren met componenten: dat zijn verschillende stoffen in een vial, dit is een stof in meerdere vialen. Middel niet zelf - de spreiding tussen vialen is zelf een waarneming, en de server rekent het gemiddelde en het bereik uit.'),
         componenten: z.array(z.object({
           stof: z.string().describe('De stofnaam zoals het rapport hem noemt'),
           gemetenMg: z.number().optional(),
+          geclaimdMg: z.number().optional().describe('Alleen als het rapport of de shop per stof een claim noemt. Meestal leeg: bij "Glow 70mg" staat nergens wat die 70 per stof claimt.'),
           metaalcomplex: z.object({
             metaal: z.string().optional(), totaalMg: z.number().optional(),
             peptideMg: z.number().optional(), metaalMg: z.number().optional()
@@ -237,7 +242,7 @@ async function buildServer() {
         product: product || null, batchnummer: batchnummer || null,
         zuiverheid: zuiverheid || null, vulling: vulling || null,
         gemetenMg: a.gemetenMg, etiketMg: a.etiketMg, metaalcomplex: a.metaalcomplex || null,
-        componenten: a.componenten || null,
+        componenten: a.componenten || null, vialen: a.vialen || null,
         manufacturer: a.manufacturer || null, datumAnalyse: a.datumAnalyse || null,
         vergelekenMet: a.vergelekenMet || null,
         kopieShop: a.kopieShop || null, bijLab: a.bijLab || null,
