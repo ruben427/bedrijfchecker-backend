@@ -116,7 +116,7 @@ function labsUitCoaData(coaData) {
       l = {
         naam: ruw, spellingen: {}, rapporten: 0, directeVerificatielinks: 0,
         verificatieOpgelost: 0, verificatieMislukt: 0, zonderReferentie: 0,
-        klassen: {}, opdrachtgevers: [], voorbeeldBronnen: []
+        klassen: {}, klassenBron: {}, opdrachtgevers: [], voorbeeldBronnen: []
       };
       perLab.set(sleutel, l);
     }
@@ -138,7 +138,14 @@ function labsUitCoaData(coaData) {
         if (n && l.opdrachtgevers.indexOf(n) === -1 && l.opdrachtgevers.length < 5) l.opdrachtgevers.push(n);
       });
     }
-    if (r.authenticiteitsklasse) l.klassen[r.authenticiteitsklasse] = (l.klassen[r.authenticiteitsklasse] || 0) + 1;
+    if (r.authenticiteitsklasse) {
+      l.klassen[r.authenticiteitsklasse] = (l.klassen[r.authenticiteitsklasse] || 0) + 1;
+      // Waar een klasse vandaan komt is minstens zo belangrijk als de letter.
+      // Een A van de resolver en een A van een mens zijn verschillende
+      // uitspraken, en tot 20 september kwam er ook nog een A van het model.
+      const bron = r.klasseBron || 'onbekend';
+      l.klassenBron[bron] = (l.klassenBron[bron] || 0) + 1;
+    }
     const bron = r.bronUrl || r.verificationUrl || null;
     if (bron && l.voorbeeldBronnen.indexOf(bron) === -1 && l.voorbeeldBronnen.length < 3) l.voorbeeldBronnen.push(bron);
   });
@@ -342,7 +349,7 @@ function stepOpts(key, ctx, waarneming) {
       key: 'coaDataset', title: 'COA-dataset en -authenticiteit',
       searchQueries: [ctx.naam + ' COA certificate of analysis', ctx.naam + ' COA verification lab report number', ctx.naam + ' lab results batch'],
       researchQuery: 'Zoek alle publiek vindbare COA\'s (certificates of analysis) van leverancier "' + ctx.naam + '" (website: ' + ctx.website + '). Verzamel per COA: product, geclaimde en gemeten hoeveelheid met eenheid, purity-percentage en meetmethode, batchnummer, report/task-ID, verification key, laboratoriumnaam, order/ontvangst/analyse/rapportdatum, sterility- en endotoxin-testresultaten indien vermeld, overige contaminantentests, en of het rapport extern controleerbaar is (bijv. via een verification key of publiek opzoeksysteem bij het lab).',
-      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted","accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Gebruik authenticiteitsklasse A (authentiek + goede batchtraceerbaarheid), B (authentiek maar koppeling beperkt), C (niet onafhankelijk verifieerbaar) of D (concreet bewijs van afwijking) exact per het hoofdprotocol; gebruik D alleen met overtuigend bewijs.'
+      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"verificatieDomein":string,"verificatieInstructie":string,"accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. Verzin geen cijfers: onbekende velden worden null. Ken zelf GEEN authenticiteitsklasse toe en geef geen oordeel over echtheid. Dat gebeurt verderop, door de referentie bij het laboratorium zelf op te lossen of door een mens. Lees in plaats daarvan letterlijk uit: "verificatieDomein" is het webadres dat het rapport noemt om de test te controleren (bijvoorbeeld www.janoshik.com/verify/), exact zoals het er staat - ook als het er vreemd uitziet, want een afwijkend domein is zelf een waarneming. "verificatieInstructie" is de volledige zin waarin dat staat. Null als er niets over verificatie op het rapport staat.'
     };
     case 'socialAffiliates': return {
       key: 'socialAffiliates', title: 'Social media, affiliates en commerciële relaties',
@@ -558,7 +565,7 @@ async function runResearchStep(caseId, ctx, key) {
       ((crawl && crawl.verificatieLinks) || []).map((v) => Object.assign({}, v, { lab: v.lab || 'Janoshik' }))
     ).catch(() => ({ opgeslagen: 0, onleesbaar: 0 }));
     if (ctx.images && ctx.images.length) {
-      const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
+      const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
       const uploadedRecords = ((docData && docData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: null, uit: 'upload' }));
       records = records.concat(uploadedRecords);
@@ -664,7 +671,7 @@ async function runResearchStep(caseId, ctx, key) {
         continue;
       }
       try {
-        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"authenticiteitsklasse":"A|B|C|D","authenticiteitsonderbouwing":string,"externalVerification":"verified|pending|unavailable|failed|contradicted"}]}';
+        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string},"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
         noteer(url, 'wordt gelezen');
         const autofetchData = await sampleJsonSafe(autofetchPrompt, { documents: [doc], label: 'coaDataset-autofetch' });
         const autofetchRecords = ((autofetchData && autofetchData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'auto-fetch' }));
@@ -754,12 +761,13 @@ async function runResearchStep(caseId, ctx, key) {
         : (res.resolved === false && !geenReferentie ? 'failed' : 'unavailable');
 
       records[i] = Object.assign({}, r, {
-        // Een eerder door het model geraden klasse wordt hier overschreven:
-        // resolutie bij het lab weegt zwaarder dan een inschatting.
-        // Alleen de resolver mag klasse D toekennen: D betekent 'verzonnen of
-        // ingetrokken ID' en dat is een concrete beschuldiging. Een inschatting
-        // van het model wordt daarom afgetopt op C.
-        authenticiteitsklasse: klasse || (r.authenticiteitsklasse === 'D' ? 'C' : r.authenticiteitsklasse) || null,
+        // De klasse komt uitsluitend uit de resolutie bij het lab. De
+        // aftopping van een door het model geraden D op C is vervallen: het
+        // model stelt sinds 20 september geen klasse meer voor, het leest
+        // alleen. Zie 'Wie kent de klasse toe' in de projectdocumenten.
+        authenticiteitsklasse: klasse || null,
+        klasseBron: klasse ? 'resolver' : null,
+        klasseReden: klasse ? res.status : ('geen klasse: ' + (res.status || 'resolutie leverde geen oordeel')),
         externalVerification: extern,
         verificatie: {
           url: res.url || null,
@@ -797,6 +805,8 @@ async function runResearchStep(caseId, ctx, key) {
         laboratorium: ext.laboratorium || d.lab || null,
         reportId: ext.reportId || d.task_number || null,
         authenticiteitsklasse: d.authenticity_class || null,
+        klasseBron: d.authenticity_class ? 'mens' : null,
+        klasseReden: d.authenticity_class ? ('handmatig vastgesteld door ' + (v.checkedBy || 'een staflid')) : null,
         authenticiteitsonderbouwing: v.note || ('Handmatig geverifieerd bij het lab door ' + (v.checkedBy || 'een staflid') + '.'),
         externalVerification: klasseNaarVerificatie[d.authenticity_class] || 'pending',
         accessStatus: 'readable',
@@ -820,6 +830,20 @@ async function runResearchStep(caseId, ctx, key) {
       );
       return Object.assign({}, r, { quantity: q });
     });
+    // Vangnet: elke record krijgt een expliciete stand van zaken. Een leeg
+    // veld is geen uitspraak, en een leeg veld dat als 'geen bezwaar' gelezen
+    // kan worden is precies wat de methodiek verbiedt (M5, M12).
+    records = records.map((r) => {
+      if (!r) return r;
+      const heeftKlasse = !!r.authenticiteitsklasse;
+      return Object.assign({}, r, {
+        authenticiteitsklasse: r.authenticiteitsklasse || null,
+        klasseBron: heeftKlasse ? (r.klasseBron || 'onbekend') : null,
+        klasseReden: r.klasseReden || (heeftKlasse ? null : 'niet bij het laboratorium gecontroleerd'),
+        externalVerification: r.externalVerification || 'unavailable'
+      });
+    });
+
     const intake = records.map((r, i) => {
       const fields = [];
       if (r.purityPercent != null) fields.push('purity');
