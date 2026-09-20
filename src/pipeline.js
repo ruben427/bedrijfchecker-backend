@@ -10,6 +10,7 @@ const coaStore = require('./coaStore');
 const coaCrawler = require('./coaCrawler');
 const siteShot = require('./siteShot');
 const janoshik = require('./janoshik');
+const ilsLab = require('./ilsLab');
 
 // Versie van de COA-leeslaag. Analyseresultaten worden gecachet op
 // (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
@@ -474,6 +475,40 @@ async function resolveerLabReferenties(lab, max) {
   const uitkomsten = [];
 
   for (const r of openstaand) {
+    // ILS geeft gestructureerde JSON terug in plaats van een PDF. Dat scheelt
+    // de dure leesstap volledig - geen vision, geen kosten per rapport, en de
+    // velden hoeven niet uit een plaatje geraden te worden.
+    if (/ils/i.test(labNaam)) {
+      const res = await ilsLab.resolveer(r.referentie).catch(() => null);
+      if (!res || res.resolved !== true) {
+        await coaStore.saveReferenceCheck(labNaam, r.referentie, {
+          resolvet: res && res.resolved === false ? false : null,
+          notitie: 'Resolver bij ILS: ' + ((res && res.status) || 'geen antwoord'),
+          resolvedUrl: (res && res.url) || null, checkedBy: 'resolver', methode: 'resolver'
+        });
+        uitkomsten.push({ referentie: r.referentie, resolvet: false, reden: (res && res.status) || 'geen antwoord' });
+        continue;
+      }
+      const tests = res.tests.map((t) => t.analyte).filter(Boolean);
+      const notitie = 'Automatisch opgehaald bij ILS. ' +
+        (tests.length ? ('Getest op: ' + tests.join(', ') + '. ') : '') +
+        (res.identiteit ? ('Identiteit: ' + (res.identiteit.verwachteStof || '?') + ' - ' + (res.identiteit.resultaat || '?') + '. ') : '') +
+        (res.verborgenOpCertificaat
+          ? ('LET OP: ' + res.verborgenOpCertificaat + ' uitgevoerde test(en) staan niet op het gedrukte certificaat. ')
+          : '') +
+        'Geen klasse toegekend - dat vraagt een menselijk oordeel.';
+      await coaStore.saveReferenceCheck(labNaam, r.referentie, {
+        resolvet: true, client: res.client || null, product: res.product || null,
+        batchnummer: res.batchnummer || null, resolvedUrl: res.url,
+        notitie, checkedBy: 'resolver', methode: 'resolver'
+      });
+      uitkomsten.push({
+        referentie: r.referentie, resolvet: true, client: res.client, product: res.product,
+        tests, verborgenOpCertificaat: res.verborgenOpCertificaat
+      });
+      continue;
+    }
+
     const doc = await fetchRemoteDocument(r.url);
     if (!doc) {
       await coaStore.saveReferenceCheck(labNaam, r.referentie, {
