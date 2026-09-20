@@ -99,7 +99,12 @@ function lijktOpFoutpagina(kandidaat, fout) {
 // rapport zelf bevatten. Een linkje naar een algemene "verify"-pagina zonder
 // referentie zegt niets en hoort hier niet.
 const LAB_VERIFICATIELINKS = [
-  { lab: 'Janoshik', patroon: /^https:\/\/verify\.janoshik\.com\/tests\/\d+-[^/?#]*_[A-Za-z0-9]+$/i },
+  // LET OP: alleen verify.janoshik.com matchen was te smal. Shops linken net
+  // zo vaak naar janoshik.com/tests/... zonder subdomein. Gemeten op 20
+  // september bij balticpeptides: 20 van de 37 verwijzingen gebruiken de
+  // kale host, en bij zeuspeptides alle vijf. Die vielen stil weg.
+  // janoshik.js accepteerde die hosts allang; alleen dit filter niet.
+  { lab: 'Janoshik', patroon: /^https:\/\/(?:verify\.|www\.|public\.)?janoshik\.com\/tests\/\d+-[^/?#]*_[A-Za-z0-9]+$/i },
   { lab: 'Bridge Analytical', patroon: /^https:\/\/(?:www\.)?bridgeanalytical\.com\/verify\/?\?key=[A-Za-z0-9][A-Za-z0-9-]{4,}$/i },
   { lab: 'Vanguard Laboratory', patroon: /^https:\/\/(?:www\.)?verifiedbyvanguard\.com\/verify\/[A-Za-z0-9-]{8,}$/i },
   { lab: 'ILS Laboratories', patroon: /^https:\/\/portal\.ils-lab\.com\/[^?#]*[A-Za-z0-9-]{6,}$/i }
