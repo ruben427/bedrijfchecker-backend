@@ -119,6 +119,10 @@ async function initCoaSchema() {
     );
   `);
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS methode TEXT NOT NULL DEFAULT 'handmatig';`);
+  // Het gestructureerde labrapport (uitslag per test, identiteit, zuiverheid,
+  // verborgen tests). Tot nu belandde dat alleen in een Nederlandse notitie en
+  // was het na de run weg - niet te filteren, niet te tonen in het rapport.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS rapport JSONB;`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -502,14 +506,17 @@ async function saveReferenceCheck(lab, referentie, check) {
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
-         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
          resolved_url = EXCLUDED.resolved_url, notitie = EXCLUDED.notitie,
          checked_by = EXCLUDED.checked_by, checked_at = EXCLUDED.checked_at,
          methode = EXCLUDED.methode,
+         -- Een menselijke controle heeft geen labrapport bij zich. Die mag het
+         -- rapport dat de resolver eerder ophaalde niet wissen.
+         rapport = COALESCE(EXCLUDED.rapport, coa_reference_checks.rapport),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -518,7 +525,8 @@ async function saveReferenceCheck(lab, referentie, check) {
       [uuidv4(), lab, referentie, c.taskNumber || null,
        typeof c.resolvet === 'boolean' ? c.resolvet : null,
        c.klasse || null, c.client || null, c.product || null, c.batchnummer || null,
-       c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, c.methode || 'handmatig', Date.now()]
+       c.resolvedUrl || null, c.notitie || null, c.checkedBy || null, c.methode || 'handmatig', Date.now(),
+       c.rapport ? JSON.stringify(c.rapport) : null]
     );
     return rows[0] || null;
   } catch (e) {
@@ -529,13 +537,20 @@ async function saveReferenceCheck(lab, referentie, check) {
 
 // Welke referenties van dit lab zijn nog niet opgelost? Dit is de werkvoorraad
 // van de resolver.
-async function openstaandeReferenties(lab, max) {
+async function openstaandeReferenties(lab, max, opties) {
   try {
+    // Met opnieuw=true draaien ook al opgeloste referenties mee. Een door een
+    // mens gecontroleerde referentie blijft er altijd buiten: die uitspraak is
+    // het eindoordeel en wordt niet door een machine overgedaan.
+    const opnieuw = !!(opties && opties.opnieuw);
+    const filter = opnieuw
+      ? `(c.id IS NULL OR c.methode = 'resolver')`
+      : `c.id IS NULL`;
     const { rows } = await pool.query(
       `SELECT DISTINCT r.lab, r.referentie, r.url
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
-       WHERE r.lab = $1 AND c.id IS NULL
+       WHERE r.lab = $1 AND ${filter}
        ORDER BY r.referentie
        LIMIT $2`,
       [lab, Math.max(1, Math.min(Number(max) || 10, 100))]

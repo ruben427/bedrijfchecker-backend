@@ -469,9 +469,9 @@ function heeftIdentiteitsbepaling(r) {
 
 const LAB_RESOLVER_MAX = Number(process.env.LAB_RESOLVER_MAX) || 10;
 
-async function resolveerLabReferenties(lab, max) {
+async function resolveerLabReferenties(lab, max, opties) {
   const labNaam = lab || 'Bridge Analytical';
-  const openstaand = await coaStore.openstaandeReferenties(labNaam, max || LAB_RESOLVER_MAX);
+  const openstaand = await coaStore.openstaandeReferenties(labNaam, max || LAB_RESOLVER_MAX, opties);
   const uitkomsten = [];
 
   for (const r of openstaand) {
@@ -502,7 +502,16 @@ async function resolveerLabReferenties(lab, max) {
       await coaStore.saveReferenceCheck(labNaam, r.referentie, {
         resolvet: true, client: res.client || null, product: res.product || null,
         batchnummer: res.batchnummer || null, resolvedUrl: res.url,
-        notitie, checkedBy: 'resolver', methode: 'resolver'
+        notitie, checkedBy: 'resolver', methode: 'resolver',
+        // Het hele labantwoord bewaren, niet alleen de samenvatting in proza.
+        // Een percentage in een Nederlandse zin is niet te filteren.
+        rapport: {
+          bron: 'ils', opgehaaldOp: Date.now(), coaNumber: res.coaNumber || null,
+          identiteit: res.identiteit, zuiverheid: res.zuiverheid, gehalte: res.gehalte,
+          tests: res.tests, verborgenOpCertificaat: res.verborgenOpCertificaat,
+          ondertekenaar: res.ondertekenaar || null, testType: res.testType || null,
+          clientWebsite: res.clientWebsite || null
+        }
       });
       uitkomsten.push({
         referentie: r.referentie, resolvet: true, client: res.client, product: res.product,

@@ -452,7 +452,9 @@ app.post('/api/admin/coa/references/resolve', rl.caseAction, auth.requireOwnerTo
     const b = req.body || {};
     const lab = (b.lab || 'Bridge Analytical').trim();
     const max = Number(b.max) || 5;
-    const r = await pipeline.resolveerLabReferenties(lab, max);
+    // opnieuw=true laat ook al door de resolver opgeloste referenties mee
+    // draaien; menselijke controles blijven er altijd buiten.
+    const r = await pipeline.resolveerLabReferenties(lab, max, { opnieuw: b.opnieuw === true });
     res.json(r);
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
