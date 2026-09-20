@@ -29,6 +29,13 @@ const db = require('./db');
 // Claude-call, dus bewust begrensd zodat één leverancier met veel
 // COA-vermeldingen de stap niet onnodig lang maakt.
 const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 30;
+// Tijdsbudget voor de documentlus. Een aantal alleen is geen begrenzing: 30
+// documenten die elk een vision-call nodig hebben kunnen bij tegenslag (een
+// herkansing van 120s per stuk) een uur duren. Gemeten op 20 september: de
+// COA-stap van balticpeptides stond na twintig minuten nog te draaien tegen
+// een gemiddelde van 45 seconden. Wat niet binnen het budget past wordt
+// overgeslagen EN gemeld - stilzwijgend stoppen is erger dan lang duren.
+const COA_LUS_BUDGET_MS = Number(process.env.COA_LUS_BUDGET_MS) || 6 * 60 * 1000;
 const LAB_VERIFY_MAX = Number(process.env.LAB_VERIFY_MAX) || 30;
 
 const EVIDENCE_RULES = [
@@ -864,6 +871,8 @@ async function runResearchStep(caseId, ctx, key) {
     // een uitlegbare steekproef; 'de eerste N die toevallig langskwamen' niet.
     autofetchCandidates.sort((a, b) => (a.prioriteit - b.prioriteit));
     const lusLog = {
+      overgeslagenDoorTijd: 0,
+      budgetMs: COA_LUS_BUDGET_MS,
       recordsVoorLus: records.length,
       kandidaten: autofetchCandidates.length,
       kandidatenUitCrawl: autofetchCandidates.filter((k) => k.prioriteit === 0).length,
@@ -878,7 +887,16 @@ async function runResearchStep(caseId, ctx, key) {
         ? (' (van de ' + autofetchCandidates.length + ' gevonden; de limiet staat op ' + COA_AUTOFETCH_MAX + ')')
         : ''));
     let behandeldNr = 0;
+    const lusStart = Date.now();
+    let overgeslagenDoorTijd = 0;
     for (const { url, idx } of teBehandelen) {
+      if (Date.now() - lusStart > COA_LUS_BUDGET_MS) {
+        overgeslagenDoorTijd++;
+        lusLog.overgeslagenDoorTijd = overgeslagenDoorTijd;
+        noteer(url, 'overgeslagen: tijdsbudget van de documentlus bereikt');
+        archiveNotes.push({ url, status: 'overgeslagen', reden: 'tijdsbudget bereikt' });
+        continue;
+      }
       lusLog.behandeld++;
       behandeldNr++;
       // Stap 1: kennen we dit document al? Zo ja, hergebruik de analyse en
@@ -977,6 +995,11 @@ async function runResearchStep(caseId, ctx, key) {
         // de oorspronkelijke AI-inschatting voor deze COA ongewijzigd staan.
       }
     }
+    if (overgeslagenDoorTijd) {
+      await meldStap(caseId, 'LET OP: ' + overgeslagenDoorTijd + ' document(en) overgeslagen - het tijdsbudget van ' +
+        Math.round(COA_LUS_BUDGET_MS / 60000) + ' minuten voor deze lus was op');
+    }
+
     // ---- Labverificatie ----
     // Een task-ID is pas bewijs als het oplost naar een record op de server
     // van het lab. Klasse D (verzonnen of ingetrokken ID) kost niets om vast
