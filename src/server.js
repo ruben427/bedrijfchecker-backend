@@ -401,6 +401,8 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdm
   try {
     const rijen = await coaStore.referentiesMetControle(req.query.lab || null, req.query.max);
     const metControle = rijen.filter((r) => r.controle);
+    const perLab = {};
+    rijen.forEach((r) => { const k = r.labNet || r.lab || 'onbekend'; perLab[k] = (perLab[k] || 0) + 1; });
     const clients = {};
     metControle.forEach((r) => {
       const c = (r.controle.client || 'onbekend').toLowerCase();
@@ -412,6 +414,7 @@ app.get('/api/admin/coa/references', rl.read, auth.requireOwnerToken, requireAdm
       gecontroleerd: metControle.length,
       opgelost: metControle.filter((r) => r.controle.resolvet === true).length,
       nietOpgelost: metControle.filter((r) => r.controle.resolvet === false).length,
+      perLab,
       perOpdrachtgever: clients,
       referenties: rijen
     });

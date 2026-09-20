@@ -414,7 +414,11 @@ async function recordReferences(supplierKey, lijst) {
   let opgeslagen = 0;
   let onleesbaar = 0;
   for (const v of items) {
-    const lab = v.lab || 'Janoshik';
+    // Normaliseren bij het OPSLAAN, niet pas in het overzicht. Anders belandt
+    // "ILS Laboratories, 8222 Vickers St, Suite 106, San Diego, CA 92111" als
+    // eigen lab in de tabel en vindt een zoekopdracht op "ILS Laboratories"
+    // niets - en de resolver haalt zijn werkvoorraad op dezelfde manier op.
+    const lab = normaliseerLab(v.lab || 'Janoshik').naam;
     const p = referentieUitUrl(lab, v.url);
     if (!p) { onleesbaar++; continue; }
     try {
@@ -520,7 +524,8 @@ async function recordReferencesUitDocumenten(supplierKey, items) {
   let opgeslagen = 0;
   let zonderUrl = 0;
   for (const v of lijst) {
-    const labSlug = String(v.lab).toLowerCase().replace(/[^a-z0-9]/g, '') || 'onbekend';
+    const lab = normaliseerLab(v.lab).naam;
+    const labSlug = lab.toLowerCase().replace(/[^a-z0-9]/g, '') || 'onbekend';
     const url = v.url || ('labref://' + labSlug + '/' + encodeURIComponent(v.referentie));
     if (!v.url) zonderUrl++;
     try {
@@ -528,7 +533,7 @@ async function recordReferencesUitDocumenten(supplierKey, items) {
         `INSERT INTO coa_references (id, supplier_key, lab, referentie, task_number, sample, ref_key, url, context, gevonden_op, first_seen_at, last_seen_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
          ON CONFLICT (supplier_key, url) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
-        [uuidv4(), supplierKey, v.lab, v.referentie, v.taskNumber || null, v.sample || null,
+        [uuidv4(), supplierKey, lab, v.referentie, v.taskNumber || null, v.sample || null,
          v.key || null, url, (v.context || 'gelezen van het document zelf').slice(0, 300),
          v.gevondenOp || null, now]
       );
@@ -572,7 +577,8 @@ async function referentiesMetControle(lab, max) {
       params
     );
     return rows.map((r) => ({
-      lab: r.lab, referentie: r.referentie, url: r.url, leveranciers: r.leveranciers || [],
+      lab: r.lab, labNet: normaliseerLab(r.lab).naam,
+      referentie: r.referentie, url: r.url, leveranciers: r.leveranciers || [],
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, product: r.product,
         batchnummer: r.batchnummer, notitie: r.notitie, checkedBy: r.checked_by,
