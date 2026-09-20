@@ -377,8 +377,17 @@ function getTransportClass() {
 // Registreert POST /mcp. Wordt in server.js VOOR de globale
 // express.json({limit:'2mb'}) gemount, met een eigen, ruimere limiet — een
 // base64-gecodeerd PDF is al gauw een derde groter dan het bestand zelf.
+// Waarom meer dan een pad? De client onthoudt de toollijst bij de URL waarop
+// een connector is aangemaakt, en ververst die niet bij opnieuw verbinden: op
+// 20 september toonden twee onafhankelijke sessies nog de lijst van 19
+// september (vier tools, verifieer_labreferentie met negen velden), terwijl de
+// server er zes met eenentwintig velden had. Vier keer los- en vastkoppelen
+// veranderde niets. Een pad dat de client nog nooit heeft gezien dwingt wel een
+// verse lijst af. /mcp blijft werken voor wie al gekoppeld is.
+const MCP_PADEN = ['/mcp', '/mcp/v2'];
+
 function mount(app) {
-  app.post('/mcp', requireStaffToken, express.json({ limit: '25mb' }), async (req, res) => {
+  app.post(MCP_PADEN, requireStaffToken, express.json({ limit: '25mb' }), async (req, res) => {
     try {
       const [server, TransportClass] = await Promise.all([getServer(), getTransportClass()]);
       const transport = new TransportClass({ sessionIdGenerator: undefined, enableJsonResponse: true });
@@ -392,4 +401,4 @@ function mount(app) {
   });
 }
 
-module.exports = { mount , toolNamen};
+module.exports = { mount, toolNamen, MCP_PADEN };
