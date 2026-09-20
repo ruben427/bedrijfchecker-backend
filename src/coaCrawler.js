@@ -16,7 +16,13 @@ const { isPublicHttpUrl } = require('./urlGuard');
 
 const TIMEOUT_MS = Number(process.env.COA_CRAWL_TIMEOUT_MS) || 15000;
 const MAX_HTML_BYTES = Number(process.env.COA_CRAWL_MAX_HTML) || 3 * 1024 * 1024;
-const MAX_INDEX_PAGES = Number(process.env.COA_CRAWL_MAX_PAGES) || 4;
+// Vier was te krap zodra een shop per product een eigen COA-subpagina heeft.
+// Bij europapeptides staan de labverwijzingen niet op /lab-results maar op
+// /lab-results/<product>, vijf stuks. Met vier pagina's haalden we de
+// overzichtspagina op, vonden daar nul verwijzingen, en stopten.
+const MAX_INDEX_PAGES = Number(process.env.COA_CRAWL_MAX_PAGES) || 12;
+// Hoeveel subpagina's we maximaal bijzetten vanaf een gevonden COA-pagina.
+const MAX_SUBPAGINAS = Number(process.env.COA_CRAWL_MAX_SUBPAGES) || 24;
 const MAX_DOCUMENTS = Number(process.env.COA_CRAWL_MAX_DOCS) || 80;
 
 // Zelfde UA als docFetcher: eerlijk over wie we zijn.
@@ -313,6 +319,7 @@ async function crawlCoaIndex(website) {
 
   // 3. Kandidaten aflopen tot we er genoeg hebben die echt documenten bevatten.
   const tried = new Set();
+  let subpaginas = 0;
   for (const url of candidates) {
     if (indexPages.length >= MAX_INDEX_PAGES) break;
     const norm = url.replace(/\/+$/, '/');
@@ -339,6 +346,29 @@ async function crawlCoaIndex(website) {
         verificatieLinks.set(l.url, { url: l.url, lab: labVanLink, context: (l.text || '').slice(0, 200), gevondenOp: page.finalUrl });
       }
     }
+    // Een COA-overzichtspagina die zelf geen verwijzingen draagt, linkt ze vaak
+    // per product door: /lab-results -> /lab-results/ghk-cu. Die kinderen liepen
+    // we nooit af, want kandidaten kwamen alleen van de homepage. Gemeten bij
+    // europapeptides: twee Janoshik-verwijzingen die we zo volledig misten.
+    // Alleen echte kinderen van DEZE pagina, zodat dit geen sitebrede crawl wordt.
+    if (INDEX_HINT.test(url) && subpaginas < MAX_SUBPAGINAS) {
+      let basispad = null;
+      try { basispad = new URL(page.finalUrl).pathname.replace(/\/+$/, ''); } catch (e) { basispad = null; }
+      if (basispad && basispad !== '') {
+        for (const l of links) {
+          if (subpaginas >= MAX_SUBPAGINAS) break;
+          if (DOC_EXT.test(l.url) || !sameSite(l.url, root)) continue;
+          let pad;
+          try { pad = new URL(l.url).pathname.replace(/\/+$/, ''); } catch (e) { continue; }
+          if (pad === basispad || !pad.startsWith(basispad + '/')) continue;
+          const norm2 = l.url.replace(/\/+$/, '/');
+          if (tried.has(norm2)) continue;
+          candidates.push(l.url);
+          subpaginas++;
+        }
+      }
+    }
+
     const bruikbaar = links.filter((l) => DOC_EXT.test(l.url) && !THUMBNAIL.test(l.url) &&
       !SITE_INRICHTING.test(l.url) && !INRICHTING_NAAM.test(l.url.split('/').pop() || ''));
     const aangelinkt = bruikbaar.filter((l) => !l.uitAfbeelding);
