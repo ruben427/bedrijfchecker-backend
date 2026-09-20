@@ -835,12 +835,24 @@ async function runResearchStep(caseId, ctx, key) {
     // kan worden is precies wat de methodiek verbiedt (M5, M12).
     records = records.map((r) => {
       if (!r) return r;
-      const heeftKlasse = !!r.authenticiteitsklasse;
+      // Alleen een klasse van de resolver of van een mens telt. Alles anders
+      // komt uit een uitlezing van voor 20 september, toen het model zelf nog
+      // een klasse voorstelde. Die staan nog in het archief (de
+      // extractorversie is bewust niet opgehoogd) en zouden anders via de
+      // cache blijven meetellen in de categorisatie. Labelen is niet genoeg:
+      // een gok die meeweegt is een gok die meeweegt.
+      const geldigeBron = r.klasseBron === 'resolver' || r.klasseBron === 'mens';
+      const klasse = geldigeBron ? r.authenticiteitsklasse : null;
+      const verouderd = !!r.authenticiteitsklasse && !geldigeBron;
       return Object.assign({}, r, {
-        authenticiteitsklasse: r.authenticiteitsklasse || null,
-        klasseBron: heeftKlasse ? (r.klasseBron || 'onbekend') : null,
-        klasseReden: r.klasseReden || (heeftKlasse ? null : 'niet bij het laboratorium gecontroleerd'),
-        externalVerification: r.externalVerification || 'unavailable'
+        authenticiteitsklasse: klasse || null,
+        klasseBron: klasse ? r.klasseBron : null,
+        klasseReden: klasse
+          ? (r.klasseReden || null)
+          : (verouderd
+              ? 'klasse uit een oudere uitlezing genegeerd: niet bij het lab vastgesteld'
+              : 'niet bij het laboratorium gecontroleerd'),
+        externalVerification: klasse ? (r.externalVerification || 'pending') : 'unavailable'
       });
     });
 
