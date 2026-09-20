@@ -604,19 +604,33 @@ function veldvergelijkingUit(c) {
 
   const velden = [];
   for (const paar of janoshik.TE_VERGELIJKEN) {
-    const sleutel = paar[0], label = paar[1];
+    const sleutel = paar[0], label = paar[1], soort = paar[2];
     const ruwA = shop ? shop[sleutel] : null;
     const ruwB = lab ? lab[sleutel] : null;
-    const a = janoshik.normaliseer(ruwA);
-    const b = janoshik.normaliseer(ruwB);
-    if (a == null && b == null) continue;
-    velden.push({
-      veld: label, sleutel,
-      opKopieLeverancier: ruwA != null && ruwA !== '' ? ruwA : null,
-      bijHetLab: ruwB != null && ruwB !== '' ? ruwB : null,
-      // null = niet te vergelijken omdat een kant ontbreekt. Nooit false.
+    // Per veld zijn eigen soort: een datum als datum, een percentage als
+    // getal. Tekstvergelijking op die velden levert verschillen op die er
+    // geen zijn.
+    const a = janoshik.normaliseerVeld(ruwA, soort);
+    const b = janoshik.normaliseerVeld(ruwB, soort);
+    const ingevuld = (x) => x != null && x !== '';
+    if (!ingevuld(ruwA) && !ingevuld(ruwB)) continue;
+    const rij = {
+      veld: label, sleutel, soort,
+      opKopieLeverancier: ingevuld(ruwA) ? ruwA : null,
+      bijHetLab: ingevuld(ruwB) ? ruwB : null,
+      // null = niet te vergelijken. Dat is een kant die ontbreekt, maar ook
+      // een datum die niet eenduidig te lezen is. Nooit false.
       gelijk: (a == null || b == null) ? null : (a === b)
-    });
+    };
+    // Waarom niet vergeleken, als er wel aan beide kanten iets stond.
+    if (rij.gelijk === null && ingevuld(ruwA) && ingevuld(ruwB)) {
+      rij.reden = 'niet eenduidig te lezen als ' + soort;
+    }
+    if (rij.gelijk === false && soort === 'naam') {
+      const ka = janoshik.kaleNaam(ruwA), kb = janoshik.kaleNaam(ruwB);
+      if (ka && kb && ka === kb) rij.bijnaGelijk = true;
+    }
+    velden.push(rij);
   }
   if (!velden.length) return { velden: null, vergeleken: null, afwijkend: null };
   return {

@@ -154,11 +154,75 @@ async function resolveer(velden) {
 // Stap 2: vergelijk wat de leverancier toont met wat het lab teruggeeft.
 // Alleen velden die aan beide kanten ingevuld zijn worden vergeleken; een
 // ontbrekend veld is geen conflict.
+// Elk veld heeft zijn eigen soort, want tekstvergelijking op een datum of een
+// percentage levert vals-positieve verschillen op. Gemeten op 20 september:
+// "2026-07-20" tegen "20 July 2026" en 99.4 tegen "99.4%" telden allebei als
+// verschil, terwijl er niets verschilt. Annemarie wees hier terecht op.
 const TE_VERGELIJKEN = [
-  ['client', 'Client'], ['manufacturer', 'Manufacturer'], ['batchnummer', 'Batch'],
-  ['product', 'Sample'], ['purityPercent', 'Purity'], ['orderDate', 'Testing ordered'],
-  ['receivedDate', 'Sample received'], ['analysisDate', 'Analysis conducted']
+  ['client', 'Client', 'naam'], ['manufacturer', 'Manufacturer', 'naam'],
+  ['batchnummer', 'Batch', 'code'], ['product', 'Sample', 'tekst'],
+  ['purityPercent', 'Purity', 'getal'], ['orderDate', 'Testing ordered', 'datum'],
+  ['receivedDate', 'Sample received', 'datum'], ['analysisDate', 'Analysis conducted', 'datum']
 ];
+
+const MAANDEN = {
+  jan: 1, feb: 2, mar: 3, mrt: 3, apr: 4, may: 5, mei: 5, jun: 6, jul: 7,
+  aug: 8, sep: 9, oct: 10, okt: 10, nov: 11, dec: 12
+};
+
+// Naar JJJJ-MM-DD, of null als het niet eenduidig te lezen is. Een datum die
+// we niet zeker weten wordt NIET vergeleken - liever geen oordeel dan een
+// verkeerd oordeel. 07/08/2026 kan 7 augustus of 8 juli zijn; dat raden we
+// niet.
+function naarDatum(v) {
+  if (v == null) return null;
+  const t = String(v).trim();
+  if (!t) return null;
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return iso(m[1], m[2], m[3]);
+  m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2]);
+    // Allebei <= 12: niet te zeggen welke de dag is.
+    if (a <= 12 && b <= 12 && a !== b) return null;
+    return a > 12 ? iso(m[3], b, a) : iso(m[3], a, b);
+  }
+  m = t.match(/^(\d{1,2})\s+([a-z]{3,})\.?,?\s+(\d{4})$/i);
+  if (m) { const mm = MAANDEN[m[2].slice(0, 3).toLowerCase()]; return mm ? iso(m[3], mm, m[1]) : null; }
+  m = t.match(/^([a-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})$/i);
+  if (m) { const mm = MAANDEN[m[1].slice(0, 3).toLowerCase()]; return mm ? iso(m[3], mm, m[2]) : null; }
+  return null;
+}
+function iso(j, m, d) {
+  const mm = Number(m), dd = Number(d);
+  if (!(mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31)) return null;
+  return String(j) + '-' + String(mm).padStart(2, '0') + '-' + String(dd).padStart(2, '0');
+}
+
+// Losse achtervoegsels en domeinvormen die bedrijfsnamen laten verschillen
+// zonder dat er iets verschilt. Wordt NOOIT gebruikt om iets gelijk te
+// verklaren - alleen om een bijna-gelijk geval te markeren voor een mens.
+function kaleNaam(v) {
+  return String(v == null ? '' : v).toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/^www\./, '')
+    .replace(/\.(com|net|org|eu|nl|co\.uk)\b/g, '')
+    .replace(/\b(b\.?v\.?|ltd\.?|llc|inc\.?|gmbh|s\.?r\.?o\.?|labs?|laboratories|analytical)\b/g, '')
+    .replace(/[^a-z0-9]+/g, '').trim();
+}
+
+function normaliseerVeld(v, soort) {
+  if (v == null || v === '') return null;
+  if (soort === 'datum') return naarDatum(v);
+  if (soort === 'getal') {
+    const n = Number(String(v).replace('%', '').replace(',', '.').trim());
+    return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : null;
+  }
+  if (soort === 'code') {
+    const c = String(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return c || null;
+  }
+  return normaliseer(v);
+}
 
 function normaliseer(v) {
   if (v == null) return null;
@@ -169,12 +233,21 @@ function normaliseer(v) {
 function vergelijkVelden(leverancier, lab) {
   const verschillen = [];
   const gelijk = [];
-  for (const [sleutel, label] of TE_VERGELIJKEN) {
-    const a = normaliseer(leverancier && leverancier[sleutel]);
-    const b = normaliseer(lab && lab[sleutel]);
+  for (const [sleutel, label, soort] of TE_VERGELIJKEN) {
+    const a = normaliseerVeld(leverancier && leverancier[sleutel], soort);
+    const b = normaliseerVeld(lab && lab[sleutel], soort);
     if (a == null || b == null) continue;
-    if (a === b) gelijk.push(label);
-    else verschillen.push({ veld: label, opKopieLeverancier: leverancier[sleutel], bijHetLab: lab[sleutel] });
+    if (a === b) { gelijk.push(label); continue; }
+    const rij = { veld: label, opKopieLeverancier: leverancier[sleutel], bijHetLab: lab[sleutel] };
+    // Verschillen namen alleen in schrijfwijze, achtervoegsel of domein? Dan
+    // blijft het een verschil, maar met een vlag erbij. Dat oordeel is voor
+    // een mens, niet voor een reguliere expressie.
+    if (soort === 'naam') {
+      const ka = kaleNaam(leverancier && leverancier[sleutel]);
+      const kb = kaleNaam(lab && lab[sleutel]);
+      if (ka && kb && ka === kb) rij.bijnaGelijk = true;
+    }
+    verschillen.push(rij);
   }
   return { gelijk, verschillen };
 }
@@ -192,5 +265,5 @@ module.exports = {
   vergelijkVelden, bepaalKlasse, isOfficieleHost, OFFICIELE_HOSTS,
   // Gedeeld met de handmatige route, zodat een menselijke vergelijking exact
   // dezelfde velden en dezelfde normalisatie gebruikt als de resolver.
-  TE_VERGELIJKEN, normaliseer
+  TE_VERGELIJKEN, normaliseer, normaliseerVeld, kaleNaam, naarDatum
 };
