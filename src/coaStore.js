@@ -697,13 +697,20 @@ function veldvergelijkingUit(c) {
       const ka = janoshik.kaleNaam(ruwA), kb = janoshik.kaleNaam(ruwB);
       if (ka && kb && ka === kb) rij.bijnaGelijk = true;
     }
+    if (rij.gelijk === false && soort === 'productnaam' && janoshik.naamLijktOp(ruwA, ruwB)) {
+      rij.bijnaGelijk = true;
+    }
     velden.push(rij);
   }
   if (!velden.length) return { velden: null, vergeleken: null, afwijkend: null };
   return {
     velden,
     vergeleken: velden.filter((v) => v.gelijk !== null).length,
-    afwijkend: velden.filter((v) => v.gelijk === false).length
+    // Een verschil dat alleen een schrijfwijze is telt apart. Anders schreeuwt
+    // de telling: vier van de zes vergelijkingen op 20 september sloegen aan op
+    // "SS-31 50mg" tegenover "SS-31", en dat is geen bevinding.
+    afwijkend: velden.filter((v) => v.gelijk === false && !v.bijnaGelijk).length,
+    afwijkendAlleenSchrijfwijze: velden.filter((v) => v.gelijk === false && v.bijnaGelijk).length
   };
 }
 

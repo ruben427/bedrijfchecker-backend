@@ -160,7 +160,7 @@ async function resolveer(velden) {
 // verschil, terwijl er niets verschilt. Annemarie wees hier terecht op.
 const TE_VERGELIJKEN = [
   ['client', 'Client', 'naam'], ['manufacturer', 'Manufacturer', 'naam'],
-  ['batchnummer', 'Batch', 'code'], ['product', 'Sample', 'tekst'],
+  ['batchnummer', 'Batch', 'code'], ['product', 'Sample', 'productnaam'],
   ['purityPercent', 'Purity', 'getal'], ['orderDate', 'Testing ordered', 'datum'],
   ['receivedDate', 'Sample received', 'datum'], ['analysisDate', 'Analysis conducted', 'datum']
 ];
@@ -210,6 +210,30 @@ function kaleNaam(v) {
     .replace(/[^a-z0-9]+/g, '').trim();
 }
 
+// Productnamen: de shop noemt de dosering mee, het lab meestal niet.
+// "SS-31 50mg" tegenover "SS-31" is geen verschil maar een schrijfwijze.
+// Gemeten op 20 september: vier van de zes vergelijkingen sloegen hierop aan.
+//
+// We maken ze NIET gelijk - "BPC-157" tegenover "Tirzepatide" moet een verschil
+// blijven. In plaats daarvan blijft het een verschil met een vlag erbij, zodra
+// elk woord van de kortste kant in de langste terugkomt. Zo verdwijnt er niets
+// uit beeld en schreeuwt de telling niet onnodig.
+function tokensVan(v) {
+  return String(v == null ? '' : v).toLowerCase()
+    .replace(/\b\d+(?:[.,]\d+)?\s*(mg|mcg|ug|µg|g|iu|ml)\b/g, ' ')   // dosering eruit
+    .split(/[^a-z0-9]+/).filter((t) => t.length > 0);
+}
+
+function naamLijktOp(a, b) {
+  const ta = tokensVan(a), tb = tokensVan(b);
+  if (!ta.length || !tb.length) return false;
+  // Beide richtingen proberen: bij evenveel woorden is niet te zeggen welke
+  // kant de uitgebreide schrijfwijze is. "cjc1295 no dac" en "cjc no dac"
+  // hebben er allebei drie, en alleen een van de twee richtingen klopt.
+  const past = (kort, lang) => kort.every((t) => lang.join('').includes(t));
+  return past(ta, tb) || past(tb, ta);
+}
+
 function normaliseerVeld(v, soort) {
   if (v == null || v === '') return null;
   if (soort === 'datum') return naarDatum(v);
@@ -217,6 +241,7 @@ function normaliseerVeld(v, soort) {
     const n = Number(String(v).replace('%', '').replace(',', '.').trim());
     return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : null;
   }
+  if (soort === 'productnaam') return normaliseer(v);
   if (soort === 'code') {
     const c = String(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
     return c || null;
@@ -247,6 +272,9 @@ function vergelijkVelden(leverancier, lab) {
       const kb = kaleNaam(lab && lab[sleutel]);
       if (ka && kb && ka === kb) rij.bijnaGelijk = true;
     }
+    if (soort === 'productnaam' && naamLijktOp(leverancier && leverancier[sleutel], lab && lab[sleutel])) {
+      rij.bijnaGelijk = true;
+    }
     verschillen.push(rij);
   }
   return { gelijk, verschillen };
@@ -265,5 +293,5 @@ module.exports = {
   vergelijkVelden, bepaalKlasse, isOfficieleHost, OFFICIELE_HOSTS,
   // Gedeeld met de handmatige route, zodat een menselijke vergelijking exact
   // dezelfde velden en dezelfde normalisatie gebruikt als de resolver.
-  TE_VERGELIJKEN, normaliseer, normaliseerVeld, kaleNaam, naarDatum
+  TE_VERGELIJKEN, normaliseer, normaliseerVeld, kaleNaam, naarDatum, naamLijktOp
 };
