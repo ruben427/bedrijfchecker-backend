@@ -673,6 +673,27 @@
   // 15 sep) — toont de stappen die voor deze run relevant zijn
   // (runRijenVoorCase), zonder retry-knoppen; renderProgress() hieronder
   // blijft de bron voor fout/gestopt/klaar, waar retry wel zinvol is.
+  // Live-logje binnen de lopende stap. Zonder dit staat er minutenlang alleen
+  // "bezig" en is niet te zien of er nog iets gebeurt. De tijdstempels zijn
+  // het eigenlijke signaal: lopen die op, dan leeft hij nog.
+  function renderStapLog(c){
+    var st = c && c.currentStep;
+    var log = (st && Array.isArray(st.log)) ? st.log : [];
+    if (!st) return '';
+    if (!log.length){
+      return '<div class="stap-log leeg">Nog geen tussenstand van deze stap.</div>';
+    }
+    var regels = log.slice().reverse().map(function(r, i){
+      var sinds = fmtDuration(Date.now() - r.t);
+      return '<div class="stap-log-regel' + (i === 0 ? ' nieuwste' : '') + '">' +
+        '<span class="stap-log-tijd">' + escapeHtml(sinds) + ' geleden</span>' +
+        '<span class="stap-log-tekst">' + escapeHtml(r.tekst) + '</span></div>';
+    }).join('');
+    return '<details class="stap-log"><summary>' +
+      escapeHtml(st.detail || log[log.length - 1].tekst) +
+      '</summary><div class="stap-log-body">' + regels + '</div></details>';
+  }
+
   function renderRunningCard(c){
     var progress = c.progress || [];
     var doneMap = {};
@@ -728,7 +749,8 @@
         return sep + '<div class="run-step active"><span class="step-icon active"></span>' +
           '<span class="run-step-label">' + escapeHtml(rij.label) + '</span>' +
           '<span class="run-step-meta">bezig ' + fmtDuration(Date.now() - c.currentStep.startedAt) +
-          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(rij.key)) + '</span></span></div>';
+          ' <span class="avg">&middot; gemiddeld ' + fmtDuration(avgForStep(rij.key)) + '</span></span></div>' +
+          renderStapLog(c);
       }
       return sep + '<div class="run-step pending"><span class="step-icon pending"></span>' +
         '<span class="run-step-label">' + escapeHtml(rij.label) + '</span></div>';
@@ -852,10 +874,25 @@
       var done = doneMap[s.key];
       var isCurrent = c.status === 'bezig' && c.currentStep && c.currentStep.key === s.key;
       var isRetryingThis = running && s.key === runningStepKey;
-      var cls = done ? 'done' : ((isCurrent || isRetryingThis) ? 'active' : '');
+      // Wat de backend na een retry sowieso opnieuw doet (zie retry-step in
+      // server.js): de stap zelf, daarna categorisatie, scoring en de twee
+      // rapportstappen. Die stonden groen terwijl ze overschreven werden.
+      // Geel betekent hier: staat er nog, maar wordt zo vervangen.
+      var isStale = false;
+      if (running && runningStepKey && !isRetryingThis && done){
+        if (runningStepKey === 'reportA' || runningStepKey === 'reportB'){
+          isStale = (s.key === 'reportA' || s.key === 'reportB');
+        } else {
+          isStale = ['categorize', 'reportA', 'reportB'].indexOf(s.key) !== -1;
+        }
+      }
+      var cls = isRetryingThis ? 'active busy'
+        : (isStale ? 'stale' : (done ? 'done' : (isCurrent ? 'active' : '')));
       var hint = '';
       if (isRetryingThis){
         hint = '<span class="step-hint">bezig…</span>';
+      } else if (isStale){
+        hint = '<span class="step-hint">wordt opnieuw gedaan</span>';
       } else if (done){
         hint = '<span class="step-hint">' + fmtDuration(done.durationMs) + '</span>';
       } else if (isCurrent){
@@ -865,7 +902,13 @@
         hint = '<span class="step-hint">gemiddeld ' + fmtDuration(stepStats[s.key].avgMs) + '</span>';
       }
       var retryBtn = (done && allowRetry && !running) ? '<button type="button" class="step-retry btn ghost" data-key="' + s.key + '">opnieuw</button>' : '';
-      return '<div class="progress-item ' + cls + '"><span class="dot"></span><span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
+      // Een draaiende stap krijgt een loader in plaats van een stip; anders is
+      // aan niets te zien dat hij bezig is.
+      var marker = isRetryingThis
+        ? '<span class="spinner" aria-hidden="true"></span>'
+        : '<span class="dot"></span>';
+      var rij = '<div class="progress-item ' + cls + '">' + marker + '<span class="step-label">' + escapeHtml(s.label) + '</span>' + hint + retryBtn + '</div>';
+      return isCurrent ? (rij + renderStapLog(c)) : rij;
     }
 
     // Eerst wat gedraaid is, in de volgorde waarin het draaide. Daarna pas
