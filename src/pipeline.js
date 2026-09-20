@@ -498,6 +498,13 @@ async function resolveerLabReferenties(lab, max, opties) {
         (res.verborgenOpCertificaat
           ? ('LET OP: ' + res.verborgenOpCertificaat + ' uitgevoerde test(en) staan niet op het gedrukte certificaat. ')
           : '') +
+        (res.naamKomtOvereen === false
+          ? ('LET OP: het certificaat noemt het product "' + (res.product || '?') +
+             '", maar de identiteit is getoetst tegen ' + (res.getoetsteStof || '?') + '. ')
+          : '') +
+        (res.testsZonderNorm && res.testsZonderNorm.length
+          ? ('Zonder norm gerapporteerd (kan niet zakken): ' + res.testsZonderNorm.join(', ') + '. ')
+          : '') +
         'Geen klasse toegekend - dat vraagt een menselijk oordeel.';
       await coaStore.saveReferenceCheck(labNaam, r.referentie, {
         resolvet: true, client: res.client || null, product: res.product || null,
@@ -509,6 +516,8 @@ async function resolveerLabReferenties(lab, max, opties) {
           bron: 'ils', opgehaaldOp: Date.now(), coaNumber: res.coaNumber || null,
           identiteit: res.identiteit, zuiverheid: res.zuiverheid, gehalte: res.gehalte,
           tests: res.tests, verborgenOpCertificaat: res.verborgenOpCertificaat,
+          naamKomtOvereen: res.naamKomtOvereen, getoetsteStof: res.getoetsteStof,
+          testsZonderNorm: res.testsZonderNorm,
           ondertekenaar: res.ondertekenaar || null, testType: res.testType || null,
           clientWebsite: res.clientWebsite || null
         }
@@ -517,6 +526,8 @@ async function resolveerLabReferenties(lab, max, opties) {
         referentie: r.referentie, resolvet: true, client: res.client, product: res.product,
         batchnummer: res.batchnummer || null,
         identiteit: res.identiteit, zuiverheid: res.zuiverheid, gehalte: res.gehalte,
+        naamKomtOvereen: res.naamKomtOvereen, getoetsteStof: res.getoetsteStof,
+        testsZonderNorm: res.testsZonderNorm,
         // Niet alleen WELKE tests zijn gedaan, maar ook wat eruit kwam. Een
         // lijst testnamen zegt niets over het monster; 'Purity (HPLC)' is
         // pas informatie zodra er een percentage en een norm bij staan.

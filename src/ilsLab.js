@@ -138,8 +138,46 @@ async function resolveer(referentie) {
     // certificaat staat. Nul is de normale waarde; alles daarboven hoort
     // opgemerkt te worden.
     verborgenOpCertificaat: verborgen.length,
+    // Komt de naam op het etiket overeen met de stof waartegen is getoetst?
+    // null = niet te bepalen (geen identiteitsregel of geen productnaam).
+    naamKomtOvereen: identiteit
+      ? zelfdeStof(d.product, identiteit.limit)
+      : null,
+    getoetsteStof: (identiteit && identiteit.limit) || null,
+    // Tests zonder norm: uitgevoerd en gerapporteerd, maar nergens aan
+    // getoetst. Tellen mee voor de volledigheid, niet voor het oordeel.
+    testsZonderNorm: tests
+      .filter((t) => t && !heeftEchteNorm(t.limit))
+      .map((t) => t.analyte)
+      .filter(Boolean),
     blend: d.blendComposition || null
   };
+}
+
+// Twee signalen die pas zichtbaar werden toen we de eerste ILS-rapporten
+// uitlazen. Geen van beide maakt een certificaat vals; ze verdienen alleen
+// een mensenoog.
+
+// 1. De productnaam op het certificaat hoeft niet de geteste stof te zijn.
+//    NextGen verkoopt onder de naam "GLP-3" een monster waarvan ILS de
+//    identiteit toetst tegen retatrutide. Het certificaat liegt niet - de
+//    identiteitsregel noemt de echte stof - maar wie op de productnaam
+//    afgaat leest iets anders dan wat er getest is.
+function zelfdeStof(a, b) {
+  const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const p = norm(a), q = norm(b);
+  if (!p || !q) return null;
+  return p === q || p.includes(q) || q.includes(p);
+}
+
+// 2. Een test met "Report Only" of "Report Result" als limiet heeft geen norm
+//    en kan dus nooit zakken. Zo'n regel staat nooit op FAIL, hoe hoog de
+//    uitslag ook is. Een certificaat dat overal groen oogt kan daardoor
+//    ongetoetste getallen bevatten.
+function heeftEchteNorm(limiet) {
+  const l = String(limiet || '').trim();
+  if (!l || l === '-') return false;
+  return !/^(report\s*(only|result)|n\/?a)$/i.test(l);
 }
 
 module.exports = { resolveer, verifyUrl, lijktOpQrCodeId, isOfficieleHost, OFFICIELE_HOSTS };
