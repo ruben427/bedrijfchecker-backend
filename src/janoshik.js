@@ -189,5 +189,8 @@ function bepaalKlasse(resolutie, vergelijking) {
 
 module.exports = {
   parseReferentie, bouwReferentie, resolveUrl, resolveer,
-  vergelijkVelden, bepaalKlasse, isOfficieleHost, OFFICIELE_HOSTS
+  vergelijkVelden, bepaalKlasse, isOfficieleHost, OFFICIELE_HOSTS,
+  // Gedeeld met de handmatige route, zodat een menselijke vergelijking exact
+  // dezelfde velden en dezelfde normalisatie gebruikt als de resolver.
+  TE_VERGELIJKEN, normaliseer
 };

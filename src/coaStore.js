@@ -145,13 +145,20 @@ async function initCoaSchema() {
   // shop, of het sha256 van het document. Zonder dit is later niet na te
   // gaan waar een A op rust.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vergeleken_met TEXT;`);
+  // De veldvergelijking gestructureerd, niet in proza. Een regelset kan niets
+  // met 'Client wijkt af' in een notitie; hiermee kan Annemarie haar besluit
+  // (A15) straks over alles heen draaien in plaats van 200 notities lezen.
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS veldvergelijking JSONB;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS velden_vergeleken INTEGER;`);
+  await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS velden_afwijkend INTEGER;`);
   // Zelfde velden op documentniveau. Daar zat de hele verificatie in een
   // JSONB-blob en was alleen authenticity_class een echte kolom.
   for (const kolom of [
     'client TEXT', 'manufacturer TEXT', 'batchnummer TEXT', 'zuiverheid TEXT',
     'zuiverheid_pct NUMERIC', 'gemeten_mg NUMERIC', 'etiket_mg NUMERIC',
     'vulling_pct NUMERIC', 'datum_analyse DATE', 'vergeleken_met TEXT',
-    'afleidingsnotitie TEXT', 'verification_method TEXT'
+    'afleidingsnotitie TEXT', 'verification_method TEXT',
+    'veldvergelijking JSONB', 'velden_vergeleken INTEGER', 'velden_afwijkend INTEGER'
   ]) {
     await pool.query('ALTER TABLE coa_documents ADD COLUMN IF NOT EXISTS ' + kolom + ';');
   }
@@ -382,6 +389,7 @@ async function saveVerification(sha256, verification) {
   // waarop gefilterd en vergeleken wordt krijgen een echte kolom. In een
   // JSONB-blob kun je geen leverancier met een afwijkende vulling opzoeken.
   const vul = vullingUit(v);
+  const dv = veldvergelijkingUit(v);
   try {
     await pool.query(
       `UPDATE coa_documents SET verification = $2, authenticity_class = $3, verification_checked_at = $4,
@@ -392,7 +400,10 @@ async function saveVerification(sha256, verification) {
               datum_analyse = COALESCE($13, datum_analyse),
               vergeleken_met = COALESCE($14, vergeleken_met),
               afleidingsnotitie = COALESCE($15, afleidingsnotitie),
-              verification_method = COALESCE($16, verification_method)
+              verification_method = COALESCE($16, verification_method),
+              veldvergelijking = COALESCE($17, veldvergelijking),
+              velden_vergeleken = COALESCE($18, velden_vergeleken),
+              velden_afwijkend = COALESCE($19, velden_afwijkend)
        WHERE sha256 = $1`,
       [sha256, JSON.stringify(v), v.class || null, v.checkedAt || Date.now(),
        v.client || null, v.manufacturer || null, v.batchnummer || null,
@@ -401,7 +412,8 @@ async function saveVerification(sha256, verification) {
        v.datumAnalyse || null,
        // Bij een document is de kopie van de shop het document zelf.
        v.vergelekenMet || sha256,
-       afleidingsnotitieVoor(v, vul), v.method || null]
+       afleidingsnotitieVoor(v, vul), v.method || null,
+       dv.velden ? JSON.stringify(dv.velden) : null, dv.vergeleken, dv.afwijkend]
     );
   } catch (e) {
     console.error('coaStore.saveVerification:', (e && e.message) || e);
@@ -579,6 +591,41 @@ function percentageUit(tekst) {
   return null;
 }
 
+// De kopie van de shop naast het labrapport, veld voor veld.
+//
+// Dezelfde velden en dezelfde normalisatie als de resolver (janoshik.js),
+// zodat handmatig en automatisch werk in precies dezelfde vorm in de database
+// komen. Een veld dat aan een kant ontbreekt is geen verschil - dat is
+// 'niet vergeleken', en dat is iets anders dan 'komt overeen'.
+function veldvergelijkingUit(c) {
+  const shop = c.kopieShop || null;
+  const lab = c.bijLab || null;
+  if (!shop && !lab) return { velden: null, vergeleken: null, afwijkend: null };
+
+  const velden = [];
+  for (const paar of janoshik.TE_VERGELIJKEN) {
+    const sleutel = paar[0], label = paar[1];
+    const ruwA = shop ? shop[sleutel] : null;
+    const ruwB = lab ? lab[sleutel] : null;
+    const a = janoshik.normaliseer(ruwA);
+    const b = janoshik.normaliseer(ruwB);
+    if (a == null && b == null) continue;
+    velden.push({
+      veld: label, sleutel,
+      opKopieLeverancier: ruwA != null && ruwA !== '' ? ruwA : null,
+      bijHetLab: ruwB != null && ruwB !== '' ? ruwB : null,
+      // null = niet te vergelijken omdat een kant ontbreekt. Nooit false.
+      gelijk: (a == null || b == null) ? null : (a === b)
+    });
+  }
+  if (!velden.length) return { velden: null, vergeleken: null, afwijkend: null };
+  return {
+    velden,
+    vergeleken: velden.filter((v) => v.gelijk !== null).length,
+    afwijkend: velden.filter((v) => v.gelijk === false).length
+  };
+}
+
 // Vulling: hoeveel wijkt de gemeten hoeveelheid af van wat het etiket claimt?
 //
 // LET OP - dit is een AFWIJKING, geen verhouding. 10,6 mg in een vial van
@@ -638,12 +685,14 @@ async function saveReferenceCheck(lab, referentie, check) {
   if (!lab || !referentie || !check) return null;
   const c = check;
   const vul = vullingUit(c);
+  const vv = veldvergelijkingUit(c);
   try {
     const { rows } = await pool.query(
       `INSERT INTO coa_reference_checks
          (id, lab, referentie, task_number, resolvet, klasse, client, product, batchnummer, resolved_url, notitie, checked_by, methode, checked_at, rapport, zuiverheid, zuiverheid_pct, vulling, vulling_pct, afleidingsnotitie,
-          manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+          manufacturer, gemeten_mg, etiket_mg, datum_analyse, vergeleken_met,
+          veldvergelijking, velden_vergeleken, velden_afwijkend)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
        ON CONFLICT (lab, referentie) DO UPDATE SET
          resolvet = EXCLUDED.resolvet, client = EXCLUDED.client,
          product = EXCLUDED.product, batchnummer = EXCLUDED.batchnummer,
@@ -663,6 +712,9 @@ async function saveReferenceCheck(lab, referentie, check) {
          etiket_mg = COALESCE(EXCLUDED.etiket_mg, coa_reference_checks.etiket_mg),
          datum_analyse = COALESCE(EXCLUDED.datum_analyse, coa_reference_checks.datum_analyse),
          vergeleken_met = COALESCE(EXCLUDED.vergeleken_met, coa_reference_checks.vergeleken_met),
+         veldvergelijking = COALESCE(EXCLUDED.veldvergelijking, coa_reference_checks.veldvergelijking),
+         velden_vergeleken = COALESCE(EXCLUDED.velden_vergeleken, coa_reference_checks.velden_vergeleken),
+         velden_afwijkend = COALESCE(EXCLUDED.velden_afwijkend, coa_reference_checks.velden_afwijkend),
          -- Een resolverrun mag een door een mens gezette klasse nooit wissen.
          klasse = CASE WHEN EXCLUDED.methode = 'resolver'
                        THEN coa_reference_checks.klasse
@@ -676,7 +728,8 @@ async function saveReferenceCheck(lab, referentie, check) {
        c.zuiverheid || null, percentageUit(c.zuiverheid),
        c.vulling || null, vul.pct, afleidingsnotitieVoor(c, vul),
        c.manufacturer || null, vul.gemetenMg, vul.etiketMg,
-       c.datumAnalyse || null, c.vergelekenMet || null]
+       c.datumAnalyse || null, c.vergelekenMet || null,
+       vv.velden ? JSON.stringify(vv.velden) : null, vv.vergeleken, vv.afwijkend]
     );
     return rows[0] || null;
   } catch (e) {
@@ -830,14 +883,16 @@ async function referentiesMetControle(lab, max) {
               c.resolvet, c.klasse, c.client, c.product, c.batchnummer,
               c.notitie, c.checked_by, c.methode, c.checked_at,
               c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
-              c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met
+              c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
+              c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
        ${waar}
        GROUP BY r.lab, r.referentie, r.url, c.resolvet, c.klasse, c.client, c.product,
                 c.batchnummer, c.notitie, c.checked_by, c.methode, c.checked_at,
                 c.zuiverheid, c.zuiverheid_pct, c.vulling, c.vulling_pct, c.afleidingsnotitie,
-              c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met
+              c.manufacturer, c.gemeten_mg, c.etiket_mg, c.datum_analyse, c.vergeleken_met,
+              c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $1`,
       params
@@ -853,7 +908,9 @@ async function referentiesMetControle(lab, max) {
         vulling: r.vulling, vullingPct: r.vulling_pct,
         afleidingsnotitie: r.afleidingsnotitie,
         manufacturer: r.manufacturer, gemetenMg: r.gemeten_mg, etiketMg: r.etiket_mg,
-        datumAnalyse: r.datum_analyse, vergelekenMet: r.vergeleken_met
+        datumAnalyse: r.datum_analyse, vergelekenMet: r.vergeleken_met,
+        veldvergelijking: r.veldvergelijking,
+        veldenVergeleken: r.velden_vergeleken, veldenAfwijkend: r.velden_afwijkend
       } : null
     }));
   } catch (e) {

@@ -134,6 +134,18 @@ async function buildServer() {
         gemetenMg: z.number().optional(),
         etiketMg: z.number().optional(),
         datumAnalyse: z.string().optional().describe('Analysedatum als JJJJ-MM-DD'),
+        kopieShop: z.object({
+          client: z.string().optional(), manufacturer: z.string().optional(),
+          batchnummer: z.string().optional(), product: z.string().optional(),
+          purityPercent: z.number().optional(), orderDate: z.string().optional(),
+          receivedDate: z.string().optional(), analysisDate: z.string().optional()
+        }).optional().describe('Wat er op de KOPIE bij de shop staat. Alleen de velden invullen die je daar echt hebt gezien; een veld dat je niet hebt gecontroleerd laat je weg.'),
+        bijLab: z.object({
+          client: z.string().optional(), manufacturer: z.string().optional(),
+          batchnummer: z.string().optional(), product: z.string().optional(),
+          purityPercent: z.number().optional(), orderDate: z.string().optional(),
+          receivedDate: z.string().optional(), analysisDate: z.string().optional()
+        }).optional().describe('Wat er op de pagina van het LAB staat, dezelfde velden. Het vergelijken doet de server: een veld dat aan een kant ontbreekt telt als niet-vergeleken, nooit als verschil. Zet verschillen dus HIER neer, niet in woorden in de notitie - uit proza kan later geen classificatie worden afgeleid.'),
         notitie: z.string().optional().describe('Wat er VERDER op de verificatiepagina te zien was. Batch, zuiverheid, vulling, client en fabrikant horen hier niet in - die hebben een eigen veld.'),
         gecontroleerdDoor: z.string().min(1).describe('Naam van de persoon die de controle heeft uitgevoerd')
       }).strict(),
@@ -147,6 +159,7 @@ async function buildServer() {
         client: a.client || null, manufacturer: a.manufacturer || null, batchnummer: a.batchnummer || null,
         zuiverheid: a.zuiverheid || null, vulling: a.vulling || null,
         gemetenMg: a.gemetenMg, etiketMg: a.etiketMg, datumAnalyse: a.datumAnalyse || null,
+        kopieShop: a.kopieShop || null, bijLab: a.bijLab || null,
         checkedBy: gecontroleerdDoor, checkedAt: Date.now()
       };
       await coaStore.saveVerification(sha256, verification);
@@ -179,6 +192,18 @@ async function buildServer() {
         etiketMg: z.number().optional().describe('De hoeveelheid die het etiket claimt, in mg.'),
         manufacturer: z.string().optional().describe('De fabrikant zoals het labrapport die letterlijk noemt. Staat los van client: die twee kunnen verschillen en juist dat verschil is een waarneming.'),
         datumAnalyse: z.string().optional().describe('De analysedatum van het rapport, als JJJJ-MM-DD.'),
+        kopieShop: z.object({
+          client: z.string().optional(), manufacturer: z.string().optional(),
+          batchnummer: z.string().optional(), product: z.string().optional(),
+          purityPercent: z.number().optional(), orderDate: z.string().optional(),
+          receivedDate: z.string().optional(), analysisDate: z.string().optional()
+        }).optional().describe('Wat er op de KOPIE bij de shop staat. Alleen de velden invullen die je daar echt hebt gezien; een veld dat je niet hebt gecontroleerd laat je weg.'),
+        bijLab: z.object({
+          client: z.string().optional(), manufacturer: z.string().optional(),
+          batchnummer: z.string().optional(), product: z.string().optional(),
+          purityPercent: z.number().optional(), orderDate: z.string().optional(),
+          receivedDate: z.string().optional(), analysisDate: z.string().optional()
+        }).optional().describe('Wat er op de pagina van het LAB staat, dezelfde velden. Het vergelijken doet de server: een veld dat aan een kant ontbreekt telt als niet-vergeleken, nooit als verschil. Zet verschillen dus HIER neer, niet in woorden in de notitie - uit proza kan later geen classificatie worden afgeleid.'),
         vergelekenMet: z.string().optional().describe('VERPLICHT zodra je een klasse geeft: waartegen is het labrapport afgezet? De URL van de kopie op de site van de shop, of het sha256 van het document. Zonder dit is later niet na te gaan waar een A op rust.'),
         notitie: z.string().optional().describe('Wat er VERDER op de pagina te zien was. Batch, zuiverheid en vulling horen hier niet in - die hebben een eigen veld.'),
         gecontroleerdDoor: z.string().min(1).describe('Naam van de persoon die de controle heeft uitgevoerd')
@@ -200,6 +225,7 @@ async function buildServer() {
         gemetenMg: a.gemetenMg, etiketMg: a.etiketMg,
         manufacturer: a.manufacturer || null, datumAnalyse: a.datumAnalyse || null,
         vergelekenMet: a.vergelekenMet || null,
+        kopieShop: a.kopieShop || null, bijLab: a.bijLab || null,
         resolvedUrl: /^https?:\/\//i.test(String(referentie)) ? String(referentie) : janoshikLinkFrom(p && p.taskNumber, p && p.sample, p && p.key),
         notitie: notitie || null, checkedBy: gecontroleerdDoor
       });
