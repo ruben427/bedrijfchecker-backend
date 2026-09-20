@@ -42,27 +42,26 @@ const VASTGESTELD_DOOR = 'Annemarie';
 // automatisch dat de hele batch meer dan 10% afwijkt."
 const VULLING_DREMPEL_PCT = 10;
 
-// Hoe betrouwbaar is de waarde waar we iets over zeggen? (comment Annemarie,
-// 20 sep 19:41): "Een waarde die alleen door de AI-leesstap uit een COA is
-// gehaald en niet is gecontroleerd, wil ik niet als harde 'gemeten afwijking'
-// aan de gebruiker tonen. De AI mag deze waarden wel uitlezen en intern
-// gebruiken als signaal (...) Dus ook onder de 10% geldt: alleen tonen als
-// feit wanneer de onderliggende waarde voldoende is geverifieerd."
+// Hoe hard mag deze waarde naar buiten? Dat is sinds 20 september geen
+// eigenschap van de waarde zelf maar de uitkomst van twee assen - zie
+// src/niveaus.js. Hier stond eerst een grove drempel op herkomst (handmatig en
+// resolver waren feit, gelezen niet). Die was veilig en niet schaalbaar: elke
+// gecrawlde COA viel buiten het rapport, en met 150 openstaande
+// Janoshik-referenties betekende dat honderden handmatige controles.
 //
-// Drie herkomsten, oplopend in gewicht. Alleen de bovenste twee mogen als
-// feit naar buiten.
-const HERKOMST = {
-  handmatig: { feit: true,  label: 'door een mens gecontroleerd' },
-  resolver:  { feit: true,  label: 'bij het laboratorium opgehaald' },
-  gelezen:   { feit: false, label: 'uit het document gelezen, niet geverifieerd' }
-};
-function magAlsFeit(herkomst) {
-  const h = HERKOMST[herkomst];
-  return !!(h && h.feit);
+// Nu drie standen, en 'gerapporteerd' is er een volwaardige van: "De aanbieder
+// rapporteert 99,8%" is waar zodra we het document goed hebben gelezen.
+const niveaus = require('./niveaus');
+
+function magAlsFeit(tonen) {
+  return tonen === niveaus.TONEN.GEVERIFIEERD;
+}
+function magGetoond(tonen) {
+  return tonen === niveaus.TONEN.GEVERIFIEERD || tonen === niveaus.TONEN.GERAPPORTEERD;
 }
 
 // Een enkele meting tegen de claim van dat product.
-function vullingVanEen(gemetenMg, geclaimdMg, herkomst) {
+function vullingVanEen(gemetenMg, geclaimdMg, tonen) {
   const g = Number(gemetenMg), c = Number(geclaimdMg);
   if (!Number.isFinite(g) || !Number.isFinite(c) || c <= 0) {
     return { toetsbaar: false, reden: 'geen geclaimde hoeveelheid om tegen te meten' };
@@ -74,31 +73,36 @@ function vullingVanEen(gemetenMg, geclaimdMg, herkomst) {
     pct: Math.round(pct * 100) / 100,
     buitenDrempel: buiten,
     richting: pct > 0 ? 'boven' : (pct < 0 ? 'onder' : 'gelijk'),
-    // Mag dit getal als feit op het scherm? Zie HERKOMST.
-    alsFeit: magAlsFeit(herkomst),
-    herkomst: herkomst || null
+    // Mag dit getal als geverifieerd feit op het scherm, of alleen als
+    // waarde uit het document van de aanbieder? Zie src/niveaus.js.
+    alsFeit: magAlsFeit(tonen),
+    tonen: tonen || null
   };
 }
 
 // Een rapport kan een vial meten of meerdere. Iedere vial telt afzonderlijk.
 // metingen: [{gemetenMg}] of een enkel getal; geclaimdMg is wat de leverancier
 // voor DIT product zegt dat erin zit.
-function vullingOordeel(metingen, geclaimdMg, herkomst) {
+function vullingOordeel(metingen, geclaimdMg, tonen) {
   const lijst = Array.isArray(metingen) ? metingen : [{ gemetenMg: metingen }];
-  const per = lijst.map((m) => vullingVanEen(m && m.gemetenMg != null ? m.gemetenMg : m, geclaimdMg, herkomst));
+  const per = lijst.map((m) => vullingVanEen(m && m.gemetenMg != null ? m.gemetenMg : m, geclaimdMg, tonen));
   const toetsbaar = per.filter((x) => x.toetsbaar);
   if (!toetsbaar.length) {
     return { bevinding: false, tonen: false, perViaal: per, reden: per[0] ? per[0].reden : 'niets te toetsen' };
   }
   const buiten = toetsbaar.filter((x) => x.buitenDrempel);
-  const alsFeit = magAlsFeit(herkomst);
+  const zichtbaar = magGetoond(tonen);
+  const alsFeit = magAlsFeit(tonen);
 
   // Het gemiddelde mag erbij als EXTRA informatie - nooit als de toets zelf.
   const gemiddeld = Math.round((toetsbaar.reduce((a, b) => a + b.gemetenMg, 0) / toetsbaar.length) * 1000) / 1000;
   const gemiddeldPct = Math.round((((gemiddeld - toetsbaar[0].geclaimdMg) / toetsbaar[0].geclaimdMg) * 100) * 100) / 100;
 
+  // Een afwijking mag benoemd worden zodra de waarde zichtbaar is. Bij
+  // 'gerapporteerd' hoort de toelichting erbij dat het een waarde uit het
+  // document is; die staat in niveaus.GERAPPORTEERD_TOELICHTING.
   let zin = null;
-  if (buiten.length && alsFeit) {
+  if (buiten.length && zichtbaar) {
     if (toetsbaar.length === 1) {
       const x = buiten[0];
       zin = 'De gemeten hoeveelheid ligt ' + Math.abs(Math.round(x.pct * 10) / 10) + '% ' + x.richting +
@@ -116,19 +120,19 @@ function vullingOordeel(metingen, geclaimdMg, herkomst) {
     }
   }
   return {
-    bevinding: buiten.length > 0 && alsFeit,
-    // Niet als feit tonen wanneer de waarde alleen gelezen is. Intern blijft
-    // alles staan - perViaal is er altijd - maar naar buiten niets.
-    tonen: alsFeit,
-    internSignaal: buiten.length > 0 && !alsFeit,
+    bevinding: buiten.length > 0 && zichtbaar,
+    // Geverifieerd, gerapporteerd of niets. Bij 'niets' blijft alles intern
+    // staan - perViaal is er altijd - maar gaat er niets naar buiten.
+    tonen: tonen || niveaus.TONEN.NIETS,
+    alsFeit,
+    toelichting: (zichtbaar && !alsFeit) ? niveaus.GERAPPORTEERD_TOELICHTING : null,
+    internSignaal: buiten.length > 0 && !zichtbaar,
     aantalGemeten: toetsbaar.length,
     aantalBuitenDrempel: buiten.length,
     perViaal: per,
     gemiddelde: toetsbaar.length > 1 ? { mg: gemiddeld, pct: gemiddeldPct, rol: 'extra informatie, niet de toets' } : null,
-    herkomst: herkomst || null,
     zin,
-    reden: alsFeit ? null : 'waarde is ' + ((HERKOMST[herkomst] || {}).label || 'van onbekende herkomst') +
-      '; nog niet als feit te tonen'
+    reden: zichtbaar ? null : 'document niet betrouwbaar uitgelezen; niets te tonen'
   };
 }
 
@@ -141,14 +145,14 @@ function vullingOordeel(metingen, geclaimdMg, herkomst) {
 // Dus: is er een claim per stof, dan toetst elke stof apart. Is die er niet,
 // dan is de som tegen de totaalclaim het enige dat eerlijk te toetsen is - en
 // de componenten blijven waarneming.
-function vullingBlend(componenten, totaalGeclaimdMg, herkomst, lijstIsCompleet) {
+function vullingBlend(componenten, totaalGeclaimdMg, tonen, lijstIsCompleet) {
   const comps = (componenten || []).filter(Boolean);
   if (!comps.length) return null;
   const metClaim = comps.filter((c) => Number(c.geclaimdMg) > 0);
   if (metClaim.length === comps.length) {
     return {
       wijze: 'per stof',
-      perStof: comps.map((c) => Object.assign({ stof: c.stof }, vullingVanEen(c.gemetenMg, c.geclaimdMg, herkomst)))
+      perStof: comps.map((c) => Object.assign({ stof: c.stof }, vullingVanEen(c.gemetenMg, c.geclaimdMg, tonen)))
     };
   }
   const som = comps.reduce((a, c) => a + (Number(c.gemetenMg) || 0), 0);
@@ -178,7 +182,7 @@ function vullingBlend(componenten, totaalGeclaimdMg, herkomst, lijstIsCompleet) 
           'een onvolledige som leest als ondervulling die er niet hoeft te zijn'
     };
   } else {
-    totaal = Object.assign({ somMg: Math.round(som * 1000) / 1000 }, vullingVanEen(som, totaalGeclaimdMg, herkomst));
+    totaal = Object.assign({ somMg: Math.round(som * 1000) / 1000 }, vullingVanEen(som, totaalGeclaimdMg, tonen));
   }
   return {
     wijze: 'alleen het totaal',
@@ -359,7 +363,7 @@ function inOrde(onderdeel, gecontroleerd, labBeoordeeld) {
 module.exports = {
   VASTGESTELD_OP, VASTGESTELD_DOOR,
   VULLING_DREMPEL_PCT, vullingOordeel, vullingVanEen, vullingBlend,
-  HERKOMST, magAlsFeit,
+  magAlsFeit, magGetoond,
   dekking,
   LAB_NAAM_NOEMEN, labNietVerifieerbaar,
   opdrachtgeverRegels,
