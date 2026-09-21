@@ -685,6 +685,57 @@ app.post('/api/admin/coa/references/resolve', rl.caseAction, auth.requireOwnerTo
   }
 });
 
+// Alle rode bevindingen op een rij, over alle cases heen.
+//
+// Rood is het zwaarste wat de check kan vaststellen en het enige wat een
+// leverancier echt raakt. Voor het publiek wordt, hoort een mens ernaar te
+// kijken (M17: primaire bron erbij, momentopname, correctieroute). Deze route
+// is die werklijst: waar staat rood, waarop rust het, en wie heeft dat
+// vastgesteld - de resolver of een mens.
+//
+// Twee soorten rood, bewust apart:
+//   klasseD      een rapportreferentie lost niet op of wijkt af van de kopie
+//   categorieRood een COA-categorie is beoordeeld als aangetoond probleem
+app.get('/api/admin/bevindingen/rood', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const cases = await db.listCases();
+    const uit = [];
+    for (const c of cases) {
+      const recs = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data
+        && c.phaseData.coaDataset.data.coaRecords) || [];
+      const klasseD = recs.filter((r) => r && r.authenticiteitsklasse === 'D').map((r) => ({
+        product: r.product || null,
+        laboratorium: r.laboratorium || null,
+        batchnummer: r.batchnummer || null,
+        reportId: r.reportId || null,
+        verificationKey: r.verificationKey || null,
+        verificationUrl: r.verificationUrl || null,
+        // Wie kende de klasse toe: de resolver of een mens? Zonder dat is een
+        // rode bevinding niet na te lopen.
+        klasseBron: r.klasseBron || null,
+        klasseReden: r.klasseReden || null,
+        onderbouwing: r.authenticiteitsonderbouwing || null
+      }));
+      const a = (c.engineResult && c.engineResult.assessments) || {};
+      const categorieRood = Object.keys(a)
+        .filter((id) => /^C0[1-9]$/.test(id) && a[id] && a[id].color === 'red')
+        .map((id) => ({ id, rationale: (a[id].rationale || '').slice(0, 400) }));
+      const rodeVlaggen = ((c.report && c.report.rodeVlaggen) || []).map((f) => ({
+        omschrijving: (f && (f.omschrijving || f.titel)) || String(f), bron: (f && f.bron) || null
+      }));
+      if (!klasseD.length && !categorieRood.length && !rodeVlaggen.length) continue;
+      uit.push({
+        caseId: c.id, website: c.website, status: c.status,
+        gemaakt: c.createdAt, aantalRapporten: recs.length,
+        klasseD, categorieRood, rodeVlaggen
+      });
+    }
+    res.json({ cases: uit.length, bevindingen: uit });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Herberekenen zonder opnieuw te onderzoeken.
 //
 // De drie blokken en de Evidence Score worden tijdens de run uitgerekend en
