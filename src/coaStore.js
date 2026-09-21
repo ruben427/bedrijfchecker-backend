@@ -877,8 +877,25 @@ async function labSignalen() {
       (r.testsoorten || []).forEach((x) => { if (x && b.testsoorten.indexOf(x) === -1) b.testsoorten.push(x); });
       b.leveranciers = b.shops.length;
     });
+    // De lijst werd opgebouwd uit coa_references, dus een lab dat wij nog
+    // nergens hebben gezien stond er niet op - en verscheen dus ook niet op de
+    // pagina waar het beoordeeld moet worden. Dat viel op toen Annemarie
+    // dertien labs aandroeg waarvan de helft nog in geen enkel rapport voorkomt.
+    // Wachten tot een lab in een rapport opduikt is precies de verkeerde
+    // volgorde: dan is het oordeel er niet op het moment dat het nodig is.
+    BEKENDE_LABS.forEach((bk) => {
+      if (perLab[bk.naam]) return;
+      perLab[bk.naam] = {
+        lab: bk.naam, leveranciers: 0, verwijzingen: 0, zonderPubliekeLink: 0,
+        opgelost: 0, nietOpgelost: 0, handmatig: 0, doorResolver: 0,
+        shops: [], testsoorten: [], nogNietGezien: true
+      };
+    });
     return Object.values(perLab).map((b) => {
       const o = oordelen[labSleutel(b.lab)] || null;
+      // De werkindeling en de site erbij, zodat een beoordelaar niet eerst
+      // hoeft te zoeken waar dit lab ook alweer vandaan kwam.
+      const bk = BEKENDE_LABS.find((x) => x.naam === b.lab) || null;
       return Object.assign({}, b, {
         oordeel: o,
         // Alleen bij een leverancier gezien. Waarneming, geen oordeel.
@@ -892,9 +909,13 @@ async function labSignalen() {
         onzeToegang: (b.opgelost + b.nietOpgelost + b.handmatig) === 0
           ? 'nooit geprobeerd'
           : (b.opgelost > 0 ? 'binnengekomen' : 'geprobeerd, niet binnengekomen'),
-        ongecontroleerd: b.verwijzingen - (b.opgelost + b.nietOpgelost)
+        ongecontroleerd: b.verwijzingen - (b.opgelost + b.nietOpgelost),
+        werkindeling: bk ? bk.lijst : 'niet op de werklijst',
+        url: bk ? (bk.url || null) : null,
+        notitie: bk ? (bk.notitie || null) : null,
+        nogNietGezien: !!b.nogNietGezien
       });
-    }).sort((a, b) => b.verwijzingen - a.verwijzingen);
+    }).sort((a, b) => (b.verwijzingen - a.verwijzingen) || a.lab.localeCompare(b.lab));
   } catch (e) {
     console.error('coaStore.labSignalen:', (e && e.message) || e);
     return [];
@@ -1823,19 +1844,34 @@ async function referentiesMetControle(lab, max) {
 // wijzen waar twijfel over bestaat. De beoordeling van een lab zelf hoort in
 // categorie L01 en komt niet uit deze tabel.
 const BEKENDE_LABS = [
-  { naam: 'Janoshik', lijst: 'betrouwbaar', patronen: ['janoshik'] },
-  { naam: 'Uzorak', lijst: 'betrouwbaar', patronen: ['uzorak'] },
-  { naam: 'BT Lab Testing', lijst: 'betrouwbaar', patronen: ['btlabtesting', 'btlab'] },
-  { naam: 'Sterigenix Analytical', lijst: 'betrouwbaar', patronen: ['sterigenix'] },
-  { naam: 'Freedom Diagnostics', lijst: 'betrouwbaar', patronen: ['freedomdiagnostics', 'freedomdiagnostic'] },
-  { naam: 'Vanguard Laboratory', lijst: 'betrouwbaar', patronen: ['vanguardlab', 'vanguardlaboratory'] },
-  { naam: 'Chromate', lijst: 'betrouwbaar', patronen: ['chromate'] },
-  { naam: 'Krause Labs', lijst: 'betrouwbaar', patronen: ['krause'] },
-  { naam: 'Kovera Labs', lijst: 'nieuw', patronen: ['kovera'] },
+  // Aangedragen door Annemarie via Ruben, 21 september 2026, met haar
+  // voorlopige indeling. LET OP: 'lijst' is haar werkindeling, GEEN status.
+  // Een status wordt op de beoordelingspagina vastgelegd, met onderbouwing en
+  // bronnen, en alleen dan werkt hij door in een rapport.
+  //
+  // Die twee lopen ook niet gelijk, en dat is geen slordigheid. Janoshik staat
+  // hier op 'betrouwbaar' en krijgt straks waarschijnlijk de stand 'niet
+  // bereikbaar voor ons' - allebei waar. Deze lijst gaat over of een lab deugt;
+  // de standen gaan over wat WIJ kunnen vaststellen.
+  { naam: 'Janoshik', lijst: 'betrouwbaar', url: 'https://janoshik.com/', patronen: ['janoshik'] },
+  { naam: 'Uzorak', lijst: 'betrouwbaar', url: 'https://uzorak.com/', patronen: ['uzorak'] },
+  { naam: 'BT Lab Testing', lijst: 'betrouwbaar', url: 'https://btlabtesting.com/', patronen: ['btlabtesting', 'btlab'] },
+  { naam: 'Sterigenix Analytical', lijst: 'betrouwbaar', url: 'https://sterigenixanalytical.com/services', patronen: ['sterigenix'] },
+  { naam: 'Freedom Diagnostics', lijst: 'betrouwbaar', url: 'https://freedomdiagnosticstesting.com/', patronen: ['freedomdiagnostics', 'freedomdiagnostic'] },
+  { naam: 'Vanguard Laboratory', lijst: 'betrouwbaar', url: 'https://vanguardlaboratory.com/', patronen: ['vanguardlab', 'vanguardlaboratory'] },
+  { naam: 'Chromate', lijst: 'betrouwbaar', url: 'https://chromate.org/', patronen: ['chromate'] },
+  { naam: 'Krause Labs', lijst: 'betrouwbaar', url: 'https://www.krauselabs.com/peptides', patronen: ['krause'] },
+  { naam: 'Kovera Labs', lijst: 'nieuw', url: 'https://koveralabs.com/', notitie: 'nog geen track record', patronen: ['kovera'] },
+  // Deze drie stonden op 'twijfel'. Annemarie zet ze op onbetrouwbaar.
+  { naam: 'ILS Laboratories', lijst: 'onbetrouwbaar', url: 'https://ils-lab.com/', patronen: ['ilslab', 'ilslaboratories', 'ilslaboratory'] },
+  { naam: 'Axiom Analytics', lijst: 'onbetrouwbaar', url: 'https://axiomanalytics.cz/', patronen: ['axiomanalytics', 'axiom'] },
+  { naam: 'Finnrick', lijst: 'onbetrouwbaar', url: 'https://www.finnrick.com/', patronen: ['finnrick'] },
+  // Niet op haar lijst, wel in onze data tegengekomen. Hier zodat ze op de
+  // beoordelingspagina staan in plaats van pas op te duiken in een rapport.
   { naam: 'Brown Institute of Biomolecular Research', lijst: 'twijfel', patronen: ['browninstitute', 'brownbiomolecular'] },
-  { naam: 'ILS Laboratories', lijst: 'twijfel', patronen: ['ilslab', 'ilslaboratories', 'ilslaboratory'] },
-  { naam: 'Axiom Analytics', lijst: 'twijfel', patronen: ['axiomanalytics', 'axiom'] },
-  { naam: 'Finnrick', lijst: 'twijfel', patronen: ['finnrick'] }
+  { naam: 'Bridge Analytical', lijst: 'niet ingedeeld', url: 'https://bridgeanalytical.com/', patronen: ['bridgeanalytical', 'bridgelabs'] },
+  { naam: 'RC Testing', lijst: 'niet ingedeeld', url: 'https://www.rc-testing.com/', patronen: ['rctesting', 'rctest'] },
+  { naam: 'Analiza Bialek', lijst: 'niet ingedeeld', notitie: 'genoemd door balticpeptides, nog niets van gezien', patronen: ['analizabialek', 'analiza'] }
 ];
 
 // De uitleesstap zet in het labveld alles wat er op het briefhoofd staat:

@@ -133,6 +133,22 @@
     'bestaat niet': ['danger', 'De zwaarste uitspraak in het systeem: elk certificaat dat hiernaar wijst wordt waardeloos, hoe echt het er ook uitziet.']
   };
 
+  // De werkindeling van Annemarie. Bewust een andere vorm dan de statuschip:
+  // dit is haar voorlopige indeling, geen vastgelegd oordeel, en die twee
+  // horen op het scherm niet op elkaar te lijken.
+  var INDELING = {
+    'betrouwbaar': ['ok', 'op je lijst: betrouwbaar'],
+    'onbetrouwbaar': ['danger', 'op je lijst: onbetrouwbaar'],
+    'nieuw': ['warn', 'op je lijst: nieuw'],
+    'twijfel': ['warn', 'op je lijst: twijfel']
+  };
+  function indelingChip(w, notitie) {
+    var i = INDELING[w];
+    if (!i) return '';
+    return '<span class="chip ' + i[0] + '" style="border-style:dashed">' + esc(i[1]) +
+      (notitie ? ' — ' + esc(notitie) : '') + '</span>';
+  }
+
   function toegangChip(t) {
     if (t === 'binnengekomen') return '<span class="chip ok">wij komen binnen</span>';
     if (t === 'geprobeerd, niet binnengekomen') return '<span class="chip danger">wij komen er niet in</span>';
@@ -167,11 +183,19 @@
     return '<div class="lab" data-lab="' + esc(sl) + '" data-open="' + (open[sl] ? '1' : '0') + '">' +
       '<div class="lab-kop" data-toggle="' + esc(sl) + '">' +
         '<span class="lab-naam">' + esc(l.lab) + '</span>' +
-        statusChip + toegangChip(l.onzeToegang) +
-        '<span class="chip grey">' + l.verwijzingen + ' verwijzingen</span>' +
-        '<span class="chip grey">' + l.leveranciers + ' shop' + (l.leveranciers === 1 ? '' : 's') + '</span>' +
+        statusChip + indelingChip(l.werkindeling, l.notitie) +
+        (l.nogNietGezien
+          ? '<span class="chip grey">nog niet in onze data</span>'
+          : toegangChip(l.onzeToegang) +
+            '<span class="chip grey">' + l.verwijzingen + ' verwijzingen</span>' +
+            '<span class="chip grey">' + l.leveranciers + ' shop' + (l.leveranciers === 1 ? '' : 's') + '</span>') +
       '</div>' +
       '<div class="lab-body">' +
+        (l.url ? '<p class="shops"><strong>Site:</strong> <a href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.url) + '</a></p>' : '') +
+        (l.nogNietGezien
+          ? '<p class="shops">Dit laboratorium komt in ons archief nog nergens voor. Je kunt het nu al beoordelen; ' +
+            'het oordeel ligt dan klaar zodra er een rapport van opduikt.</p>'
+          :
         '<div class="feiten">' +
           feit('Verwijzingen', l.verwijzingen, 'in het hele archief') +
           feit('Shops', l.leveranciers, (l.maarEenLeverancier ? 'maar bij één shop gezien' : 'verschillende shops')) +
@@ -183,7 +207,7 @@
         '<p class="shops"><strong>Shops:</strong> ' +
           ((l.shops && l.shops.length) ? l.shops.map(function (s) { return '<code>' + esc(s) + '</code>'; }).join(' ') : '—') +
           ((l.testsoorten && l.testsoorten.length) ? '<br><strong>Testsoorten:</strong> ' + esc(l.testsoorten.join(', ')) : '') +
-        '</p>' +
+        '</p>') +
         huidig +
         '<form data-form="' + esc(sl) + '">' +
           '<div class="rij2">' +
