@@ -14,6 +14,8 @@
 
 // --- helpers ---------------------------------------------------------------
 
+const niveaus = require('./niveaus');
+
 function heeftWaarde(v) {
   if (v == null) return false;
   if (typeof v === 'string') return v.trim() !== '';
@@ -52,6 +54,44 @@ function standVanRapport(r) {
   // nooit over verificatie sprak, en het hoort zichtbaar te blijven.
   if (heeftWaarde(r.verificatieDomein) || heeftWaarde(r.verificatieInstructie)) return 'code_weggehaald';
   return 'geen_code';
+}
+
+// --- waar komt een rapport vandaan? ----------------------------------------
+//
+// Drie herkomsten, en ze zijn niet gelijkwaardig:
+//
+// eigen_kopie       de shop host het document zelf. Bruikbaar, maar het is
+//                   een kopie: bewerken kan en valt zonder controle bij het
+//                   lab niet vast te stellen.
+// labverwijzing     de shop linkt naar het laboratorium. Sterker, want dat
+//                   wijst naar het origineel in plaats van naar een kopie.
+// alleen_vermelding er staat dat er een rapport is, zonder document en
+//                   zonder link. Daar valt niets mee te doen.
+//
+// Het labdomein wordt niet geraden: het is het domein waar de verificatielink
+// naartoe wijst. Staat die link op het eigen domein van de shop, dan is het
+// geen verwijzing naar een lab maar gewoon een eigen kopie.
+function hostVan(url) {
+  const m = /^https?:\/\/([^/?#]+)/i.exec(String(url || ''));
+  return m ? m[1].toLowerCase().replace(/^www\./, '') : null;
+}
+function herkomstVanRapport(r, shopHost) {
+  if (!r) return 'alleen_vermelding';
+  const verifHost = hostVan(r.verificationUrl);
+  if (verifHost && verifHost !== shopHost) return 'labverwijzing';
+  if (publiekeUrl(r.bronUrl)) return 'eigen_kopie';
+  if (verifHost) return 'eigen_kopie';
+  return 'alleen_vermelding';
+}
+function telHerkomst(records, shopHost) {
+  const t = { eigenKopie: 0, labverwijzing: 0, alleenVermelding: 0 };
+  records.forEach((r) => {
+    const h = herkomstVanRapport(r, shopHost);
+    if (h === 'labverwijzing') t.labverwijzing++;
+    else if (h === 'eigen_kopie') t.eigenKopie++;
+    else t.alleenVermelding++;
+  });
+  return t;
 }
 
 // --- blok 2: externe verificatie -------------------------------------------
@@ -198,8 +238,16 @@ function coaCategorieRood(engineResult) {
 //
 // Een telling tot blok 2 bevestigt, dan pas een percentage. Leeg rendert nooit
 // als 0%: geen bewijs is geen slecht bewijs.
-function productbewijsBlok(engineResult, recordsIn) {
+function productbewijsBlok(engineResult, recordsIn, shopHost) {
   const records = (recordsIn || []).filter(Boolean);
+  const herkomst = telHerkomst(records, shopHost || null);
+  // De werkregel vertelt WAT er geteld is. "76 rapporten" beloofde meer dan
+  // er lag: 73 daarvan waren links naar het lab, geen gelezen document.
+  const delen = [];
+  if (herkomst.eigenKopie) delen.push(herkomst.eigenKopie + ' op de site zelf');
+  if (herkomst.labverwijzing) delen.push(herkomst.labverwijzing + ' via een link naar het lab');
+  if (herkomst.alleenVermelding) delen.push(herkomst.alleenVermelding + ' alleen vermeld');
+  const werkregel = delen.length ? delen.join(' · ') : null;
   const er = engineResult || {};
   const score = er.evidenceScore || {};
   const gate = er.gate || {};
@@ -207,7 +255,7 @@ function productbewijsBlok(engineResult, recordsIn) {
 
   if (!records.length) {
     return { kleur: 'grey', vorm: 'woord', waarde: 'Niets gevonden', percentage: null, aantal: 0,
-      reden: gate.code || 'NO_COA_FOUND' };
+      herkomst, werkregel, reden: gate.code || 'NO_COA_FOUND' };
   }
   // Rood komt hier NIET uit de verificatiestand. Dat een referentie niet
   // oplost is een vraag over het document (blok 2); of de inhoud de
@@ -217,26 +265,119 @@ function productbewijsBlok(engineResult, recordsIn) {
   const rodeCategorie = coaCategorieRood(er);
   if (rodeCategorie) {
     return { kleur: 'red', vorm: 'woord', waarde: 'Tegengesproken', percentage: null, aantal: records.length,
-      reden: rodeCategorie };
+      herkomst, werkregel, reden: rodeCategorie };
   }
   if (score.published && score.value != null) {
     return { kleur: 'green', vorm: 'percentage', waarde: score.value, percentage: score.value,
-      aantal: records.length, coverage: score.coverage == null ? null : score.coverage, reden: null };
+      aantal: records.length, herkomst, coverage: score.coverage == null ? null : score.coverage,
+      werkregel: (werkregel ? werkregel + ' · ' : '') + 'dekking ' + Math.round(score.coverage || 0) + '%', reden: null };
   }
   return { kleur: 'orange', vorm: 'telling', waarde: records.length, percentage: null, aantal: records.length,
-    reden: score.reason || gate.code || null };
+    herkomst, werkregel, reden: score.reason || gate.code || null };
+}
+
+// --- blok 4: wat mogen we over de waarden zeggen ---------------------------
+//
+// Dit blok is de zichtbare kant van niveaus.js. De twee assen - hebben wij
+// het document betrouwbaar uitgelezen, en is de inhoud onafhankelijk
+// bevestigd - leveren per uitspraak een van drie standen op. Hier worden die
+// geteld en in zinnen gezet.
+//
+// GEEN eigen oordeel: de standen staan al op elk record (r.niveau), gezet
+// door de pijplijn. Dit bestand telt en formuleert.
+//
+// LET OP - er staat bewust GEEN kleur op. De kleurregel voor dit blok is niet
+// vastgesteld; dat is A24 en ligt bij Annemarie. Een kleur verzinnen zou een
+// weging invoeren die niemand heeft besloten, en die daarna moeilijk terug te
+// draaien is omdat hij al in beeld staat.
+const ONDERDEEL_WOORD = {
+  vulling: 'hoeveelheid in de vial',
+  zuiverheid: 'zuiverheid',
+  identiteit: 'identiteit van de stof'
+};
+
+function waardenBlok(recordsIn) {
+  const records = (recordsIn || []).filter((r) => r && r.niveau && r.niveau.perOnderdeel);
+  if (!records.length) {
+    return {
+      beschikbaar: false, kleur: null, kleurregelOpen: 'A24',
+      regels: [], telling: null,
+      werkregel: 'Geen rapporten waarvan de leeszekerheid is bepaald'
+    };
+  }
+
+  const onderdelen = Object.keys(ONDERDEEL_WOORD);
+  const telling = {};
+  let promotieGeblokkeerd = 0;
+  onderdelen.forEach((o) => {
+    const t = { geverifieerd: 0, gerapporteerd: 0, niets: 0 };
+    records.forEach((r) => {
+      const vak = r.niveau.perOnderdeel[o];
+      if (!vak) return;
+      t[vak.uitkomst.tonen] = (t[vak.uitkomst.tonen] || 0) + 1;
+      if (vak.uitkomst.geblokkeerdeUpgrade) promotieGeblokkeerd++;
+    });
+    telling[o] = t;
+  });
+
+  // Een regel per uitspraak, en alleen als er iets over te zeggen valt.
+  // "0 van de 12" is geen mededeling maar ruis.
+  const regels = [];
+  onderdelen.forEach((o) => {
+    const t = telling[o];
+    const woord = ONDERDEEL_WOORD[o];
+    if (t.geverifieerd) {
+      regels.push({
+        onderdeel: o, stand: 'geverifieerd', aantal: t.geverifieerd,
+        zin: 'Bij ' + t.geverifieerd + ' van de ' + records.length + ' rapporten is de ' + woord +
+          ' onafhankelijk bevestigd.'
+      });
+    }
+    if (t.gerapporteerd) {
+      regels.push({
+        onderdeel: o, stand: 'gerapporteerd', aantal: t.gerapporteerd,
+        zin: 'Bij ' + t.gerapporteerd + ' van de ' + records.length + ' rapporten staat de ' + woord +
+          ' wel in het document, maar hebben wij hem niet onafhankelijk bevestigd.',
+        toelichting: niveaus.GERAPPORTEERD_TOELICHTING
+      });
+    }
+    if (t.niets && !t.geverifieerd && !t.gerapporteerd) {
+      regels.push({
+        onderdeel: o, stand: 'niets', aantal: t.niets,
+        zin: 'Over de ' + woord + ' zeggen wij niets: die staat niet leesbaar in de rapporten die wij zagen.'
+      });
+    }
+  });
+
+  if (promotieGeblokkeerd) {
+    regels.push({
+      onderdeel: null, stand: 'promotie_geblokkeerd', aantal: promotieGeblokkeerd,
+      zin: promotieGeblokkeerd === 1
+        ? 'Een waarde blijft op "gerapporteerd" staan omdat het laboratorium onvoldoende verifieerbaar is. ' +
+          'Dat zegt niets over de waarde zelf.'
+        : promotieGeblokkeerd + ' waarden blijven op "gerapporteerd" staan omdat het laboratorium ' +
+          'onvoldoende verifieerbaar is. Dat zegt niets over de waarde zelf.'
+    });
+  }
+
+  return {
+    beschikbaar: true, kleur: null, kleurregelOpen: 'A24',
+    rapporten: records.length, telling, promotieGeblokkeerd, regels,
+    werkregel: records.length + ' rapport(en) beoordeeld op leeszekerheid en verificatie'
+  };
 }
 
 // Alles bij elkaar, in leesvolgorde.
-function bouwBlokken(engineResult, records, bedrijf) {
+function bouwBlokken(engineResult, records, bedrijf, shopHost) {
   return {
-    versie: '1.0',
+    versie: '1.2',
     openheid: openheidBlok(records, bedrijf),
     verificatie: verificatieBlok(records),
-    productbewijs: productbewijsBlok(engineResult, records)
+    productbewijs: productbewijsBlok(engineResult, records, shopHost),
+    waarden: waardenBlok(records)
   };
 }
 
 module.exports = {
-  OPENHEID_PUNTEN, standVanRapport, openheidBlok, verificatieBlok, productbewijsBlok, bouwBlokken
+  OPENHEID_PUNTEN, standVanRapport, herkomstVanRapport, telHerkomst, openheidBlok, verificatieBlok, productbewijsBlok, waardenBlok, bouwBlokken
 };

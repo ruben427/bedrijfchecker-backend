@@ -10,6 +10,7 @@ const coaStore = require('./coaStore');
 const coaCrawler = require('./coaCrawler');
 const siteShot = require('./siteShot');
 const janoshik = require('./janoshik');
+const niveaus = require('./niveaus');
 const ilsLab = require('./ilsLab');
 
 // Versie van de COA-leeslaag. Analyseresultaten worden gecachet op
@@ -240,6 +241,77 @@ function labBevindingenUitWaarneming(w) {
 // mogelijk op een ander bedrijf, en dat is precies het punt.
 const MODEL_BEVESTIGT = ['bestaatAantoonbaar', 'accreditaties', 'publiekVerificatiesysteem',
   'werktOokVoorAndereOpdrachtgevers', 'onafhankelijkVanLeverancier'];
+
+// --- Twee assen aan de pijplijn ---------------------------------------------
+//
+// niveaus.js lag er sinds 20 september en deed niets: de standen werden
+// berekend noch getoond, dus veranderde er niets aan wat de FREE liet zien.
+// Hieronder de koppeling. Wat een niveau nodig heeft is een CONTROLE, en die
+// kan uit drie plekken komen. In deze volgorde, want zwaarder bewijs wint:
+//
+//   1. een mens die dit rapport bij het lab heeft geopend        -> V4
+//   2. een eerder vastgelegde controle op dezelfde referentie    -> V2/V3/V4
+//   3. wat deze run zelf bij het lab ophaalde                    -> V2/V3
+//
+// Geen van de drie is hetzelfde als "er staat een sleutel op het document".
+// Dat blijft V1, en V1 promoveert niet.
+function referentieSleutels(r) {
+  const uit = [];
+  const lab = r && r.laboratorium ? String(r.laboratorium).trim() : '';
+  const voegToe = (labnaam, ref) => {
+    if (!labnaam || !ref) return;
+    uit.push(coaStore.normaliseerLab(labnaam).naam.toLowerCase() + '|' + String(ref).toLowerCase());
+  };
+  if (lab && /janoshik/i.test(lab)) {
+    const ref = janoshik.bouwReferentie(r);
+    if (ref && ref.referentie) voegToe('Janoshik', ref.referentie);
+  }
+  if (lab) {
+    if (r.verificationKey) voegToe(lab, String(r.verificationKey).trim());
+    if (r.reportId) voegToe(lab, String(r.reportId).replace(/^#/, '').trim());
+  }
+  return uit;
+}
+
+function controleVoorRecord(r, index) {
+  if (!r) return null;
+  // Handmatig geverifieerde documenten uit het archief dragen hun herkomst
+  // mee in 'uit'. Dat IS de menselijke controle; die hoeft niet opgezocht.
+  if (r.uit === 'external_verification_manual') {
+    return { methode: 'handmatig', resolvet: true, herkomstControle: 'handmatige verificatie in het archief' };
+  }
+  for (const sleutel of referentieSleutels(r)) {
+    const c = index.get(sleutel);
+    if (c) return Object.assign({ herkomstControle: 'eerder vastgelegde controle' }, c);
+  }
+  const v = r.verificatie;
+  if (v && v.opgelost != null) {
+    return {
+      methode: 'resolver',
+      resolvet: v.opgelost === true,
+      veldenVergeleken: (v.vergelekenVelden || []).length,
+      veldenAfwijkend: (v.verschillen || []).length,
+      herkomstControle: 'deze run, bij het lab opgehaald'
+    };
+  }
+  return null;
+}
+
+// Welke van de gelezen velden mogen mee naar de Evidence Gate? Alleen die
+// waarvan de bijbehorende uitspraak niet op 'niets' staat. De koppeling
+// veld -> uitspraak staat hier expliciet; velden die niet in de lijst staan
+// blijven ongemoeid.
+const VELD_NAAR_ONDERDEEL = { quantity: 'vulling', purity: 'zuiverheid', identity: 'identiteit' };
+
+function bruikbareVelden(r, velden) {
+  if (!r || !r.niveau || !r.niveau.perOnderdeel) return velden;
+  return velden.filter((veld) => {
+    const onderdeel = VELD_NAAR_ONDERDEEL[veld];
+    if (!onderdeel) return true;
+    const vak = r.niveau.perOnderdeel[onderdeel];
+    return !vak || vak.uitkomst.tonen !== niveaus.TONEN.NIETS;
+  });
+}
 
 function koppelLabBeoordelingen(labs, beoordelingen, menselijkeOordelen) {
   const perNaam = new Map();
@@ -576,14 +648,9 @@ function toetsZuiverheidsbelofte(beloften, records) {
   };
 }
 
-function heeftIdentiteitsbepaling(r) {
-  if (!r) return false;
-  if (r.identiteitBevestigd === true) return true;
-  if (r.blindTest === true && r.product) return true;
-  const m = r.identiteitsmethode ? String(r.identiteitsmethode).toLowerCase() : '';
-  if (!m) return false;
-  return /(^|[^a-z])ms([^a-z]|$)|mass spec|massaspec|lc-?ms|ms\/ms|moleculair|molecular weight|aminozuur|amino acid|referentiestandaard|reference standard/.test(m);
-}
+// Verhuisd naar niveaus.js, zodat de Evidence Gate en de niveaus dezelfde
+// vraag niet elk met een eigen antwoord beantwoorden.
+const heeftIdentiteitsbepaling = niveaus.heeftIdentiteitsbepaling;
 
 // ---------------------------------------------------------------------------
 // LABRESOLVER (19 september 2026)
@@ -1356,6 +1423,48 @@ async function runResearchStep(caseId, ctx, key) {
       await meldStap(caseId, 'LET OP: ' + onbevestigd + ' rapport(en) rusten op een laboratorium dat niet als onafhankelijk geverifieerd geldt');
     }
 
+    // ---- Twee assen per rapport ----
+    //
+    // Leeszekerheid (hebben wij dit goed uitgelezen) en verificatiegraad (is
+    // het onafhankelijk bevestigd) worden apart bepaald en daarna gecombineerd
+    // tot een van drie standen: niets, gerapporteerd, geverifieerd.
+    //
+    // Het labooordeel doet hier maar een ding: het houdt de promotie naar
+    // geverifieerd tegen. Alleen bij een vastgesteld 'telt niet mee'. Een lab
+    // dat nog niet beoordeeld is (telt === null) blokkeert niets, en een lab
+    // dat wij niet kunnen bereiken ook niet - 'wij komen er niet in' is geen
+    // afkeuring.
+    const controleIndex = new Map();
+    metControle.forEach((c) => {
+      if (!c.lab || !c.referentie || !c.controle) return;
+      controleIndex.set(String(c.lab).toLowerCase() + '|' + String(c.referentie).toLowerCase(), c.controle);
+    });
+
+    const niveauTelling = {
+      geverifieerd: 0, gerapporteerd: 0, niets: 0, promotieGeblokkeerd: 0,
+      perOnderdeel: { vulling: {}, zuiverheid: {}, identiteit: {} }
+    };
+    records.forEach((r) => {
+      if (!r) return;
+      const naam = r.laboratorium ? coaStore.normaliseerLab(r.laboratorium).naam : null;
+      const oordeel = naam ? (labOordelenNu[coaStore.labSleutel(naam)] || null) : null;
+      const labTelt = coaStore.bewijskrachtVanLab(oordeel).telt;   // true | false | null
+      const controle = controleVoorRecord(r, controleIndex);
+      r.niveau = niveaus.beoordeelRecord(r, controle, labTelt);
+      r.niveau.herkomstControle = (controle && controle.herkomstControle) || 'geen controle';
+      niveauTelling[r.niveau.hoogste] = (niveauTelling[r.niveau.hoogste] || 0) + 1;
+      niveaus.ONDERDELEN.forEach((o) => {
+        const u = r.niveau.perOnderdeel[o].uitkomst;
+        const vak = niveauTelling.perOnderdeel[o];
+        vak[u.tonen] = (vak[u.tonen] || 0) + 1;
+        if (u.geblokkeerdeUpgrade) niveauTelling.promotieGeblokkeerd++;
+      });
+    });
+    if (niveauTelling.promotieGeblokkeerd) {
+      await meldStap(caseId, 'LET OP: ' + niveauTelling.promotieGeblokkeerd +
+        ' waarde(n) blijven op "gerapporteerd" staan omdat het laboratorium onvoldoende verifieerbaar is');
+    }
+
     const intake = records.map((r, i) => {
       const fields = [];
       if (r.purityPercent != null) fields.push('purity');
@@ -1382,7 +1491,15 @@ async function runResearchStep(caseId, ctx, key) {
         // Rust dit rapport op een lab dat niet als onafhankelijk geverifieerd
         // geldt? Dan zijn de analytische velden niet bruikbaar als bewijs. Ze
         // staan er wel, ze tellen alleen niet mee.
-        analytical_fields_usable: r.bewijskracht === 'onbevestigd' ? [] : fields,
+        //
+        // Daarboven op de leeszekerheid, per uitspraak: een veld dat wij niet
+        // betrouwbaar hebben uitgelezen mag de Evidence Gate niet halen. Dat
+        // is de L0-regel van 20 september ("L0 zwijgt altijd"), en hij geldt
+        // nu ook richting de poort en niet alleen richting het scherm. De
+        // overige velden - sterility, endotoxin, heavyMetals, other - blijven
+        // ongemoeid: daar heeft niveaus.js geen kernvelden voor, en een veld
+        // wegstrepen zonder maatstaf is erger dan het laten staan.
+        analytical_fields_usable: r.bewijskracht === 'onbevestigd' ? [] : bruikbareVelden(r, fields),
         analytical_fields_gelezen: fields,
         bewijskracht: r.bewijskracht || null,
         bewijskracht_reden: r.bewijskrachtReden || null
@@ -1415,7 +1532,7 @@ async function runResearchStep(caseId, ctx, key) {
       diagnose: (crawl && crawl.diagnose) || []
     };
     result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets, testdekking, handmatigeControles,
-      labsZonderOordeel: [...labsZonderOordeel], rapportenOnbevestigd: onbevestigd }) };
+      labsZonderOordeel: [...labsZonderOordeel], rapportenOnbevestigd: onbevestigd, niveauTelling }) };
   } else if (key === 'laboratorium') {
     // Begin bij wat de COA-stap al gezien heeft. Draait deze stap zonder
     // voorafgaande COA-stap, dan is waarneming gewoon leeg en valt stepOpts
@@ -1496,7 +1613,7 @@ async function applyScoringEngine(caseId) {
   // authenticiteitsklassen die de resolver of een mens heeft vastgelegd.
   const coaRecordsVoorBlokken = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data
     && c.phaseData.coaDataset.data.coaRecords) || [];
-  engineResult.blokken = bouwBlokken(engineResult, coaRecordsVoorBlokken, c.bedrijfsgegevens || null);
+  engineResult.blokken = bouwBlokken(engineResult, coaRecordsVoorBlokken, c.bedrijfsgegevens || null, domainOf(c.website));
   await db.updateCase(caseId, { engineResult });
   return engineResult;
 }
@@ -1613,5 +1730,8 @@ module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
   extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,
-  toetsZuiverheidsbelofte
+  toetsZuiverheidsbelofte,
+  // Uitsluitend om na te kunnen rekenen wat de twee assen met een rapport doen:
+  // welke controle eraan hangt en welke velden daardoor de Evidence Gate halen.
+  referentieSleutels, controleVoorRecord, bruikbareVelden
 };
