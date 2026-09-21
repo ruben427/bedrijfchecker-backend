@@ -9,12 +9,15 @@
 <link rel="stylesheet" href="bedrijfchecker.css">
 
 
-<div class="wrap">
-  <header class="site-header">
+<header class="site-header">
+  <div class="site-header-inner">
     <button type="button" class="site-logo" id="brand-home" aria-label="Naar de startpagina">
       <img src="PEPPROOF-LOGO.svg" alt="Pep Proof" width="258" height="80">
     </button>
-  </header>
+  </div>
+</header>
+
+<div class="wrap">
 
   <div id="capability-banner"></div>
   <main id="app"></main>
@@ -1004,19 +1007,13 @@
 
   // ---------- Rapport (Figma "Rapport" 494:14614, bijgewerkt 16 sep) ----------
 
-  // De drie balken in het Stats URL-block. Bewust nog los van de engine: de
-  // getallen staan hier, zodat er straks maar een plek is om ze aan een
-  // uitkomst te koppelen.
-  // UIT tot A1 is besloten. Hier stond 'Titel onderdeel - 0% - Korte uitleg
-  // over deze score', drie keer, boven in elk rapport dat een gebruiker te
-  // zien kreeg. De percentages waren vaste getallen uit de Figma-opzet en
-  // hingen aan niets; de waarde erboven stond hoe dan ook op 0%. Een lezer
-  // ziet drie balken op nul en leest dat als een uitkomst.
+  // De drie blokken in het Stats URL-block: Openheid, Externe verificatie,
+  // Productbewijs. A1 is hiermee ingevuld. Hier stonden drie balken met vaste
+  // percentages uit de Figma-opzet die aan niets hingen; die zijn weg.
   //
-  // Niet ingevuld met iets anders, want welke drie blokken hier horen en of
-  // het percentages of statussen worden, is precies A1 - en dat besluit ligt
-  // bij Annemarie. Liever niets dan een verzonnen cijfer.
-  var STAT_BALKEN = [];
+  // De getallen worden NIET hier bedacht. src/blokken.js telt ze op uit wat
+  // al is vastgesteld, en dit rendert alleen. Een stip is een rapport of een
+  // punt van de openheidslijst, geen maat: daarom stippen en geen balk.
 
   // Hoeveel regels blijven staan voordat er wordt ingeklapt. Alleen in de
   // tekstblokken van het tweede deel; de COA-blokken staan er helemaal uit.
@@ -1027,10 +1024,11 @@
     var o = opties || {};
     var open = o.open ? 'true' : 'false';
     var sub = o.sub ? '<span class="acc-sub">' + escapeHtml(o.sub) + '</span>' : '';
+    var telling = o.telling ? '<span class="acc-telling">' + escapeHtml(o.telling) + '</span>' : '';
     return '<div class="acc-item" data-open="' + open + '">' +
       '<button type="button" class="acc-header" aria-expanded="' + open + '">' +
       '<span class="acc-title' + (o.plain ? ' plain' : '') + '">' + escapeHtml(titel) + sub + '</span>' +
-      '<span class="acc-chevron">' + ICON_CARET + '</span></button>' +
+      telling + '<span class="acc-chevron">' + ICON_CARET + '</span></button>' +
       '<div class="acc-body' + (o.columns ? ' acc-columns' : '') + '">' + bodyHtml + '</div></div>';
   }
 
@@ -1151,15 +1149,145 @@
     return eerste ? '<p class="stats-intro">' + escapeHtml(eerste) + '</p>' : '';
   }
 
-  function statBalkenHtml(){
-    if (!STAT_BALKEN.length) return '';
-    return '<div class="stat-bars">' + STAT_BALKEN.map(function(b){
-      return '<div class="stat-bar" data-pct="' + b.pct + '" style="--pct:' + b.pct + '">' +
-        '<div class="stat-bar-head"><span class="stat-bar-title">' + escapeHtml(b.titel) + '</span>' +
-        '<span class="stat-bar-value">0%</span></div>' +
-        '<div class="stat-bar-track"><span class="stat-bar-fill"></span></div>' +
-        '<p class="stat-bar-note">' + escapeHtml(b.uitleg) + '</p></div>';
-    }).join('') + '</div>';
+  function blokkenVan(c){
+    return (c.engineResult && c.engineResult.blokken) || c.blokken || null;
+  }
+
+  // De balk uit Anne's designsysteem: een track met een vulling die na het
+  // renderen uitslaat (.is-on, zie startBalken). Hij vervangt de stippen:
+  // Ruben wil dezelfde balk als in het ontwerp, met dezelfde animatie.
+  //
+  // De balk is een AANDEEL, geen cijfer over de leverancier. Bij Openheid is
+  // dat aanwezig/noemer, bij Externe verificatie geverifieerd/gevonden. Staat
+  // er geen aandeel te berekenen, dan staat er ook geen balk.
+  function balkHtml(pct, telop){
+    if (pct == null) return '';
+    var p = Math.max(0, Math.min(100, Math.round(pct)));
+    return '<div class="stat-bar" data-pct="' + p + '" style="--pct:' + p + '"' + (telop || '') + '>' +
+      '<div class="stat-bar-track"><span class="stat-bar-fill"></span></div></div>';
+  }
+
+  function blokHtml(o){
+    return '<div class="blok ' + o.kleur + '">' +
+      '<span class="blok-label">' + escapeHtml(o.label) + '<span class="blok-stap">' + o.stap + '</span></span>' +
+      '<span class="blok-waarde' + (o.woord ? ' woord' : '') + '">' + o.waarde + '</span>' +
+      (o.balk || '') +
+      (o.uitleg ? '<span class="blok-uitleg">' + escapeHtml(o.uitleg) + '</span>' : '') +
+      (o.werk ? '<span class="blok-werk mono">' + escapeHtml(o.werk) + '</span>' : '') +
+      '</div>';
+  }
+
+  function blokkenHtml(c){
+    var b = blokkenVan(c);
+    if (!b) return '';
+    var op = b.openheid || {}, ve = b.verificatie || {}, pb = b.productbewijs || {};
+
+    // Openheid telt het getal mee omhoog terwijl de balk uitslaat.
+    var openPct = op.noemer ? (100 * (op.aanwezig || 0)) / op.noemer : null;
+    var openheid = blokHtml({
+      label:'Openheid', stap:'1', kleur: op.kleur || 'grey',
+      waarde: '<span class="js-telop">' + (op.aanwezig != null ? op.aanwezig : '—') + '</span>' +
+        '<span class="klein"> van ' + (op.noemer || 0) + '</span>',
+      balk: balkHtml(openPct, ' data-telop="' + (op.aanwezig || 0) + '"'),
+      uitleg: op.toelichting || null
+    });
+
+    // Bij verificatie staat een woord boven de balk, geen getal: de stand is
+    // niet altijd een aantal ("Niets te controleren"). De balk toont wel het
+    // aandeel dat is opgelost.
+    var verPct = ve.totaal ? (100 * ((ve.telling && ve.telling.geverifieerd) || 0)) / ve.totaal : null;
+    var verificatie = blokHtml({
+      label:'Externe verificatie', stap:'2', kleur: ve.kleur || 'grey',
+      waarde: escapeHtml(ve.woord || 'Onbekend'), woord:true,
+      balk: balkHtml(verPct),
+      werk: ve.werkregel
+    });
+
+    // Blok 3 krijgt alleen een balk als er een percentage te publiceren is.
+    // Een telling ("12 rapporten") is geen aandeel van iets; daar zou een
+    // balk een verhouding suggereren die er niet is.
+    var waarde, woord = false, balk = '';
+    if (pb.vorm === 'percentage'){
+      waarde = '<span class="js-telop">' + String(pb.waarde).replace('.', ',') + '</span><span class="klein">%</span>';
+      balk = balkHtml(pb.percentage, ' data-telop="' + Math.round(pb.percentage) + '"');
+    } else if (pb.vorm === 'telling'){
+      waarde = pb.waarde + '<span class="klein"> rapporten</span>';
+    } else {
+      waarde = escapeHtml(String(pb.waarde || '—')); woord = true;
+    }
+    var bewijs = blokHtml({
+      label:'Productbewijs', stap:'3', kleur: pb.kleur || 'grey',
+      waarde: waarde, woord: woord, balk: balk,
+      werk: pb.werkregel || (pb.vorm === 'percentage' && pb.coverage != null ? ('dekking ' + Math.round(pb.coverage) + '%') : null)
+    });
+
+    return '<div class="blokken">' +
+      '<p class="blokken-kop">Wat we konden controleren</p>' +
+      '<div class="blokken-rij">' + openheid + verificatie + bewijs + '</div></div>';
+  }
+
+  // Het vervolgvak onder de blokken. Vijf varianten, altijd na de uitslag:
+  // eerst geven, dan pas vragen.
+  //
+  // LET OP: insturen, mailen en "hou me op de hoogte" hebben nog geen
+  // eindpunt. Zolang dat zo is staat de tekst er wel en de knop niet - liever
+  // geen knop dan een knop die niets doet. Alleen de labpagina werkt al,
+  // want dat is een link naar het laboratorium zelf.
+  // Iconen staan in het ontwerp inline vóór de titel, 24px, en verdwijnen
+  // onder de 700px. Font Awesome zit niet in deze build, dus dit zijn dezelfde
+  // vormen als losse svg's.
+  var VERVOLG_ICONEN = {
+    vraag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><path d="M10.4 12.6a1.8 1.8 0 1 1 2.4 2.3c-.5.3-.8.8-.8 1.4"/><line x1="12" y1="18.5" x2="12" y2="18.5"/></svg>',
+    kruis: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><polyline points="14 3 14 8 19 8"/><line x1="9.5" y1="13" x2="14.5" y2="18"/><line x1="14.5" y1="13" x2="9.5" y2="18"/></svg>',
+    klok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>',
+    envelop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><polyline points="3.5 6.5 12 13 20.5 6.5"/></svg>',
+    waarschuwing: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.3 2.6 17.5A1.9 1.9 0 0 0 4.3 20.4h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 4.3a1.9 1.9 0 0 0-3.4 0z"/><line x1="12" y1="9.5" x2="12" y2="14"/><line x1="12" y1="17" x2="12" y2="17"/></svg>'
+  };
+
+  function vervolgHtml(c){
+    var b = blokkenVan(c);
+    if (!b) return '';
+    var ve = b.verificatie || {}, pb = b.productbewijs || {}, t = ve.telling || {};
+    var labUrl = null;
+    (ve.stippen || []).some(function(p){
+      if (p.officieleBron) { labUrl = p.officieleBron; return true; }
+      return false;
+    });
+    var v;
+    if (!ve.totaal) {
+      v = { soort:'vraag', icoon:'vraag', titel:'Heb jij wel een rapport van deze shop?',
+        tekst:'Wij vonden er geen. Heb jij er een gekregen bij je bestelling, of weet je waar ze staan? Stuur het in, dan controleren we het bij het laboratorium en werken we deze pagina bij.' };
+    } else if (pb.kleur === 'red') {
+      v = { soort:'waarschuwing', icoon:'waarschuwing', titel:'Wat wij nu doen',
+        tekst:'Wij leggen deze uitslag voor aan de shop en controleren of andere batches hetzelfde laten zien. De bevinding hieronder blijft staan, wat daar ook uitkomt.' };
+    } else if (t.geverifieerd === 0 && t.wachtrij > 0) {
+      v = { soort:'wacht', icoon:'klok', titel:'Deze rapporten staan bij ons in de wachtrij',
+        tekst:'Het laboratorium laat ons niet automatisch meekijken, dus controleren wij deze rapporten met de hand. Deze pagina wordt bijgewerkt zodra dat gebeurd is.' };
+    } else if (t.geverifieerd === 0 && (t.codeWeggehaald > 0 || t.geenCode > 0)) {
+      v = { soort:'vraag', icoon:'kruis', titel:'Wij kunnen deze rapporten niet natrekken',
+        tekst:'Op de rapporten ontbreekt het nummer waarmee het laboratorium kan bevestigen dat ze bestaan. Heb jij een origineel waar dat nummer nog wel op staat? Dan controleren we het alsnog.' };
+    } else {
+      v = { soort:'bewaar', icoon:'envelop', titel:'Bewaar dit rapport',
+        tekst:'Wij kijken regelmatig opnieuw. Komt er een rapport bij, verdwijnt er een, of verandert er iets aan de uitkomst, dan is dat hier te zien.' };
+    }
+    // De tweede actie is in het ontwerp een tekstlink, geen tweede knop.
+    var acties = [];
+    if (labUrl){
+      acties.push('<a class="vervolg-link" href="' + escapeHtml(labUrl) + '" target="_blank" rel="noopener">Toon de labpagina</a>');
+    }
+    // Twee acties onder elkaar krijgen onder de 700px minder ruimte onderaan
+    // (24 rondom, 12 onder), anders valt er een gat onder de laatste link.
+    var klassen = ['vervolg-vak', v.soort];
+    if (acties.length >= 2) klassen.push('twee-acties');
+    if (!acties.length) klassen.push('geen-acties');
+    var icoon = VERVOLG_ICONEN[v.icoon] ? '<span class="vervolg-icoon">' + VERVOLG_ICONEN[v.icoon] + '</span>' : '';
+    return '<div class="' + klassen.join(' ') + '">' +
+      '<div class="vervolg-tekst">' +
+        '<span class="vervolg-titel">' + icoon + escapeHtml(v.titel) + '</span>' +
+        '<span class="vervolg-sub">' + escapeHtml(v.tekst) + '</span>' +
+      '</div>' +
+      (acties.length ? '<div class="vervolg-acties">' + acties.join('') + '</div>' : '') +
+      '</div>';
   }
 
   // Schermafdruk van de website, in een browservenster. De backend maakt hem
@@ -1197,34 +1325,155 @@
     return '<p class="rapport-voetnoot">' + escapeHtml(delen.join('. ') + '.') + '</p>';
   }
 
-  function upsellBanner(c){
-    if (c.tier === 'deep') return '';
-    return '<div class="upsell-banner">' +
-      '<div class="upsell-banner-head">' +
-      '<h3>Nog meer Proof met een deepdive</h3>' +
-      '<span class="upsell-prijs"><span class="klein">Voor slechts</span>' +
-      '<span class="groot">&euro; 3,<span class="cent">50</span></span></span>' +
-      '</div>' +
-      '<p>Wil je nog meer weten over deze leverancier? Dan kunnen we nog veel meer informatie voor je ophalen. Incl KVK handelsregister t.w.v. &euro; 2,95</p>' +
-      '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
-      '</div>';
+  // ---------- Het rapport, opnieuw opgebouwd (20 september) ----------
+  //
+  // Vervangt de gegroeide opzet met "Rapport details", een losse upsell-banner
+  // en een tweede deepdive-kaart met een ander bedrag. De pagina heeft nu vier
+  // delen, in leesvolgorde: de kop, de drie blokken met de vervolgstap, het
+  // bewijs, en onze lezing. Daarna pas de verdieping.
+
+  // Eén plek voor de prijs. Hij stond in twee functies, met twee bedragen, en
+  // in de projectdocumenten weer een derde.
+  var DEEPDIVE_PRIJS_HEEL = '3';
+  var DEEPDIVE_PRIJS_CENT = '50';
+  var DEEPDIVE_KVK = '2,95';
+
+  function rapportKop(c){
+    var naam = bedrijfsnaam(c);
+    var meta = (naam ? '<span class="rk-domein">' + escapeHtml(domainOf(c.website)) + '</span>' : '') +
+      '<span class="rk-datum">gecontroleerd ' + fmtDateLang(c.createdAt) + '</span>' +
+      (c.momentopname ? '<span class="rk-datum">momentopname #' + escapeHtml(String(c.momentopname)) + '</span>' : '');
+    return '<header class="rapport-kop">' +
+      '<div class="rk-meta">' + meta + '</div>' +
+      '<h2 class="rk-titel">' + escapeHtml(naam || domainOf(c.website)) + '</h2>' +
+      korteUitleg(c) + '</header>';
   }
 
+  function groepHtml(titel, uitleg, itemsHtml, smal){
+    if (!itemsHtml) return '';
+    return '<section class="groep">' +
+      '<div class="groep-kop"><h3>' + escapeHtml(titel) + '</h3>' +
+      (uitleg ? '<p>' + escapeHtml(uitleg) + '</p>' : '') + '</div>' +
+      '<div class="accordion' + (smal ? ' smal' : '') + '">' + itemsHtml + '</div></section>';
+  }
+
+  // --- groep 1: wat we hebben gevonden ---
+  function bewijsGroep(c, engine, r, coaRecords, documents){
+    if (!engine || !engine.assessments) return '';
+    var bl = blokkenVan(c) || {};
+    var aantalRapporten = (bl.verificatie && bl.verificatie.totaal) || coaRecords.length;
+    var labs = {};
+    coaRecords.forEach(function(x){ if (x && x.laboratorium) labs[String(x.laboratorium).toLowerCase()] = 1; });
+    var aantalLabs = Object.keys(labs).length;
+    function beoordeeld(pillar){
+      return pillarCategoryIds(pillar).filter(function(id){
+        var a = engine.assessments[id];
+        return a && a.color && a.color !== 'white';
+      }).length;
+    }
+    function tel(n, enkel, meer){ return n + ' ' + (n === 1 ? enkel : meer); }
+
+    // De Evidence Score hoort bij blok 3, dus de onderbouwing staat bij het
+    // bewijs waar het getal op rust - niet als losse regel tussen de
+    // conclusies, waar hij twee keer hetzelfde zei.
+    var coaBody = pijlerBody(engine, 'COA');
+    var score = evidenceScoreBody(engine);
+    if (coaBody && score) coaBody += '<div class="acc-category"><h4>Hoe dit getal tot stand komt</h4>' + score + '</div>';
+    var deep = supplierScoreBody(engine, c.tier);
+    if (coaBody && deep) coaBody += '<div class="acc-category"><h4>Supplier Score (Deep Dive)</h4>' + deep + '</div>';
+
+    var documentenBody = quantityBody(coaRecords, engine) +
+      ((r.documentanalyse && r.documentanalyse.length)
+        ? '<ul class="findings">' + r.documentanalyse.map(function(d){
+            return '<li>' + escapeHtml(d.omschrijving || '') +
+              '<span class="src">Product: ' + escapeHtml(d.product || 'onbekend') + ' &middot; Batch: ' + escapeHtml(d.batchnummer || 'onbekend') +
+              ' &middot; Purity: ' + escapeHtml(d.purity || 'onbekend') + ' &middot; Lab: ' + escapeHtml(d.laboratorium || 'onbekend') + '</span></li>';
+          }).join('') + '</ul>'
+        : '') +
+      ((documents && documents.length)
+        ? '<h4 class="acc-subkop">Geüploade documenten</h4><ul class="findings">' +
+          documents.map(function(d){ return '<li>' + escapeHtml(d.filename) + '</li>'; }).join('') + '</ul>'
+        : '');
+
+    // Eén regel per bron. Stond eerder onderaan als een reeks links zonder
+    // scheiding, die als een doorlopende plakzin renderde.
+    var bronnenBody = (r.bronnenregister && r.bronnenregister.length)
+      ? '<div class="bronnen">' + r.bronnenregister.map(function(b){
+          return '<div class="bron"><a href="' + escapeHtml(b.url) + '" target="_blank" rel="noopener">' +
+            escapeHtml(b.titel || b.url) + '</a></div>';
+        }).join('') + '</div>'
+      : '';
+
+    var items = accItem('COA & productbewijs', coaBody, { columns:true,
+        telling: aantalRapporten ? (tel(aantalRapporten, 'rapport', 'rapporten') + ' · ' + beoordeeld('COA') + ' van 9 beoordeeld') : 'geen rapporten' }) +
+      accItem('Laboratorium', pijlerBody(engine, 'LAB'), { columns:true,
+        telling: aantalLabs ? tel(aantalLabs, 'genoemd', 'genoemd') : 'niet genoemd' }) +
+      accItem('Bedrijf', pijlerBody(engine, 'COMPANY'), { columns:true,
+        telling: c.tier === 'deep' ? '' : 'light versie' }) +
+      accItem('Reputatie & commerciële transparantie', pijlerBody(engine, 'REPUTATION'), { columns:true,
+        telling: beoordeeld('REPUTATION') ? tel(beoordeeld('REPUTATION'), 'beoordeeld', 'beoordeeld') : 'niet beoordeeld' }) +
+      accItem('Wat er letterlijk op de rapporten staat', documentenBody, { plain:true,
+        sub:'letterlijke uitlezing, niet geverifieerd',
+        telling: aantalRapporten ? tel(aantalRapporten, 'document', 'documenten') : '' }) +
+      accItem('Bronnenregister', bronnenBody, { plain:true,
+        telling: (r.bronnenregister && r.bronnenregister.length) ? tel(r.bronnenregister.length, 'bron', 'bronnen') : '' });
+
+    return groepHtml('Het bewijs achter deze samenvatting',
+      'Wat we hebben gevonden en gelezen. Elke regel hieronder heeft een bron.', items) + archiefRegel(c);
+  }
+
+  // --- groep 2: wat wij eruit lezen ---
+  function lezingGroep(r){
+    var rode = (r.rodeVlaggen && r.rodeVlaggen.length) ? r.rodeVlaggen.length : 0;
+    var items = accItem('In het kort', klemBlok(alineasHtml(r.executiveSummary)), { plain:true }) +
+      accItem('Sterkste positieve bevindingen', bevindingenLijst(r.sterkstePositieveBevindingen, 'ok'),
+        { plain:true, telling: String((r.sterkstePositieveBevindingen || []).length || '') }) +
+      accItem('Belangrijkste aandachtspunten', bevindingenLijst(r.belangrijksteAandachtspunten, ''),
+        { plain:true, telling: String((r.belangrijksteAandachtspunten || []).length || '') }) +
+      // Heette "Rode vlaggen". Staat er nu ook als het er nul zijn: leeg is
+      // hier het nieuws, en een lege lijst zegt iets anders dan een lege bak.
+      accItem('Aangetoonde problemen', rode
+        ? '<ul class="findings">' + r.rodeVlaggen.map(function(f){
+            return '<li class="danger">' + escapeHtml(f.omschrijving || f) +
+              (f.bron ? '<span class="src">Bron: ' + escapeHtml(f.bron) + '</span>' : '') + '</li>';
+          }).join('') + '</ul>'
+        : '<p>Geen. Wij noemen alleen iets een probleem als het aantoonbaar is. Dat wij iets niet konden controleren, is geen probleem van deze shop.</p>',
+        { plain:true, telling: rode ? String(rode) : 'geen' }) +
+      accItem('Wat wij niet konden vaststellen', bevindingenLijst(r.nietVerifieerbaar, ''),
+        { plain:true, telling: String((r.nietVerifieerbaar || []).length || '') }) +
+      accItem('Eindconclusie', klemBlok(alineasHtml(r.eindconclusie)), { plain:true });
+    return groepHtml('Wat wij hieruit lezen',
+      'Onze lezing van het bewijs hierboven. Bewust gescheiden: hierboven staat wat er is, hier staat wat wij ervan vinden.',
+      items, true);
+  }
+
+  // --- groep 3: zelf verder ---
+  function zelfVerderGroep(r){
+    if (!(r.top5Vragen && r.top5Vragen.length)) return '';
+    return groepHtml('Zelf verder', 'Wat je hiermee kunt doen zonder ons.',
+      accItem('Vragen die je deze shop kunt stellen',
+        '<ol class="numbered">' + r.top5Vragen.map(function(q){ return '<li>' + escapeHtml(q) + '</li>'; }).join('') + '</ol>',
+        { plain:true, telling: String(r.top5Vragen.length) }));
+  }
+
+  // --- de verdieping, één kaart ---
   function deepdiveKaart(){
     return '<section class="deepdive-card">' +
+      '<div class="deepdive-head">' +
       '<h3 class="deepdive-title">Nog meer Proof met een deepdive</h3>' +
-      '<p class="deepdive-price">Voor slechts &euro;3,50</p>' +
-      '<p>De <strong>Deep Dive</strong> bevat de bovenstaande evidence-analyse, maar trekt vervolgens de leverancier zelf helemaal open.</p>' +
+      '<span class="deepdive-price"><span class="klein">Voor slechts</span>' +
+      '<span class="groot">&euro; ' + DEEPDIVE_PRIJS_HEEL + ',<span class="cent">' + DEEPDIVE_PRIJS_CENT + '</span></span></span>' +
+      '</div>' +
+      '<p>De Deep Dive bevat de analyse hierboven en trekt daarna de leverancier zelf open.</p>' +
       '<ul>' +
-        '<li>Officiële bedrijfsregistratie via de KvK (t.w.v. &euro; 2,95)</li>' +
-        '<li>Upload van eigen foto\'s om je eigen batch te verifiëren</li>' +
-        '<li>Welke onderneming zit daadwerkelijk achter de webshop?</li>' +
-        '<li>Relevante zakelijke verbanden die uit openbare/officiële bedrijfsinformatie blijken.</li>' +
+        '<li>Officiële bedrijfsregistratie, opgevraagd bij de KVK (t.w.v. &euro; ' + DEEPDIVE_KVK + ')</li>' +
+        '<li>Welke onderneming daadwerkelijk achter de webshop zit</li>' +
+        '<li>Bedrijfshistorie, adressen en zakelijke verbanden uit officiële bronnen</li>' +
+        '<li>Je eigen batch laten controleren met een foto van het product</li>' +
       '</ul>' +
-      '<p>En nog veel meer</p>' +
       '<div class="deepdive-actions">' +
-        '<button type="button" class="btn-cta js-continue-deep" id="continue-deep">Ja, ik wil meer bewijs</button>' +
-        '<button type="button" class="textlink js-deepdive-info">Meer informatie</button>' +
+        '<button type="button" class="btn-cta js-continue-deep" id="continue-deep">Ja, ik wil de verdieping</button>' +
+        '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
       '</div></section>';
   }
 
@@ -1235,82 +1484,23 @@
     var coaRecords = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.coaRecords) || [];
 
     var out = '<div class="rapport">';
-
-    // Datum en domein staan over de volle breedte; pas daaronder splitst het
-    // in twee kolommen.
-    out += '<div class="stats-blok">' +
-      '<div class="stats-kop">' +
-      '<div class="stats-datum">' + fmtDateLang(c.createdAt) + '</div>' +
-      '<h2 class="stats-domein">' + escapeHtml(domainOf(c.website)) + '</h2>' +
-      '</div>' +
-      '<div class="stats-url"><div class="stats-url-main">' +
-      (bedrijfsnaam(c) ? '<p class="stats-bedrijf">' + escapeHtml(bedrijfsnaam(c)) + '</p>' : '') +
-      korteUitleg(c) +
-      statBalkenHtml() +
-      '</div>' + siteShotHtml(c) + '</div></div>';
-
-    out += renderGateBanner(engine);
-    out += upsellBanner(c);
-
-    if (engine && engine.assessments){
-      out += '<h3 class="rapport-kop">Rapport details</h3><div class="accordion">' +
-        accItem('COA & productbewijs', pijlerBody(engine, 'COA'), { columns:true }) +
-        accItem('Laboratorium', pijlerBody(engine, 'LAB'), { columns:true }) +
-        accItem('Bedrijf', pijlerBody(engine, 'COMPANY'), { columns:true, sub: c.tier === 'deep' ? '' : 'Light versie' }) +
-        accItem('Reputatie & commerciële transparantie', pijlerBody(engine, 'REPUTATION'), { columns:true }) +
-        '</div>' + archiefRegel(c);
-    }
-
-    var groep2 = accItem('Free Evidence Score', evidenceScoreBody(engine), { plain:true }) +
-      accItem('Supplier Score (Deep Dive)', supplierScoreBody(engine, c.tier), { plain:true }) +
-      accItem('Executive summary', klemBlok(alineasHtml(r.executiveSummary)), { plain:true }) +
-      accItem('Sterkste positieve bevindingen', bevindingenLijst(r.sterkstePositieveBevindingen, 'ok'), { plain:true }) +
-      accItem('Belangrijkste aandachtspunten', bevindingenLijst(r.belangrijksteAandachtspunten, ''), { plain:true }) +
-      accItem('Rode vlaggen', (r.rodeVlaggen && r.rodeVlaggen.length)
-        ? '<ul class="findings">' + r.rodeVlaggen.map(function(f){
-            return '<li class="danger">' + escapeHtml(f.omschrijving || f) +
-              (f.bron ? '<span class="src">Bron: ' + escapeHtml(f.bron) + '</span>' : '') + '</li>';
-          }).join('') + '</ul>'
-        : '<p>Geen concreet aantoonbare problemen gevonden binnen deze automatische pas.</p>', { plain:true }) +
-      accItem('Niet (voldoende) verifieerbaar', bevindingenLijst(r.nietVerifieerbaar, ''), { plain:true }) +
-      accItem('Quantity-afwijking per record', quantityBody(coaRecords, engine), { plain:true }) +
-      accItem('Documentanalyse', (r.documentanalyse && r.documentanalyse.length)
-        ? '<ul class="findings">' + r.documentanalyse.map(function(d){
-            return '<li>' + escapeHtml(d.omschrijving || '') +
-              '<span class="src">Product: ' + escapeHtml(d.product || 'onbekend') + ' &middot; Batch: ' + escapeHtml(d.batchnummer || 'onbekend') +
-              ' &middot; Purity: ' + escapeHtml(d.purity || 'onbekend') + ' &middot; Lab: ' + escapeHtml(d.laboratorium || 'onbekend') + '</span></li>';
-          }).join('') + '</ul>'
-        : '', { plain:true, sub:'letterlijke uitlezing, niet geverifieerd' }) +
-      accItem('Geüploade documenten', (documents && documents.length)
-        ? '<ul class="findings">' + documents.map(function(d){ return '<li>' + escapeHtml(d.filename) + '</li>'; }).join('') + '</ul>'
-        : '', { plain:true }) +
-      accItem('Eindconclusie', klemBlok(alineasHtml(r.eindconclusie)), { plain:true });
-    if (groep2) out += '<div class="accordion smal">' + groep2 + '</div>';
+    out += rapportKop(c);
+    out += blokkenHtml(c);
+    out += vervolgHtml(c);
+    out += bewijsGroep(c, engine, r, coaRecords, documents);
+    out += lezingGroep(r);
+    out += zelfVerderGroep(r);
 
     if (c.tier !== 'deep'){
-      out += '<div class="rapport-einde"><h3>Einde gratis rapport.</h3>' +
-        '<p>Maar we kunnen nog veel verder in de materie duiken met een Deepdive</p></div>';
+      out += '<div class="rapport-einde"><h3>Einde van de gratis check.</h3>' +
+        '<p>Dit ging over het product. De verdiepingscheck gaat over het bedrijf.</p></div>';
+      out += deepdiveKaart();
     }
 
-    if (c.status === 'gratis_klaar') out += deepdiveKaart();
-
-    out += accordionLos('Top vragen aan leverancier', (r.top5Vragen && r.top5Vragen.length)
-      ? '<ol class="numbered">' + r.top5Vragen.map(function(q){ return '<li>' + escapeHtml(q) + '</li>'; }).join('') + '</ol>'
-      : '');
-
-    // Voettekst: in het design staat het bronnenregister links en de
-    // disclaimer rechts.
-    var bronnen = (r.bronnenregister && r.bronnenregister.length)
-      ? '<div class="rapport-plain"><h3>Bronnenregister</h3><div class="sources">' +
-        r.bronnenregister.map(function(b){
-          return '<a href="' + escapeHtml(b.url) + '" target="_blank" rel="noopener">' + escapeHtml(b.titel || b.url) + '</a>';
-        }).join('') + '</div></div>'
-      : '';
-    var disclaimer = '<p class="rapport-footer">' + (c.tier === 'deep'
+    out += '<p class="rapport-footer">' + (c.tier === 'deep'
       ? 'Dit rapport is de betaalde Deep Dive, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik.'
       : 'Dit rapport is de gratis Evidence Check, automatisch samengesteld op basis van openbare bronnen, en dient uitsluitend voor due-diligence-oriëntatie. Het bevat geen medisch advies en geen garantie over productveiligheid of geschiktheid voor menselijk gebruik. Een ontbrekend KvK-uittreksel verlaagt geen enkele score automatisch.') +
       '</p>';
-    out += '<div class="rapport-bottom">' + bronnen + disclaimer + '</div>';
 
     out += '</div>';
     return out;
@@ -1327,10 +1517,18 @@
     var rustig = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     Array.prototype.forEach.call(balken, function(balk, i){
       var doel = Number(balk.getAttribute('data-pct')) || 0;
-      var getal = balk.querySelector('.stat-bar-value');
+      // Het meetellende getal staat niet meer in de balk zelf maar in het
+      // blok erboven (Openheid telt naar 8, niet naar 80%). data-telop zegt
+      // naar welk getal geteld wordt; staat het er niet, dan blijft de tekst
+      // zoals hij is en slaat alleen de balk uit.
+      var telopDoel = balk.hasAttribute('data-telop') ? Number(balk.getAttribute('data-telop')) : null;
+      var blok = balk.closest ? balk.closest('.blok') : null;
+      var getal = balk.querySelector('.stat-bar-value') || (blok ? blok.querySelector('.js-telop') : null);
+      var isPct = !!balk.querySelector('.stat-bar-value');
+      var eind = telopDoel != null ? telopDoel : doel;
       if (rustig){
         balk.classList.add('is-on');
-        if (getal) getal.textContent = doel + '%';
+        if (getal) getal.textContent = eind + (isPct ? '%' : '');
         return;
       }
       setTimeout(function(){
@@ -1340,7 +1538,7 @@
           if (start === null) start = t;
           var v = Math.min(1, (t - start) / duur);
           var e = 1 - Math.pow(1 - v, 3);
-          if (getal) getal.textContent = Math.round(doel * e) + '%';
+          if (getal) getal.textContent = Math.round(eind * e) + (isPct ? '%' : '');
           if (v < 1) requestAnimationFrame(stap);
         }
         requestAnimationFrame(stap);

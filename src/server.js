@@ -685,6 +685,53 @@ app.post('/api/admin/coa/references/resolve', rl.caseAction, auth.requireOwnerTo
   }
 });
 
+// Herberekenen zonder opnieuw te onderzoeken.
+//
+// De drie blokken en de Evidence Score worden tijdens de run uitgerekend en
+// bij de case bewaard. Verandert een telregel - zoals op 21 september, toen
+// een verificatielink ook als verificatiecode ging tellen - dan blijven alle
+// bestaande cases het oude cijfer tonen. Opnieuw draaien lost dat op, maar
+// dat kost modelaanroepen en geld voor onderzoek dat al gedaan is.
+//
+// Deze route rekent alleen opnieuw met wat er al ligt: dezelfde opgeslagen
+// brondata, de nieuwe regels. Geen model, geen crawl, geen kosten.
+//
+// LET OP: dit raakt nooit de brondata zelf. Wat er is gevonden en gelezen
+// blijft staan; alleen de afleiding eruit wordt ververst. Cases die nog
+// draaien of nooit een beoordeling kregen worden overgeslagen.
+app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const max = Math.min(Number(b.max) || 50, 200);
+    const lijst = b.caseId ? [await db.getCase(b.caseId)] : await db.listCases();
+    const gedaan = [];
+    const overgeslagen = [];
+    for (const c of lijst) {
+      if (gedaan.length >= max) break;
+      if (!c) { overgeslagen.push({ id: b.caseId || null, reden: 'niet gevonden' }); continue; }
+      if (!c.categoryAssessments || !Object.keys(c.categoryAssessments).length) {
+        overgeslagen.push({ id: c.id, reden: 'geen categoriebeoordeling' });
+        continue;
+      }
+      try {
+        const engineResult = await pipeline.applyScoringEngine(c.id);
+        const bl = engineResult && engineResult.blokken;
+        gedaan.push({
+          id: c.id, website: c.website,
+          blokkenVersie: bl ? bl.versie : null,
+          openheid: bl ? (bl.openheid.aanwezig + '/' + bl.openheid.noemer) : null,
+          verificatie: bl ? bl.verificatie.woord : null
+        });
+      } catch (e) {
+        overgeslagen.push({ id: c.id, reden: 'herberekening mislukt' });
+      }
+    }
+    res.json({ herberekend: gedaan.length, overgeslagen: overgeslagen.length, gedaan, overgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Overzicht van alle bekende documenten (crawl/auto-fetch/handmatig) en hun
 // eventuele verificatiestatus voor één leverancier. De leverancier-ID is de
 // genormaliseerde hostnaam, zie coaStore.supplierKeyFromUrl.

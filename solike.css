@@ -14,9 +14,9 @@
 
 /* ---------- kleuren ---------- */
 :root{
-  --bg:#f1efef;
-  --surface:#f9f9f8;
-  --surface-2:#f2efec;
+  --bg:#F9F9F8;
+  --surface:#ffffff;
+  --surface-2:#E2E0DE;
   --border:#ccc9c6;
   --text:#0f0f0e;
   --text-muted:#6e6862;

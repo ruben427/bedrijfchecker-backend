@@ -437,7 +437,28 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
    ============================================================ */
 
 /* ---------- header ---------- */
-.site-header{ display:flex; align-items:center; padding:12px 0 16px; }
+/* Paginakleur komt uit solike.css (--bg = Neutrals/50, #F9F9F8). Hier dus
+   geen eigen waarde: één plek voor kleuren, anders lopen ze uiteen. */
+
+/* De balk bovenaan loopt over de volle breedte en eindigt halverwege het
+   logo: het logo hangt er met zijn onderste helft onderuit, zoals in het
+   ontwerp. De balk heeft daarom een vaste hoogte en het logo mag eroverheen. */
+.site-header{
+  background:var(--surface); border-bottom:1px solid var(--border);
+  width:100%; height:52px; position:relative; z-index:2;
+}
+.site-header-inner{
+  max-width:1040px; margin:0 auto; padding-inline:20px; height:100%;
+  display:flex; align-items:flex-start;
+}
+.site-logo img{ height:104px; width:auto; display:block; margin-top:0; }
+/* Ruimte onder de balk voor het deel van het logo dat eronder uitsteekt. */
+.wrap{ padding-top:64px; }
+@media (max-width:640px){
+  .site-header{ height:40px; }
+  .site-logo img{ height:78px; }
+  .wrap{ padding-top:48px; }
+}
 .site-logo{ background:none; border:none; padding:0; cursor:pointer; display:inline-flex; line-height:0; }
 .site-logo img{ height:44px; width:auto; display:block; }
 @media (min-width:900px){ .site-logo img{ height:56px; } }
@@ -729,3 +750,249 @@ body.sheet-open{ overflow:hidden; }
 
 /* Witruimte tussen het afgeronde gratis blok en de Deep Dive-stappen. */
 .run-step-sep{ height:16px; }
+
+/* ---------- De drie blokken boven het rapport (A1, 20 sep) ----------
+   Openheid, Externe verificatie, Productbewijs. Vervangt de drie stat-balken
+   uit de Figma-opzet. Een stip is een rapport of een punt van de
+   openheidslijst; een balk zou een score suggereren die dit niet is. */
+.blokken{ display:flex; flex-direction:column; gap:12px; }
+.blokken-kop{
+  font-family:"Open Sans", sans-serif; font-weight:700; font-size:.72rem;
+  letter-spacing:.08em; text-transform:uppercase; color:var(--text-subtle); margin:0;
+}
+.blokken-rij{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+@media (max-width:700px){ .blokken-rij{ grid-template-columns:1fr; } }
+.blok{
+  background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md);
+  padding:16px 16px 14px; display:flex; flex-direction:column; gap:8px;
+  border-top:3px solid var(--blok-kleur, var(--border));
+}
+.blok.green{ --blok-kleur:var(--ok); }
+.blok.orange{ --blok-kleur:var(--warn); }
+.blok.red{ --blok-kleur:var(--danger); }
+.blok.grey{ --blok-kleur:var(--border); }
+.blok-label{
+  display:flex; align-items:center; gap:7px;
+  font-family:"Open Sans", sans-serif; font-weight:700; font-size:.72rem;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--text-subtle);
+}
+.blok-stap{ margin-left:auto; color:var(--text-faint); font-weight:400; }
+.blok-waarde{
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.9rem; line-height:1.1;
+  color:var(--text); font-variant-numeric:tabular-nums;
+}
+.blok-waarde.woord{ font-size:1.2rem; line-height:1.25; }
+.blok-waarde .klein{ color:var(--text-faint); font-size:1.2rem; }
+.blok.grey .blok-waarde{ color:var(--text-faint); }
+.blok-uitleg{ font-size:.85rem; color:var(--text-muted); line-height:1.4; }
+.blok-werk{
+  margin-top:auto; padding-top:10px; border-top:1px dotted var(--border);
+  font-size:.72rem; color:var(--text-faint);
+}
+
+/* Het vervolgvak: eerst de uitslag, dan pas de vraag. */
+.vervolg-vak{
+  margin-top:20px; border:1px solid var(--border); background:var(--surface-2);
+  border-radius:var(--radius-md); padding:18px;
+  display:flex; flex-wrap:wrap; align-items:center; gap:14px 18px;
+}
+.vervolg-vak.vraag{ background:var(--accent-soft); border-color:var(--accent); }
+.vervolg-vak.bewaar{ background:var(--purple-50); border-color:var(--purple-300); }
+.vervolg-vak.waarschuwing{ background:var(--danger-soft); border-color:var(--danger); }
+.vervolg-tekst{ flex:1 1 280px; display:flex; flex-direction:column; gap:3px; }
+.vervolg-titel{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.05rem; color:var(--heading-2); }
+.vervolg-vak.waarschuwing .vervolg-titel{ color:var(--danger); }
+.vervolg-sub{ font-size:.9rem; color:var(--text); line-height:1.5; }
+.btn-stil{
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem; text-decoration:none;
+  padding:0 22px; height:46px; border-radius:var(--radius-pill);
+  border:1.5px solid var(--accent); color:var(--accent); background:transparent;
+  display:inline-flex; align-items:center; white-space:nowrap;
+}
+.btn-stil:hover{ background:var(--accent-soft); }
+
+
+/* ---------- Groepen en accordeonkoppen (20 sep) ----------
+   Drie groepen: het bewijs, wat wij eruit lezen, zelf verder. De telling
+   rechts in de kop is wat uitnodigt om te openen; "Rapport details" zei niet
+   waarom je zou klikken. */
+.groep{ display:flex; flex-direction:column; gap:10px; margin-top:32px; }
+.groep-kop{ display:flex; flex-direction:column; gap:2px; }
+.groep-kop h3{ font-size:1.25rem; font-weight:600; color:var(--heading-2); }
+.groep-kop p{ font-size:.88rem; color:var(--text-muted); max-width:62ch; margin:0; }
+.acc-telling{
+  margin-left:auto; font-family:"IBM Plex Mono", ui-monospace, monospace;
+  font-size:.76rem; color:var(--text-faint); font-weight:400; white-space:nowrap;
+}
+@media (max-width:640px){
+  .acc-header{ flex-wrap:wrap; }
+  .acc-telling{ order:3; flex-basis:100%; margin-left:0; }
+}
+.acc-subkop{ margin:14px 0 6px; font-size:.9rem; font-weight:700; }
+
+/* De balk in de drie blokken. Zelfde track en vulling als in het
+   designsysteem; het meetellende getal staat in .js-telop erboven. */
+.blok .stat-bar{ margin:2px 0 4px; }
+.blok .stat-bar-track{ height:6px; margin:0; }
+.blok .js-telop{ font-variant-numeric:tabular-nums; }
+
+
+/* ---------- Rapportkop (herbouw 20 sep) ---------- */
+.rapport-kop{ display:flex; flex-direction:column; gap:10px; }
+.rk-meta{ display:flex; flex-wrap:wrap; gap:6px 16px; align-items:baseline; font-size:.85rem; }
+.rk-domein{ color:var(--text); font-weight:600; }
+.rk-datum{ color:var(--text-faint); font-family:"IBM Plex Mono", ui-monospace, monospace; font-size:.78rem; }
+.rk-titel{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; letter-spacing:-.02em;
+  font-size:clamp(1.7rem,4vw,2.2rem); color:var(--heading); margin:0;
+}
+.rapport-kop .stats-intro{ margin:0; color:var(--text); max-width:64ch; line-height:1.6; }
+
+/* De deepdive-kaart: één kaart, één prijs. */
+.deepdive-head{ display:flex; align-items:center; flex-wrap:wrap; gap:8px 20px; }
+.deepdive-price{ display:flex; flex-direction:column; line-height:1.1; }
+.deepdive-price .klein{ font-size:.85rem; font-weight:600; }
+.deepdive-price .groot{ font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:1.9rem; }
+.deepdive-price .cent{ font-size:1rem; vertical-align:super; }
+
+/* =====================================================================
+   Ontwerp-sync, 21 september — waarden 1-op-1 uit Figma (node 543:16025)
+   =====================================================================
+   Niet op het oog nagebouwd: dit zijn de groottes, kleuren en afstanden
+   zoals ze in het designsysteem staan. Deze sectie staat achteraan en
+   overschrijft daarom bewust de oudere componentregels hierboven; die
+   worden opgeruimd zodra alles hier op zijn plek staat.
+
+   Kleuren uit het bestand: Neutrals/25 #ffffff, Neutrals/50 #f9f9f8,
+   Neutrals/100 #e2e0de, Neutrals/500 #89827b, Neutrals/975 #0f0f0e. */
+:root{
+  --ds-wit:var(--surface);   /* Neutrals/25 */
+  --ds-vlak:var(--bg);       /* Neutrals/50 */
+  --ds-lijn:var(--surface-2);/* Neutrals/100 */
+  --ds-grijs:#89827b;        /* Neutrals/500 */
+  --ds-inkt:var(--text);     /* Neutrals/975 */
+  --ds-radius:12px;
+  /* De vulling van de balk: rood naar groen, exact de stops uit Figma. */
+  --ds-balk:linear-gradient(90deg,#cf2443 0%,#e7752f 21.15%,#f5a623 43.27%,#8ba24c 62.5%,#299f72 90.39%);
+}
+
+/* ---------- de drie blokken ---------- */
+.blokken-rij{ gap:24px; }
+.blok{
+  background:var(--ds-wit); border:none; border-top:none; border-radius:var(--ds-radius);
+  padding:24px 12px; gap:12px; justify-content:space-between;
+}
+.blok-label{
+  font-family:"Open Sans", sans-serif; font-weight:700; font-size:18px; line-height:1;
+  letter-spacing:-.02em; text-transform:uppercase; color:var(--ds-grijs);
+}
+.blok-stap{ font-weight:400; font-size:18px; color:var(--ds-inkt); letter-spacing:-.02em; }
+.blok-waarde{
+  font-family:"Open Sans", sans-serif; font-weight:700; font-size:24px; line-height:1;
+  letter-spacing:-.02em; color:var(--ds-inkt);
+}
+.blok-waarde.woord{ font-size:18px; font-weight:400; line-height:1.5; }
+.blok-waarde .klein{ font-weight:400; font-size:18px; color:var(--ds-inkt); letter-spacing:-.02em; }
+.blok-uitleg{ font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--ds-inkt); }
+.blok-werk{
+  font-family:"Open Sans", sans-serif; font-size:12px; line-height:1.5; letter-spacing:-.02em;
+  color:var(--ds-grijs); border-top:none; padding-top:12px; margin-top:auto;
+}
+.blok .stat-bar{ margin:0; width:100%; }
+.blok .stat-bar-track{
+  height:6px; border-radius:3px; background:var(--ds-lijn); border:none; margin:0;
+}
+.blok .stat-bar-fill{ background:var(--ds-balk); }
+
+/* ---------- accordeon: elke rij een eigen kaart ---------- */
+.accordion{ background:none; border:none; border-radius:0; display:flex; flex-direction:column; gap:4px; }
+.acc-item{ background:var(--ds-wit); border:none; border-radius:var(--ds-radius); overflow:hidden; }
+.acc-item + .acc-item{ border-top:none; }
+.acc-header{ padding:4px 24px; min-height:56px; gap:16px; }
+.acc-title{
+  font-family:"Open Sans", sans-serif; font-weight:400; font-size:16px; line-height:1.5;
+  letter-spacing:-.02em; text-transform:uppercase; color:var(--ds-inkt);
+}
+.acc-title.plain{ text-transform:uppercase; }
+.acc-telling{
+  font-family:"Open Sans", sans-serif; font-size:16px; line-height:1.5; letter-spacing:-.02em;
+  color:var(--ds-grijs); margin-left:auto;
+}
+.acc-chevron{ width:48px; height:48px; display:flex; align-items:center; justify-content:center; color:var(--ds-inkt); }
+.acc-chevron svg{ width:21px; height:21px; }
+.acc-body{ padding:4px 24px 20px; }
+
+/* ---------- groepskoppen ---------- */
+.groep{ gap:12px; margin-top:40px; }
+.groep-kop h3{
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:32px; line-height:1.2;
+  letter-spacing:-.02em; color:var(--heading);
+}
+.groep-kop p{ font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--ds-grijs); }
+@media (max-width:640px){ .groep-kop h3{ font-size:24px; } }
+
+/* Donkere modus: de --ds-* wijzen naar solike-tokens, dus die volgt vanzelf. */
+
+/* De samenvatting onder de titel: 16px, gewoon gewicht (Figma 1140:1871).
+   Stond groter en zwaarder, waardoor hij met de titel concurreerde. */
+.rapport-kop .stats-intro{
+  font-size:16px; font-weight:400; line-height:1.5; letter-spacing:-.02em; color:var(--ds-inkt);
+}
+
+/* Correcties na vergelijking met de live pagina (21 sep).
+   De oudere regels hierboven waren specifieker en wonnen het van de
+   ontwerp-sync; daarom hier met dezelfde specificiteit teruggezet. */
+.acc-header .acc-title,
+.acc-header .acc-title.plain{
+  text-transform:uppercase; font-weight:400; font-size:16px; letter-spacing:-.02em;
+}
+/* De tweede groep stond in een smalle kolom; in het ontwerp lopen alle
+   rijen over de volle breedte, net als bij het bewijs. */
+.accordion.smal{ max-width:none; width:100%; }
+.accordion.smal .acc-item{ width:100%; }
+
+/* Het vervolgvak is in het ontwerp een witte kaart met een rand, geen grijs
+   vlak. De variant bepaalt alleen de randkleur. */
+.vervolg-vak{
+  background:var(--ds-wit); border:1px solid var(--ds-lijn);
+  border-radius:var(--ds-radius); padding:24px; gap:16px 24px;
+}
+.vervolg-vak.vraag{ background:var(--ds-wit); border-color:var(--accent); }
+.vervolg-vak.bewaar{ background:var(--ds-wit); border-color:var(--purple-300); }
+.vervolg-vak.waarschuwing{ background:var(--ds-wit); border-color:var(--danger); }
+.vervolg-titel{ font-family:"Baloo 2", system-ui, sans-serif; font-size:21px; }
+.vervolg-sub{ font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--ds-inkt); }
+
+/* ---------- Vervolgvak, varianten uit Figma (node 1338:3398) ----------
+   Breekpunt 700px. Erboven: tekst links, acties rechts onder elkaar, icoon
+   inline voor de titel. Eronder: alles onder elkaar, geen icoon, acties over
+   de volle breedte. */
+.vervolg-vak{
+  display:flex; align-items:flex-start; gap:24px; padding:24px;
+}
+.vervolg-tekst{ flex:1 1 auto; gap:8px; }
+.vervolg-titel{
+  display:flex; align-items:center; gap:12px;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:21px; line-height:1.5;
+}
+.vervolg-icoon{ flex:none; width:24px; height:24px; display:inline-flex; color:currentColor; }
+.vervolg-icoon svg{ width:24px; height:24px; }
+.vervolg-acties{ flex:0 0 auto; display:flex; flex-direction:column; align-items:stretch; }
+.vervolg-acties .knop, .vervolg-acties .btn-cta{ height:56px; }
+/* De tweede actie is een tekstlink, geen tweede knop. */
+.vervolg-link{
+  display:inline-flex; align-items:center; justify-content:center; height:56px;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:16px;
+  color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent);
+  align-self:center; padding:0 4px;
+}
+.vervolg-link:hover{ color:var(--accent-strong); border-color:var(--accent-strong); }
+
+@media (max-width:699px){
+  .vervolg-vak{ flex-direction:column; align-items:stretch; gap:24px; }
+  .vervolg-icoon{ display:none; }
+  .vervolg-acties{ width:100%; }
+  .vervolg-acties .knop, .vervolg-acties .btn-cta, .vervolg-link{ width:100%; }
+  /* Alleen met twee acties: onderaan 12 in plaats van 24. */
+  .vervolg-vak.twee-acties{ padding-bottom:12px; }
+}
