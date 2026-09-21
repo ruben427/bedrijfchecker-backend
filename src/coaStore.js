@@ -712,6 +712,16 @@ async function testsoortDekking(supplierKey) {
 const LAB_STATUSSEN = [
   'erkend',                      // bestaand, onafhankelijk lab - bewijs telt mee
   'nog niet beoordeeld',         // niemand heeft ernaar gekeken
+  // Toegevoegd 21 september. Zonder deze stand moest Janoshik op
+  // 'onvoldoende verifieerbaar', en dat is iets heel anders. Janoshik is
+  // aantoonbaar echt en de de-facto standaard in deze markt; wat er aan de
+  // hand is, is dat ONZE SERVER er niet in komt (403, Cloudflare). Dat op een
+  // hoop gooien met RC Testing - waar niemand kon vaststellen of het uberhaupt
+  // een lab is - zou over 150 referenties hetzelfde zeggen als over 29.
+  //
+  // Dezelfde fout als bij de botfilter van balticpeptides: "wij komen er niet
+  // in" werd "er is niets".
+  'niet bereikbaar voor ons',    // het lab deugt, wij komen er niet in
   'onvoldoende verifieerbaar',   // niet genoeg onafhankelijke bevestiging gevonden
   'niet onafhankelijk',          // bestaat, maar hoort bij de leverancier
   'bestaat niet'                 // vastgesteld dat het niet bestaat
@@ -726,6 +736,18 @@ const LAB_TELT_NIET_MEE = ['onvoldoende verifieerbaar', 'niet onafhankelijk', 'b
 function bewijskrachtVanLab(oordeel) {
   if (!oordeel) return { telt: null, reden: 'laboratorium nog niet beoordeeld' };
   if (oordeel.status === 'erkend') return { telt: true, reden: null };
+  // Het lab is in orde; wij kunnen het alleen zelf niet ophalen. Bewijs blijft
+  // dus GERAPPORTEERD in plaats van geverifieerd - maar dat is een uitspraak
+  // over onze toegang, niet over het lab. Daarom telt: null (zoals bij een
+  // onbeoordeeld lab) en niet false (zoals bij een lab dat niet deugt): false
+  // leest in het rapport als een bevinding over de leverancier, en dat is het
+  // niet. Een mens die de referentie natrekt tilt hem alsnog naar geverifieerd.
+  if (oordeel.status === 'niet bereikbaar voor ons') {
+    return {
+      telt: null, wijBuiten: true,
+      reden: 'het laboratorium laat onze server niet toe; wij kunnen de rapporten niet zelf ophalen'
+    };
+  }
   if (LAB_TELT_NIET_MEE.indexOf(oordeel.status) !== -1) {
     return {
       telt: false,
@@ -814,22 +836,46 @@ async function labOordelen() {
 async function labSignalen() {
   try {
     const { rows } = await pool.query(
-      `SELECT lab,
-              COUNT(DISTINCT supplier_key)::int AS leveranciers,
+      // De feiten die een beoordelaar nodig heeft, in een query. Eerder stond
+      // hier alleen een telling van verwijzingen; wie een lab moest beoordelen
+      // wist daarmee niet of wij er ooit zijn binnengekomen. En juist dat is
+      // de vraag die het verschil maakt tussen 'niet bereikbaar voor ons' en
+      // 'onvoldoende verifieerbaar'.
+      `SELECT r.lab,
+              COUNT(DISTINCT r.supplier_key)::int AS leveranciers,
               COUNT(*)::int AS verwijzingen,
-              COUNT(*) FILTER (WHERE url LIKE 'labref://%')::int AS zonderPubliekeLink
-       FROM coa_references WHERE relatie = 'toont' GROUP BY lab`
+              COUNT(*) FILTER (WHERE r.url LIKE 'labref://%')::int AS zonderPubliekeLink,
+              COUNT(*) FILTER (WHERE c.resolvet IS TRUE)::int AS opgelost,
+              COUNT(*) FILTER (WHERE c.resolvet IS FALSE)::int AS nietOpgelost,
+              COUNT(*) FILTER (WHERE c.methode = 'handmatig')::int AS handmatig,
+              COUNT(*) FILTER (WHERE c.methode = 'resolver')::int AS doorResolver,
+              array_agg(DISTINCT r.supplier_key) AS shops,
+              array_agg(DISTINCT r.testsoort) FILTER (WHERE r.testsoort IS NOT NULL) AS testsoorten
+       FROM coa_references r
+       LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       WHERE r.relatie = 'toont' GROUP BY r.lab`
     );
     const oordelen = await labOordelen();
     const perLab = {};
     rows.forEach((r) => {
       const naam = normaliseerLab(r.lab).naam;
       const b = perLab[naam] || (perLab[naam] = {
-        lab: naam, leveranciers: 0, verwijzingen: 0, zonderPubliekeLink: 0
+        lab: naam, leveranciers: 0, verwijzingen: 0, zonderPubliekeLink: 0,
+        opgelost: 0, nietOpgelost: 0, handmatig: 0, doorResolver: 0,
+        shops: [], testsoorten: []
       });
-      b.leveranciers += r.leveranciers;
+      // LET OP: leveranciers werd hier opgeteld over de naamvarianten van
+      // hetzelfde lab ('RC Testing' en 'RC TESTING'), waardoor een shop dubbel
+      // telde. Nu tellen we de unieke shops uit de samengevoegde lijst.
       b.verwijzingen += r.verwijzingen;
       b.zonderPubliekeLink += r.zonderpubliekelink;
+      b.opgelost += r.opgelost;
+      b.nietOpgelost += r.nietopgelost;
+      b.handmatig += r.handmatig;
+      b.doorResolver += r.doorresolver;
+      (r.shops || []).forEach((x) => { if (x && b.shops.indexOf(x) === -1) b.shops.push(x); });
+      (r.testsoorten || []).forEach((x) => { if (x && b.testsoorten.indexOf(x) === -1) b.testsoorten.push(x); });
+      b.leveranciers = b.shops.length;
     });
     return Object.values(perLab).map((b) => {
       const o = oordelen[labSleutel(b.lab)] || null;
@@ -838,7 +884,15 @@ async function labSignalen() {
         // Alleen bij een leverancier gezien. Waarneming, geen oordeel.
         maarEenLeverancier: b.leveranciers === 1,
         // Geen enkele verwijzing is voor een buitenstaander na te lopen.
-        nooitOnafhankelijkTeControleren: b.verwijzingen > 0 && b.zonderPubliekeLink === b.verwijzingen
+        nooitOnafhankelijkTeControleren: b.verwijzingen > 0 && b.zonderPubliekeLink === b.verwijzingen,
+        // Zijn wij er ooit binnengekomen? Dit is de waarneming waarop het
+        // onderscheid rust tussen 'niet bereikbaar voor ons' en 'onvoldoende
+        // verifieerbaar'. Nooit geprobeerd is iets anders dan geprobeerd en
+        // buitengehouden, dus drie standen.
+        onzeToegang: (b.opgelost + b.nietOpgelost + b.handmatig) === 0
+          ? 'nooit geprobeerd'
+          : (b.opgelost > 0 ? 'binnengekomen' : 'geprobeerd, niet binnengekomen'),
+        ongecontroleerd: b.verwijzingen - (b.opgelost + b.nietOpgelost)
       });
     }).sort((a, b) => b.verwijzingen - a.verwijzingen);
   } catch (e) {

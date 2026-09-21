@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Laboratoria beoordelen — Bedrijfchecker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
+
+<style>
+  .wrap{max-width:1100px;margin:0 auto;padding:24px 16px 80px}
+  .top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  .top h1{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading);margin:0;font-size:1.6rem}
+  .top .sub{color:var(--text-muted);font-size:.9rem}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg,24px);
+    padding:20px;margin:16px 0;box-shadow:var(--shadow)}
+  label{display:block;font-weight:600;font-size:.85rem;margin:10px 0 4px}
+  input[type=password],input[type=text],textarea,select{width:100%;box-sizing:border-box;padding:10px 12px;
+    font:inherit;font-size:.92rem;background:var(--surface-2);color:var(--text);
+    border:1px solid var(--border);border-radius:var(--radius-sm,8px)}
+  textarea{min-height:92px;resize:vertical;line-height:1.5}
+  button{font:inherit;font-weight:600;font-size:.92rem;padding:10px 18px;border:0;cursor:pointer;
+    border-radius:var(--radius-pill,999px);background:var(--accent);color:#fff}
+  button:hover{background:var(--accent-strong)}
+  button[disabled]{opacity:.5;cursor:default}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--border);padding:6px 14px;font-size:.82rem}
+
+  .lab{border:1px solid var(--border);border-radius:var(--radius-md,14px);margin:12px 0;overflow:hidden;
+    background:var(--surface)}
+  .lab-kop{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;
+    background:var(--surface-2);flex-wrap:wrap}
+  .lab-naam{font-weight:700;font-size:1.02rem;flex:1 1 200px}
+  .lab-body{padding:16px;border-top:1px solid var(--border);display:none}
+  .lab[data-open="1"] .lab-body{display:block}
+
+  .chip{display:inline-block;padding:3px 10px;border-radius:999px;font-size:.76rem;font-weight:600;
+    border:1px solid var(--border);background:var(--surface);white-space:nowrap}
+  .chip.ok{background:#e8f6ec;border-color:#bfe3c9;color:#1d6b33}
+  .chip.warn{background:#fff4e2;border-color:#f3d9ad;color:#8a5a12}
+  .chip.danger{background:#fdeaea;border-color:#f2c2c2;color:#9b2226}
+  .chip.grey{background:var(--surface-2);color:var(--text-muted)}
+
+  .feiten{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 16px}
+  .feit{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md,14px);padding:10px 12px}
+  .feit .k{font-size:.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}
+  .feit .v{font-size:1.24rem;font-weight:700;font-family:"IBM Plex Mono",monospace;margin-top:2px}
+  .feit .n{font-size:.76rem;color:var(--text-muted);margin-top:2px}
+
+  .shops{font-size:.85rem;color:var(--text-muted);margin:0 0 16px;line-height:1.6}
+  .shops code{font-family:"IBM Plex Mono",monospace;font-size:.82rem;background:var(--surface-2);
+    padding:1px 6px;border-radius:4px}
+
+  .huidig{background:var(--surface-2);border:1px solid var(--border);border-left:4px solid var(--accent);
+    border-radius:var(--radius-sm,8px);padding:12px 14px;margin:0 0 16px;font-size:.88rem;line-height:1.6}
+  .uitleg{font-size:.84rem;color:var(--text-muted);line-height:1.6;margin:4px 0 0}
+  .rij2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:640px){ .rij2{grid-template-columns:1fr} }
+  .melding{margin:12px 0 0;font-size:.88rem}
+  .melding.fout{color:#9b2226}
+  .melding.goed{color:#1d6b33}
+  .let-op{background:#fff4e2;border:1px solid #f3d9ad;border-radius:var(--radius-md,14px);
+    padding:14px 16px;font-size:.88rem;line-height:1.6;margin:16px 0}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>Laboratoria beoordelen</h1>
+    <span class="sub">Elk oordeel hier erft naar elke leverancier die naar dat lab verwijst.</span>
+  </div>
+
+  <div class="panel" id="p-token">
+    <label for="token">Toegangssleutel</label>
+    <input id="token" type="password" autocomplete="off" placeholder="leestoken">
+    <p class="uitleg">Hetzelfde token als voor het leveranciersoverzicht. Blijft alleen in dit tabblad staan,
+      niet opgeslagen — na verversen opnieuw invullen.</p>
+    <label for="naam">Jouw naam</label>
+    <input id="naam" type="text" autocomplete="off" placeholder="bijvoorbeeld: Annemarie">
+    <p class="uitleg">Komt bij elk oordeel te staan, zodat later na te gaan is wie wat heeft vastgesteld.</p>
+    <p style="margin-top:14px"><button id="laden">Laboratoria laden</button></p>
+    <p class="melding" id="tokenstatus"></p>
+  </div>
+
+  <div id="labs"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
+
+  var elToken = document.getElementById('token');
+  var elNaam = document.getElementById('naam');
+  var elStatus = document.getElementById('tokenstatus');
+  var elLabs = document.getElementById('labs');
+  var statussen = [];
+  var open = {};
+
+  function token() { return (elToken.value || '').trim(); }
+  function naam() { return (elNaam.value || '').trim(); }
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function datum(ms) {
+    if (!ms) return '—';
+    var d = new Date(Number(ms));
+    return isNaN(d) ? '—' : d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
+  function haal(pad, opties) {
+    var o = opties || {};
+    o.headers = Object.assign({ 'X-Owner-Token': token() }, o.headers || {});
+    return fetch(API_BASE + pad, o).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) throw new Error((j && (j.message || j.error)) || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+
+  // Wat de status voor de LEZER betekent. Niet de definitie herhalen maar het
+  // gevolg noemen: dat is wat een beoordelaar moet afwegen.
+  var GEVOLG = {
+    'erkend': ['ok', 'Bewijs van dit lab kan gelden als onafhankelijk geverifieerd.'],
+    'nog niet beoordeeld': ['grey', 'Er gebeurt niets. Bewijs blijft staan zoals het was.'],
+    'niet bereikbaar voor ons': ['warn', 'Zegt niets over het lab of de leverancier. Bewijs blijft "gerapporteerd" tot een mens een referentie natrekt; die tilt hem alsnog naar geverifieerd.'],
+    'onvoldoende verifieerbaar': ['warn', 'Identiteit, zuiverheid en hoeveelheid die alleen op deze rapporten rusten blijven onbevestigd. Niet weerlegd — onbevestigd.'],
+    'niet onafhankelijk': ['danger', 'Het lab hoort bij de leverancier. Bewijs telt niet als onafhankelijk.'],
+    'bestaat niet': ['danger', 'De zwaarste uitspraak in het systeem: elk certificaat dat hiernaar wijst wordt waardeloos, hoe echt het er ook uitziet.']
+  };
+
+  function toegangChip(t) {
+    if (t === 'binnengekomen') return '<span class="chip ok">wij komen binnen</span>';
+    if (t === 'geprobeerd, niet binnengekomen') return '<span class="chip danger">wij komen er niet in</span>';
+    return '<span class="chip grey">nooit geprobeerd</span>';
+  }
+
+  function feit(k, v, n) {
+    return '<div class="feit"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div>' +
+      (n ? '<div class="n">' + esc(n) + '</div>' : '') + '</div>';
+  }
+
+  function tekenLab(l) {
+    var sl = l.lab.toLowerCase().replace(/[^a-z0-9]/g, '');
+    var o = l.oordeel;
+    var g = o ? (GEVOLG[o.status] || ['grey', '']) : ['grey', ''];
+    var statusChip = o
+      ? '<span class="chip ' + g[0] + '">' + esc(o.status) + '</span>'
+      : '<span class="chip grey">nog niet beoordeeld</span>';
+
+    var huidig = o
+      ? '<div class="huidig"><strong>Vastgelegd op ' + esc(datum(o.vastgelegdOp || o.vastgelegd_op)) + ' door ' +
+          esc(o.vastgelegdDoor || o.vastgelegd_door || '?') + '</strong><br>' +
+          esc(o.onderbouwing || '(geen onderbouwing)') +
+          ((o.bronnen && o.bronnen.length) ? '<br><em>Bronnen: ' + esc([].concat(o.bronnen).join(', ')) + '</em>' : '') +
+        '</div>'
+      : '';
+
+    var opties = statussen.map(function (s) {
+      return '<option value="' + esc(s) + '"' + (o && o.status === s ? ' selected' : '') + '>' + esc(s) + '</option>';
+    }).join('');
+
+    return '<div class="lab" data-lab="' + esc(sl) + '" data-open="' + (open[sl] ? '1' : '0') + '">' +
+      '<div class="lab-kop" data-toggle="' + esc(sl) + '">' +
+        '<span class="lab-naam">' + esc(l.lab) + '</span>' +
+        statusChip + toegangChip(l.onzeToegang) +
+        '<span class="chip grey">' + l.verwijzingen + ' verwijzingen</span>' +
+        '<span class="chip grey">' + l.leveranciers + ' shop' + (l.leveranciers === 1 ? '' : 's') + '</span>' +
+      '</div>' +
+      '<div class="lab-body">' +
+        '<div class="feiten">' +
+          feit('Verwijzingen', l.verwijzingen, 'in het hele archief') +
+          feit('Shops', l.leveranciers, (l.maarEenLeverancier ? 'maar bij één shop gezien' : 'verschillende shops')) +
+          feit('Opgehaald', l.opgelost, 'rapport kwam echt terug') +
+          feit('Met de hand', l.handmatig, 'door een mens gezien') +
+          feit('Niet na te lopen', l.zonderPubliekeLink, l.nooitOnafhankelijkTeControleren ? 'géén enkele publieke link' : 'zonder publieke link') +
+          feit('Nog open', l.ongecontroleerd, 'nooit gecontroleerd') +
+        '</div>' +
+        '<p class="shops"><strong>Shops:</strong> ' +
+          ((l.shops && l.shops.length) ? l.shops.map(function (s) { return '<code>' + esc(s) + '</code>'; }).join(' ') : '—') +
+          ((l.testsoorten && l.testsoorten.length) ? '<br><strong>Testsoorten:</strong> ' + esc(l.testsoorten.join(', ')) : '') +
+        '</p>' +
+        huidig +
+        '<form data-form="' + esc(sl) + '">' +
+          '<div class="rij2">' +
+            '<div>' +
+              '<label>Hoe behandelen we bewijs van dit lab?</label>' +
+              '<select name="status">' + opties + '</select>' +
+              '<p class="uitleg" data-gevolg="' + esc(sl) + '">' + esc(o ? g[1] : GEVOLG['nog niet beoordeeld'][1]) + '</p>' +
+            '</div>' +
+            '<div>' +
+              '<label>Bronnen (één per regel)</label>' +
+              '<textarea name="bronnen" placeholder="KvK-uittreksel, whois, adrescontrole, archiefpagina…">' +
+                esc((o && o.bronnen) ? [].concat(o.bronnen).join('\\n') : '') + '</textarea>' +
+            '</div>' +
+          '</div>' +
+          '<label>Wat heb je nagegaan, en wat vond je?</label>' +
+          '<textarea name="onderbouwing" placeholder="Schrijf wat je hebt gezien, niet wat je vermoedt.">' +
+            esc((o && o.onderbouwing) || '') + '</textarea>' +
+          '<div class="rij2">' +
+            '<div>' +
+              '<label>Bedrijfsgegevens opgevraagd bij de leverancier?</label>' +
+              '<select name="informatieOpgevraagd">' +
+                '<option value="">— niet van toepassing —</option>' +
+                '<option value="ja"' + (o && o.informatieOpgevraagd === true ? ' selected' : '') + '>ja</option>' +
+                '<option value="nee"' + (o && o.informatieOpgevraagd === false ? ' selected' : '') + '>nee</option>' +
+              '</select>' +
+            '</div>' +
+            '<div>' +
+              '<label>Wat kwam daarop terug?</label>' +
+              '<input type="text" name="informatieReactie" value="' + esc((o && o.informatieReactie) || '') + '" ' +
+                'placeholder="Weigeren bewijst niets, maar het is wel waar de keten ophoudt.">' +
+            '</div>' +
+          '</div>' +
+          '<p style="margin-top:16px"><button type="submit">Vastleggen</button></p>' +
+          '<p class="melding" data-melding="' + esc(sl) + '"></p>' +
+        '</form>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function teken(labs) {
+    elLabs.innerHTML = '<div class="let-op"><strong>LET OP.</strong> Wat je hier vastlegt werkt meteen door in ' +
+      'elk rapport van elke leverancier die naar dit lab verwijst. Een oordeel zonder onderbouwing is over een ' +
+      'half jaar niet meer na te gaan, dus die is verplicht.</div>' +
+      labs.map(tekenLab).join('');
+  }
+
+  function laden() {
+    if (!token()) { elStatus.className = 'melding fout'; elStatus.textContent = 'Vul eerst de toegangssleutel in.'; return; }
+    elStatus.className = 'melding'; elStatus.textContent = 'Laden…';
+    haal('/api/admin/laboratoria').then(function (j) {
+      statussen = j.statussen || [];
+      elStatus.className = 'melding goed';
+      elStatus.textContent = j.aantal + ' laboratoria, waarvan ' + (j.zonderOordeel || []).length + ' nog niet beoordeeld.';
+      teken(j.labs || []);
+    }).catch(function (e) {
+      elStatus.className = 'melding fout';
+      elStatus.textContent = 'Niet gelukt: ' + e.message;
+    });
+  }
+
+  document.getElementById('laden').addEventListener('click', laden);
+
+  elLabs.addEventListener('click', function (ev) {
+    var kop = ev.target.closest('[data-toggle]');
+    if (!kop) return;
+    var sl = kop.getAttribute('data-toggle');
+    var kaart = elLabs.querySelector('.lab[data-lab="' + sl + '"]');
+    open[sl] = kaart.getAttribute('data-open') !== '1';
+    kaart.setAttribute('data-open', open[sl] ? '1' : '0');
+  });
+
+  // Het gevolg meelezen terwijl je kiest. Zo staat nooit alleen de naam van
+  // een status op het scherm, maar ook wat hij aanricht.
+  elLabs.addEventListener('change', function (ev) {
+    if (ev.target.name !== 'status') return;
+    var form = ev.target.closest('form');
+    var sl = form.getAttribute('data-form');
+    var g = GEVOLG[ev.target.value] || ['grey', ''];
+    var p = elLabs.querySelector('[data-gevolg="' + sl + '"]');
+    if (p) p.textContent = g[1];
+  });
+
+  elLabs.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var form = ev.target;
+    var sl = form.getAttribute('data-form');
+    var mel = elLabs.querySelector('[data-melding="' + sl + '"]');
+    var kaart = form.closest('.lab');
+    var labnaam = kaart.querySelector('.lab-naam').textContent;
+    if (!naam()) { mel.className = 'melding fout'; mel.textContent = 'Vul bovenaan je naam in.'; return; }
+
+    var io = form.informatieOpgevraagd.value;
+    var body = {
+      lab: labnaam,
+      status: form.status.value,
+      onderbouwing: form.onderbouwing.value,
+      bronnen: form.bronnen.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean),
+      vastgelegdDoor: naam(),
+      informatieOpgevraagd: io === 'ja' ? true : (io === 'nee' ? false : null),
+      informatieReactie: form.informatieReactie.value || null
+    };
+    var knop = form.querySelector('button[type=submit]');
+    knop.disabled = true;
+    mel.className = 'melding'; mel.textContent = 'Opslaan…';
+    haal('/api/admin/laboratoria/beoordeling', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(function () {
+      mel.className = 'melding goed';
+      mel.textContent = 'Vastgelegd. Dit telt vanaf nu mee voor elke leverancier die naar ' + labnaam + ' verwijst.';
+      open[sl] = true;
+      laden();
+    }).catch(function (e) {
+      mel.className = 'melding fout';
+      mel.textContent = 'Niet gelukt: ' + e.message;
+    }).then(function () { knop.disabled = false; });
+  });
+})();
+</script>

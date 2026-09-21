@@ -377,6 +377,23 @@ function requireLezer(req, res, next) {
   return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders of met een leestoken.' });
 }
 
+// Wie mag een laboratorium beoordelen? Beheerders, en houders van het
+// leestoken.
+//
+// LET OP - dit is de ENIGE route waar het leestoken iets mag veranderen, en
+// dat is een bewuste uitzondering. Het token heette "alleen lezen" en dat
+// klopt nu niet meer helemaal. De reden: het labooordeel is Annemarie's werk,
+// zij werkt in een browser en niet in een chat, en haar het beheerderstoken
+// geven zou haar ook uploads, resolverruns en verificaties geven. Dit is de
+// smalle deur in plaats van de brede.
+//
+// Wat het leestoken hier NIET mag: een oordeel wissen. Alleen vastleggen en
+// bijwerken, en elk oordeel draagt de naam van wie het vastlegde.
+function requireBeoordelaar(req, res, next) {
+  if (req.isAdmin || req.isViewer) return next();
+  return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders of met een leestoken.' });
+}
+
 // Alle laboratoria die we tegenkomen, met wat we erover weten en twee
 // signalen die geen mens hoeft te bedenken: komt dit lab maar bij een
 // leverancier voor, en is er ook maar een verwijzing die een buitenstaander
@@ -389,8 +406,51 @@ app.get('/api/admin/laboratoria', rl.read, auth.requireOwnerToken, requireLezer,
       bestaatNiet: labs.filter((l) => l.oordeel && l.oordeel.status === 'bestaat niet').map((l) => l.lab),
       zonderOordeel: labs.filter((l) => !l.oordeel).map((l) => l.lab),
       teControleren: labs.filter((l) => !l.oordeel && (l.maarEenLeverancier || l.nooitOnafhankelijkTeControleren)).map((l) => l.lab),
+      // De lijst waaruit de beoordelaar kiest, zodat de pagina hem niet apart
+      // hoeft te kennen en een nieuwe stand vanzelf meekomt.
+      statussen: coaStore.LAB_STATUSSEN,
       labs
     });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Een laboratorium beoordelen. Schrijft in lab_oordelen - de tabel van de
+// MENS. Het model schrijft in labBeoordelingen en komt hier nooit; wat naar
+// buiten gaat is altijd dit oordeel.
+app.post('/api/admin/laboratoria/beoordeling', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const lab = String(b.lab || '').trim();
+    if (!lab) return res.status(400).json({ error: 'geen_lab', message: 'Geef de naam van het laboratorium mee.' });
+    if (coaStore.LAB_STATUSSEN.indexOf(b.status) === -1) {
+      return res.status(400).json({ error: 'ongeldige_status', message: 'status moet een van: ' + coaStore.LAB_STATUSSEN.join(', ') });
+    }
+    const vastgelegdDoor = String(b.vastgelegdDoor || '').trim();
+    if (!vastgelegdDoor) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie dit heeft vastgesteld.' });
+    // Een onderbouwing is verplicht bij alles behalve "nog niet beoordeeld".
+    // Een status zonder reden is over een half jaar niet meer na te gaan, en
+    // erft wel door naar elke shop die naar dit lab verwijst.
+    const onderbouwing = String(b.onderbouwing || '').trim();
+    if (b.status !== 'nog niet beoordeeld' && onderbouwing.length < 10) {
+      return res.status(400).json({ error: 'geen_onderbouwing', message: 'Schrijf op wat je hebt nagegaan en wat je vond.' });
+    }
+    // "bestaat niet" is de zwaarste uitspraak in het systeem: hij maakt elk
+    // certificaat dat naar dit lab wijst waardeloos. Die mag niet zonder bron.
+    const bronnen = Array.isArray(b.bronnen) ? b.bronnen.filter((x) => String(x || '').trim()) : [];
+    if (b.status === 'bestaat niet' && !bronnen.length) {
+      return res.status(400).json({ error: 'geen_bronnen', message: 'Voor "bestaat niet" zijn bronnen verplicht: waar heb je dat vastgesteld?' });
+    }
+    const opgeslagen = await coaStore.saveLabOordeel(lab, {
+      status: b.status, onderbouwing: onderbouwing || null,
+      bronnen: bronnen.length ? bronnen : null,
+      vastgelegdDoor,
+      informatieOpgevraagd: typeof b.informatieOpgevraagd === 'boolean' ? b.informatieOpgevraagd : null,
+      informatieReactie: b.informatieReactie || null
+    });
+    if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'Het oordeel kon niet worden opgeslagen.' });
+    res.json({ ok: true, oordeel: opgeslagen });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
