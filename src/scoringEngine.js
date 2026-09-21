@@ -171,8 +171,61 @@ function computeQuantity(claimed, measured) {
 }
 
 // Volledig engine-resultaat voor een case: dependency rule -> cap -> gate -> evidence score.
+// ROODFILTER: rood is een uitspraak, geen gebrek aan uitspraak.
+//
+// Op 21 september bleek uit de werklijst dat twee van de negen rode gevallen
+// rood stonden op grond van iets dat NIET kon worden vastgesteld. Bij
+// rcpeptides noemde de onderbouwing het zelf: klasse C, bestand onleesbaar,
+// externe verificatie niet beschikbaar - en dat werd C01 rood. Dat is
+// ontbrekend bewijs, en ontbrekend bewijs is wit.
+//
+// Het model blijft de kleur voorstellen, maar deze filter is deterministisch
+// en staat erachter. Zakt een rood door de toets, dan wordt het wit met een
+// reden, zodat na te lopen is wat er gebeurde en waarom.
+const ROOD_ZONDER_BEWIJS = [
+  /niet (te )?verif/i,            // niet te verifieren, niet verifieerbaar
+  /niet beschikbaar/i,
+  /onleesbaar/i,
+  /unreadable/i,
+  /unavailable/i,
+  /ontbrek/i,                     // ontbreekt, ontbrekend, het ontbreken van
+  /geen bruikbare/i,
+  /niet gevonden/i,
+  /klasse ['"]?C['"]?/i,
+  /niet vermeld/i
+];
+// Woorden die wél op een vaststelling wijzen. Staat er zo'n aanwijzing bij,
+// dan blijft rood staan ook als de tekst daarnaast over ontbreken gaat.
+const ROOD_MET_BEWIJS = [
+  /afwijking van \d/i, /\d+[,.]\d+\s*%/, /aangetroffen/i, /niet aangetroffen/i,
+  /spreekt .* tegen/i, /tegengesproken/i, /weerlegd/i, /komt niet overeen/i,
+  /lost niet op/i, /bestaat aantoonbaar niet/i, /verbod/i, /handhaving/i
+];
+function roodGedragen(rationale) {
+  const t = String(rationale || '');
+  if (!t.trim()) return false;
+  if (ROOD_MET_BEWIJS.some((re) => re.test(t))) return true;
+  return !ROOD_ZONDER_BEWIJS.some((re) => re.test(t));
+}
+// Alleen de COA-categorieen: daar gaat het mis, en daar raakt rood de
+// leverancier het hardst. L01, B* en R* blijven zoals beoordeeld.
+function filterRood(assessmentsIn) {
+  const assessments = {};
+  Object.keys(assessmentsIn).forEach((k) => { assessments[k] = Object.assign({}, assessmentsIn[k]); });
+  Object.keys(assessments).forEach((id) => {
+    if (!/^C0[1-9]$/.test(id)) return;
+    const a = assessments[id];
+    if (!a || a.color !== 'red') return;
+    if (roodGedragen(a.rationale)) return;
+    a.color = 'white';
+    a.roodAfgekeurd = true;
+    a.roodAfgekeurdReden = 'rood rustte uitsluitend op wat niet kon worden vastgesteld; ontbrekend bewijs is geen aangetoond probleem';
+  });
+  return assessments;
+}
+
 function runScoringEngine(rawAssessments, adequacy, intake) {
-  const assessments = applyDependencyRule(rawAssessments || {});
+  const assessments = applyDependencyRule(filterRood(rawAssessments || {}));
   const gate = evidenceGate(intake);
   const evidenceScore = freeEvidenceScore(assessments, adequacy, gate.status);
   const pillars = {};
@@ -183,5 +236,5 @@ function runScoringEngine(rawAssessments, adequacy, intake) {
 module.exports = {
   CATEGORY_DEFS, PILLARS, categoryDef, pillarCategoryIds, pillarStats,
   applyDependencyRule, coaCap, freeEvidenceScore, supplierScore, evidenceGate,
-  computeQuantity, runScoringEngine
+  computeQuantity, runScoringEngine, filterRood, roodGedragen
 };

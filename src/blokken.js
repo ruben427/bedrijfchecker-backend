@@ -45,7 +45,17 @@ function standVanRapport(r) {
   if (!r) return 'geen_code';
   const klasse = r.authenticiteitsklasse || null;
   if (klasse === 'A' || klasse === 'B') return 'geverifieerd';
-  if (klasse === 'D') return 'weerlegd';
+  // Klasse D zegt: de referentie lost niet op, of wijkt af van de kopie.
+  // Dat valt alleen vast te stellen als er een referentie IS en als iemand
+  // hem heeft nagetrokken - de resolver of een mens. Bij nextgenpeptides
+  // stond D op een rapport zonder rapportnummer en zonder sleutel; dan is er
+  // niets nagetrokken en is "weerlegd" een bewering, geen bevinding.
+  if (klasse === 'D') {
+    const heeftReferentie = heeftWaarde(r.verificationKey) || heeftWaarde(r.reportId) || heeftWaarde(r.verificationUrl);
+    const nagetrokken = r.klasseBron === 'resolver' || r.klasseBron === 'mens';
+    if (heeftReferentie && nagetrokken) return 'weerlegd';
+    return 'niet_verifieerbaar';
+  }
   if (klasse === 'C') return 'niet_verifieerbaar';
   const heeftCode = heeftWaarde(r.verificationKey) || heeftWaarde(r.reportId) || heeftWaarde(r.verificationUrl);
   if (heeftCode) return 'wachtrij';
