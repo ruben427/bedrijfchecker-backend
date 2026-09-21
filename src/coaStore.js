@@ -239,6 +239,7 @@ async function initCoaSchema() {
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_sha_idx ON coa_sources (sha256);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_events_supplier_idx ON coa_source_events (supplier_key, created_at DESC);`);
+  await herstelOpdrachtgeverAliassen();
 }
 
 // Leverancierssleutel = genormaliseerde hostname. Bewust niet het case-id:
@@ -1578,13 +1579,36 @@ async function opdrachtgeversBeeld(supplierKey) {
       [supplierKey]
     );
     const getoond = totaal.rows[0] ? totaal.rows[0].n : 0;
+    // Eerst samentrekken op sleutel, pas daarna tellen. Andersom telt elke
+    // schrijfwijze als een eigen opdrachtgever. De schrijfwijzen zelf blijven
+    // bewaard in varianten: wat er op het rapport stond mag niet verdwijnen
+    // omdat wij het samenvoegen.
+    const perSleutel = new Map();
+    rows.forEach((r) => {
+      const sleutel = opdrachtgeverSleutel(r.client);
+      if (!sleutel) return;
+      const g = perSleutel.get(sleutel) || { sleutel, aantal: 0, varianten: [] };
+      g.aantal += r.aantal;
+      g.varianten.push({ zoalsOpHetRapport: r.client, aantal: r.aantal });
+      perSleutel.set(sleutel, g);
+    });
+
     let eigen = 0;
     const anderen = [];
-    rows.forEach((r) => {
-      const v = wieBesteldeDeTest(r.client, [supplierKey]);
-      if (v && !v.derdePartij) eigen += r.aantal;
-      else anderen.push({ opdrachtgever: r.client, aantal: r.aantal });
-    });
+    const samengevoegd = [];
+    for (const g of perSleutel.values()) {
+      if (g.varianten.length > 1) {
+        samengevoegd.push({ sleutel: g.sleutel, varianten: g.varianten });
+      }
+      const v = wieBesteldeDeTest(g.sleutel, [supplierKey]);
+      if (v && !v.derdePartij) eigen += g.aantal;
+      else anderen.push({
+        opdrachtgever: g.sleutel,
+        aantal: g.aantal,
+        varianten: g.varianten.length > 1 ? g.varianten : undefined
+      });
+    }
+    anderen.sort((a, b) => b.aantal - a.aantal);
     const metOpdrachtgever = eigen + anderen.reduce((a, b) => a + b.aantal, 0);
     return {
       getoond,
@@ -1593,6 +1617,10 @@ async function opdrachtgeversBeeld(supplierKey) {
       opEigenNaam: eigen,
       opNaamVanAnder: metOpdrachtgever - eigen,
       anderen,
+      // Namen die wij hebben samengetrokken, met de schrijfwijzen eronder.
+      // Staat in de uitvoer zodat op de stafpagina te zien is dat er is
+      // samengevoegd, in plaats van dat het stilletjes gebeurt.
+      samengevoegd,
       // Alleen waar als we van ELK gecontroleerd rapport weten wie het bestelde
       // en geen enkele op naam van de shop zelf staat. Een gedeeltelijk beeld
       // krijgt deze vlag niet: dan is 'geen van de tests' niet vast te stellen.
@@ -1613,13 +1641,62 @@ function opdrachtgeverZinnen(beeld, shopnaam, dekkingszin) {
   return require('./uitspraken').opdrachtgeverRegels(beeld, shopnaam, dekkingszin);
 }
 
+// Dezelfde opdrachtgever, drie schrijfwijzen. Gemeten op 21 september bij de
+// 55 gecontroleerde referenties van astralabs.co.uk: 53x "utherpeptide.com",
+// 1x "http://utherpeptide.com/", 1x "UTHER THAILAND". Ze werden apart geteld,
+// waardoor "53 van de 55" eruitzag als drie losse opdrachtgevers.
+//
+// Twee manieren van gelijkmaken, streng gescheiden gehouden:
+//
+//  1. Schrijfwijze. Protocol, www en een afsluitende slash eraf, hoofdletters
+//     weg. Dat is geen besluit - er staat letterlijk hetzelfde domein.
+//  2. Alias. "UTHER THAILAND" is niet af te leiden uit "utherpeptide.com".
+//     Iemand moet vaststellen dat het dezelfde partij is. Daarom een
+//     handmatige tabel met wie het vaststelde en waarom, en geen fuzzy match:
+//     "lijkt op" is precies de plek waar een verkeerde koppeling ontstaat die
+//     daarna nergens meer opvalt.
+//
+// Per 21 september is Uther het enige geval. Elke nieuwe regel hieronder is
+// een besluit van een mens, geen gevolg van code.
+const OPDRACHTGEVER_ALIASSEN = [
+  {
+    alias: 'uther thailand',
+    sleutel: 'utherpeptide.com',
+    door: 'Ruben',
+    datum: '2026-09-21',
+    reden: 'Dezelfde partij; de labrapporten die astralabs toont gebruiken beide schrijfwijzen door elkaar.'
+  }
+];
+
+// Geeft de vastgestelde sleutel terug als deze naam in de aliastabel staat.
+// Anders null - dan is het geen alias en wordt er niets gelijkgemaakt.
+function opdrachtgeverAlias(naam) {
+  const kaal = String(naam == null ? '' : naam).trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!kaal) return null;
+  const gevonden = OPDRACHTGEVER_ALIASSEN.find((a) => a.alias === kaal);
+  return gevonden ? gevonden.sleutel : null;
+}
+
+// De sleutel waaronder een opdrachtgever geteld wordt. Domeinvormen worden
+// samengetrokken, aliassen opgezocht, en een naam die geen van beide is blijft
+// staan zoals hij op het rapport stond. Liever een aparte regel dan een
+// samenvoeging die niemand heeft vastgesteld.
+function opdrachtgeverSleutel(naam) {
+  const ruw = String(naam == null ? '' : naam).trim();
+  if (!ruw) return null;
+  return lijktOpDomein(ruw) || opdrachtgeverAlias(ruw) || ruw;
+}
+
 function lijktOpDomein(naam) {
   const t = String(naam || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
   return /^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(t) && /\.[a-z]{2,}$/.test(t) ? t : null;
 }
 
 async function legOpdrachtgeverVast(lab, referentie, client) {
-  const sleutel = lijktOpDomein(client);
+  // Bewust niet opdrachtgeverSleutel: die geeft een onbekende naam ongewijzigd
+  // terug, en dan zou "OmegaPeptides" een leverancierssleutel worden. Hier
+  // alleen een domein of een vastgestelde alias.
+  const sleutel = lijktOpDomein(client) || opdrachtgeverAlias(client);
   if (!sleutel || !lab || !referentie) return null;
   try {
     // Toont deze partij de referentie zelf al? Dan is het een shop, geen
@@ -1648,6 +1725,35 @@ async function legOpdrachtgeverVast(lab, referentie, client) {
     return sleutel;
   } catch (e) {
     console.error('coaStore.legOpdrachtgeverVast:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Rapporten die al gecontroleerd waren toen een alias nog niet bestond, zijn
+// destijds nergens aan gekoppeld: legOpdrachtgeverVast liep op die naam vast.
+// Deze herstelt dat voor de namen die nu in de aliastabel staan. Idempotent -
+// tweemaal draaien verandert niets - en hij raakt alleen rapporten aan waarvan
+// de clientnaam letterlijk in de tabel staat.
+async function herstelOpdrachtgeverAliassen() {
+  if (!OPDRACHTGEVER_ALIASSEN.length) return { bekeken: 0, gekoppeld: 0 };
+  try {
+    const namen = OPDRACHTGEVER_ALIASSEN.map((a) => a.alias);
+    const { rows } = await pool.query(
+      `SELECT lab, referentie, client FROM coa_reference_checks
+       WHERE client IS NOT NULL AND lower(btrim(client)) = ANY($1::text[])`,
+      [namen]
+    );
+    let gekoppeld = 0;
+    for (const r of rows) {
+      const sleutel = await legOpdrachtgeverVast(r.lab, r.referentie, r.client);
+      if (sleutel) gekoppeld += 1;
+    }
+    if (rows.length) {
+      console.log(`coaStore: ${gekoppeld} van ${rows.length} aliasrapporten aan hun opdrachtgever gekoppeld`);
+    }
+    return { bekeken: rows.length, gekoppeld };
+  } catch (e) {
+    console.error('coaStore.herstelOpdrachtgeverAliassen:', (e && e.message) || e);
     return null;
   }
 }
@@ -2116,6 +2222,8 @@ module.exports = {
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
+  opdrachtgeverSleutel, opdrachtgeverAlias, OPDRACHTGEVER_ALIASSEN,
+  herstelOpdrachtgeverAliassen,
   wieBesteldeDeTest,
   opdrachtgeversBeeld,
   opdrachtgeverZinnen,
