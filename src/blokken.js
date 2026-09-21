@@ -141,8 +141,11 @@ function openheidBlok(recordsIn, bedrijfIn) {
     O07: opMeerderheid(records, (r) => heeftWaarde(r.laboratorium)),
     O08: opMeerderheid(records, (r) => heeftWaarde(r.batchnummer)),
     // Intact betekent: er is een code, en nergens is er een weggehaald.
-    O09: !weggehaald && records.some((r) => heeftWaarde(r.verificationKey) || heeftWaarde(r.reportId)),
-    O10: opMeerderheid(records, (r) => heeftWaarde(r.client) || heeftWaarde(r.opdrachtgever))
+    O09: !weggehaald && records.some((r) => heeftWaarde(r.verificationKey) ||
+      heeftWaarde(r.reportId) || heeftWaarde(r.verificationUrl)),
+    O10: records.some((r) => r && (('client' in r) || ('opdrachtgever' in r)))
+      ? opMeerderheid(records, (r) => heeftWaarde(r.client) || heeftWaarde(r.opdrachtgever))
+      : null
   };
 
   const punten = OPENHEID_PUNTEN.map((p) => {
