@@ -696,6 +696,31 @@ app.post('/api/admin/coa/references/resolve', rl.caseAction, auth.requireOwnerTo
 // Twee soorten rood, bewust apart:
 //   klasseD      een rapportreferentie lost niet op of wijkt af van de kopie
 //   categorieRood een COA-categorie is beoordeeld als aangetoond probleem
+// Wat is er nieuw en nog niet gemeld? Zelfde gegevens als de MCP-tool
+// nieuwe_signalen, zodat een stafpagina het ook kan tonen zonder een
+// MCP-verbinding. Lezen mag een lezer; markeren vraagt om een beoordelaar,
+// want wie markeert laat het signaal verdwijnen.
+app.get('/api/admin/signalen', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const uit = await coaStore.nieuweSignalen({ max: Number(req.query.max) || 50 });
+    if (!uit) return res.status(500).json({ error: 'kon de signalen niet ophalen' });
+    res.json(uit);
+  } catch (e) {
+    res.status(500).json({ error: (e && e.message) || 'onbekende fout' });
+  }
+});
+
+app.post('/api/admin/signalen/gemeld', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body && req.body.items) ? req.body.items : null;
+    if (!items || !items.length) return res.status(400).json({ error: 'items ontbreekt' });
+    const uit = await coaStore.markeerGesignaleerd(items, (req.body && req.body.door) || null);
+    res.json(uit);
+  } catch (e) {
+    res.status(500).json({ error: (e && e.message) || 'onbekende fout' });
+  }
+});
+
 app.get('/api/admin/bevindingen/rood', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const cases = await db.listCases();

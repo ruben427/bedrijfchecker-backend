@@ -351,6 +351,77 @@ async function buildServer() {
     }
   );
 
+  // Zevende en achtste tool, 21 september. Aanleiding: de pijplijn legde alles
+  // vast en wees niemand ergens op. Iemand voert een onbekende shop in, de
+  // FREE loopt door, het lab erachter kent niemand - en dat blijft stil tot
+  // iemand toevallig de stafpagina opent. Voor een testversie waarin vreemden
+  // shops invoeren is dat het gat.
+  server.registerTool(
+    'nieuwe_signalen',
+    {
+      title: 'Wat is er nieuw en nog niet gemeld',
+      description: 'Geeft de leveranciers en laboratoria die sinds de vorige melding voor het eerst zijn opgedoken en waar nog niemand op is gewezen. Bedoeld voor een terugkerende controle: lees dit, maak er taken van, en markeer ze daarna met markeer_gesignaleerd zodat ze niet opnieuw langskomen. Een lab dat al een stand van een beoordelaar heeft komt hier nooit in voor - die stand IS het bewijs dat er naar gekeken is. Let op het veld uitCasesZonderReferentie: dat lab werd op een rapport genoemd zonder verificatiecode, en is dus juist het minst controleerbare soort.',
+      inputSchema: z.object({
+        max: z.number().optional().describe('Maximum per soort (standaard 50)')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ max }) => {
+      const uit = await coaStore.nieuweSignalen({ max });
+      if (!uit) {
+        return { content: [{ type: 'text', text: 'Kon de signalen niet ophalen.' }], structuredContent: { fout: true } };
+      }
+      const datum = (v) => (v ? new Date(Number(v)).toISOString().slice(0, 10) : 'onbekend');
+      const regels = [];
+      regels.push(uit.leveranciers.length + ' nieuwe leverancier(s), ' + uit.labs.length + ' nieuw lab/labs.');
+      if (uit.leveranciers.length) {
+        regels.push('', 'LEVERANCIERS:');
+        uit.leveranciers.forEach((l) => {
+          regels.push('- ' + l.sleutel + (l.naam ? (' (' + l.naam + ')') : '') +
+            ' - eerst gezien ' + datum(l.eersteKeerGezien) +
+            ', ' + l.runs + ' run(s), ' + l.verwijzingen + ' labverwijzing(en), ' + l.labs + ' lab(s)' +
+            (l.verwijzingen === 0 ? ' - LET OP: geen enkel labrapport gevonden' : ''));
+        });
+      }
+      if (uit.labs.length) {
+        regels.push('', 'LABORATORIA ZONDER STAND:');
+        uit.labs.forEach((l) => {
+          regels.push('- ' + l.sleutel + ' - eerst gezien ' + datum(l.eersteKeerGezien) +
+            ', ' + l.verwijzingen + ' verwijzing(en) bij ' + l.shops + ' shop(s)' +
+            (l.uitCasesZonderReferentie ? ' - LET OP: genoemd op een rapport zonder verificatiecode' : ''));
+        });
+      }
+      if (!uit.leveranciers.length && !uit.labs.length) regels.push('Niets nieuws.');
+      return { content: [{ type: 'text', text: regels.join('\n') }], structuredContent: uit };
+    }
+  );
+
+  server.registerTool(
+    'markeer_gesignaleerd',
+    {
+      title: 'Markeer signalen als gemeld',
+      description: 'Legt vast dat er op deze leveranciers en laboratoria is gewezen, zodat nieuwe_signalen ze niet opnieuw teruggeeft. Roep dit pas aan NADAT de taak of melding daadwerkelijk is aangemaakt - anders verdwijnt het signaal zonder dat iemand het heeft gezien. Gemeld is niet hetzelfde als afgehandeld: of er iets mee gedaan is staat in de taak zelf, en bij een lab in zijn stand.',
+      inputSchema: z.object({
+        items: z.array(z.object({
+          soort: z.enum(['leverancier', 'lab']),
+          sleutel: z.string().min(1).describe('De supplier_key of de labnaam, precies zoals nieuwe_signalen hem teruggaf'),
+          eersteKeerGezien: z.number().optional(),
+          notitie: z.string().optional().describe('Waar het signaal heen ging, bijv. een taaknaam')
+        })).min(1).max(200),
+        door: z.string().optional().describe('Wie of wat de melding deed')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ items, door }) => {
+      const uit = await coaStore.markeerGesignaleerd(items, door);
+      return {
+        content: [{ type: 'text', text: uit.gemarkeerd + ' van ' + (uit.aangeboden || 0) +
+          ' vastgelegd als gemeld' + (uit.gemarkeerd < (uit.aangeboden || 0) ? ' (de rest stond er al in)' : '') + '.' }],
+        structuredContent: uit
+      };
+    }
+  );
+
   return server;
 }
 
@@ -359,7 +430,8 @@ async function buildServer() {
 // MCP-verbinding die een oud schema vasthoudt.
 const TOOL_NAMEN = [
   'zoek_leverancier_coas', 'upload_coa', 'verifieer_coa',
-  'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium'
+  'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium',
+  'nieuwe_signalen', 'markeer_gesignaleerd'
 ];
 function toolNamen() { return TOOL_NAMEN; }
 

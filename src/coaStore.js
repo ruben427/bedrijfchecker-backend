@@ -239,6 +239,21 @@ async function initCoaSchema() {
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_supplier_idx ON coa_sources (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_sources_sha_idx ON coa_sources (sha256);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_events_supplier_idx ON coa_source_events (supplier_key, created_at DESC);`);
+  // Wat is er al gemeld? Zonder dit komt elke nieuwe shop elke dag opnieuw
+  // langs, en dan wordt de melding na een week genegeerd. Een regel hier
+  // betekent: hier is iemand op gewezen. Niet: dit is afgehandeld - dat staat
+  // in de taak zelf, en bij een lab in zijn stand.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS signaleringen (
+      soort TEXT NOT NULL,
+      sleutel TEXT NOT NULL,
+      eerste_keer_gezien BIGINT,
+      gemeld_op BIGINT NOT NULL,
+      gemeld_door TEXT,
+      notitie TEXT,
+      PRIMARY KEY (soort, sleutel)
+    );
+  `);
   await herstelOpdrachtgeverAliassen();
 }
 
@@ -1758,6 +1773,170 @@ async function herstelOpdrachtgeverAliassen() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SIGNALERING - wat is er nieuw sinds iemand keek?
+//
+// Tot nu legde de pijplijn alles vast en wees niemand ergens op. Iemand voert
+// een onbekende shop in, de FREE loopt door, het lab erachter kent niemand -
+// en dat blijft stil tot iemand toevallig de stafpagina opent. Voor een
+// testversie waarin vreemden shops invoeren is dat het gat.
+//
+// Twee dingen worden gemeld:
+//
+//   LEVERANCIER  een supplier_key die wij nog nooit hebben gemeld
+//   LAB          een labnaam die wij nog nooit hebben gemeld EN die nog geen
+//                stand van een mens heeft
+//
+// Een lab met een stand is klaar en komt niet langs; daarvoor is de stand het
+// bewijs dat er naar gekeken is. Bij een leverancier bestaat zoiets niet,
+// daarom houdt de tabel signaleringen het apart bij.
+//
+// LET OP: gemeld is niet hetzelfde als afgehandeld. Deze tabel voorkomt
+// alleen herhaling. Of er iets mee gedaan is, staat in de taak.
+
+// Labs komen uit twee bronnen, en dat is nodig. coa_references heeft alleen
+// een regel als er een referentie of sleutel op het rapport stond; een COA dat
+// wel een labnaam noemt maar geen verificatiecode levert daar niets op. Die
+// labs staan wel in labsZonderOordeel, dat elke run in de casedata wordt
+// weggeschreven. Zonder de tweede bron blijft juist het slechtst
+// controleerbare soort lab onzichtbaar.
+async function labsUitCases() {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT l AS lab, MIN(c.created_at) AS eerste
+     FROM cases c,
+          LATERAL jsonb_array_elements_text(
+            CASE WHEN jsonb_typeof(c.phase_data->'coaDataset'->'data'->'labsZonderOordeel') = 'array'
+                 THEN c.phase_data->'coaDataset'->'data'->'labsZonderOordeel'
+                 ELSE '[]'::jsonb END) AS l
+     GROUP BY l`
+  );
+  return rows;
+}
+
+async function nieuweSignalen(opties) {
+  const max = Math.max(1, Math.min(Number((opties || {}).max) || 50, 200));
+  try {
+    const gemeld = await pool.query(`SELECT soort, sleutel FROM signaleringen`);
+    const isGemeld = new Set(gemeld.rows.map((r) => r.soort + '|' + String(r.sleutel).toLowerCase()));
+
+    // --- leveranciers ---
+    // Twee bronnen, want een shop kan een case hebben zonder een enkel COA.
+    // Juist zo'n shop is interessant: iemand heeft hem ingevoerd en er kwam
+    // niets uit.
+    const { rows: uitCases } = await pool.query(
+      `SELECT website, MIN(naam) AS naam, MIN(created_at) AS eerste, COUNT(*)::int AS runs
+       FROM cases WHERE website IS NOT NULL AND btrim(website) <> ''
+       GROUP BY website`
+    );
+    const { rows: uitRefs } = await pool.query(
+      `SELECT supplier_key, MIN(first_seen_at) AS eerste, COUNT(*)::int AS verwijzingen,
+              COUNT(DISTINCT lab)::int AS labs
+       FROM coa_references WHERE relatie = 'toont' GROUP BY supplier_key`
+    );
+
+    const perLeverancier = new Map();
+    const zorg = (key) => {
+      if (!key) return null;
+      if (!perLeverancier.has(key)) {
+        perLeverancier.set(key, {
+          soort: 'leverancier', sleutel: key, naam: null,
+          eersteKeerGezien: null, runs: 0, verwijzingen: 0, labs: 0
+        });
+      }
+      return perLeverancier.get(key);
+    };
+    const vroegste = (a, b) => (a == null ? b : (b == null ? a : Math.min(Number(a), Number(b))));
+
+    uitCases.forEach((r) => {
+      const g = zorg(supplierKeyFromUrl(r.website));
+      if (!g) return;
+      g.naam = g.naam || r.naam || null;
+      g.runs += r.runs;
+      g.eersteKeerGezien = vroegste(g.eersteKeerGezien, r.eerste);
+    });
+    uitRefs.forEach((r) => {
+      const g = zorg(r.supplier_key);
+      if (!g) return;
+      g.verwijzingen += r.verwijzingen;
+      g.labs = Math.max(g.labs, r.labs);
+      g.eersteKeerGezien = vroegste(g.eersteKeerGezien, r.eerste);
+    });
+
+    const leveranciers = [...perLeverancier.values()]
+      .filter((g) => !isGemeld.has('leverancier|' + g.sleutel.toLowerCase()))
+      .sort((a, b) => Number(b.eersteKeerGezien || 0) - Number(a.eersteKeerGezien || 0))
+      .slice(0, max);
+
+    // --- labs ---
+    const oordelen = await labOordelen();
+    const { rows: labRefs } = await pool.query(
+      `SELECT lab, MIN(first_seen_at) AS eerste, COUNT(*)::int AS verwijzingen,
+              COUNT(DISTINCT supplier_key)::int AS shops
+       FROM coa_references WHERE lab IS NOT NULL GROUP BY lab`
+    );
+    const perLab = new Map();
+    const zorgLab = (naamRuw, eerste) => {
+      const naam = normaliseerLab(naamRuw).naam;
+      if (!naam) return null;
+      if (!perLab.has(naam)) {
+        perLab.set(naam, {
+          soort: 'lab', sleutel: naam, eersteKeerGezien: eerste == null ? null : Number(eerste),
+          verwijzingen: 0, shops: 0, uitCasesZonderReferentie: false
+        });
+      }
+      const g = perLab.get(naam);
+      g.eersteKeerGezien = vroegste(g.eersteKeerGezien, eerste);
+      return g;
+    };
+    labRefs.forEach((r) => {
+      const g = zorgLab(r.lab, r.eerste);
+      if (!g) return;
+      g.verwijzingen += r.verwijzingen;
+      g.shops = Math.max(g.shops, r.shops);
+    });
+    const uitCaseLabs = await labsUitCases().catch(() => []);
+    uitCaseLabs.forEach((r) => {
+      const g = zorgLab(r.lab, r.eerste);
+      if (g && !g.verwijzingen) g.uitCasesZonderReferentie = true;
+    });
+
+    const labs = [...perLab.values()]
+      .filter((g) => !oordelen[labSleutel(g.sleutel)])
+      .filter((g) => !isGemeld.has('lab|' + g.sleutel.toLowerCase()))
+      .sort((a, b) => Number(b.eersteKeerGezien || 0) - Number(a.eersteKeerGezien || 0))
+      .slice(0, max);
+
+    return { leveranciers, labs, gemeldTotaal: gemeld.rows.length };
+  } catch (e) {
+    console.error('coaStore.nieuweSignalen:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Idempotent: tweemaal melden verandert alleen gemeld_op niet - de eerste
+// melding blijft staan. Anders zou een herhaalde run de datum opschuiven en
+// lijkt het alsof er vandaag iets nieuws was.
+async function markeerGesignaleerd(items, door) {
+  const lijst = (items || []).filter((i) => i && i.soort && i.sleutel);
+  if (!lijst.length) return { gemarkeerd: 0 };
+  const now = Date.now();
+  let n = 0;
+  for (const i of lijst) {
+    try {
+      const r = await pool.query(
+        `INSERT INTO signaleringen (soort, sleutel, eerste_keer_gezien, gemeld_op, gemeld_door, notitie)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (soort, sleutel) DO NOTHING`,
+        [String(i.soort), String(i.sleutel), i.eersteKeerGezien || null, now, door || null, i.notitie || null]
+      );
+      if (r.rowCount) n += 1;
+    } catch (e) {
+      console.error('coaStore.markeerGesignaleerd:', (e && e.message) || e);
+    }
+  }
+  return { gemarkeerd: n, aangeboden: lijst.length };
+}
+
 // Overzicht van alle leveranciers die we kennen, met wat we per stuk hebben.
 // Bedoeld voor de stafpagina: een regel per leverancier, en de kolommen die er
 // toe doen staan vooraan - niet "hoeveel rapporten" maar "hoeveel daarvan zijn
@@ -2222,6 +2401,7 @@ module.exports = {
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
+  nieuweSignalen, markeerGesignaleerd,
   opdrachtgeverSleutel, opdrachtgeverAlias, OPDRACHTGEVER_ALIASSEN,
   herstelOpdrachtgeverAliassen,
   wieBesteldeDeTest,
