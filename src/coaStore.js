@@ -840,14 +840,30 @@ const LAB_STATUSSEN = [
   // Dat is niet wat er is vastgesteld. Zelfde soort fout als 'niet bereikbaar
   // voor ons': een uitspraak over ons of over de soort partij verkleed als
   // een oordeel over het lab.
-  'geen lab - databron/testplatform'
+  'geen lab - databron/testplatform',
+  // Toegevoegd 22 september. Het gat dat bij ILS bleef staan: Annemarie keurde
+  // dat lab af op KWALITEITSBORGING - een hondenfoto als samplefoto, 100,00%
+  // zuiverheid, een rapport waarbij de identiteitstest niet slaagde maar toch
+  // 100,00% vermeldde - en daar was geen stand voor. Hij stond daarom op
+  // 'onvoldoende verifieerbaar': het bewijs vervalt op dezelfde manier, maar
+  // de reden klopt niet. Dat is precies wat zij wilde voorkomen.
+  //
+  // Het verschil met 'onvoldoende verifieerbaar' is de richting van de
+  // uitspraak. Daar zeggen wij: wij konden het niet bevestigen. Hier zeggen
+  // wij: wij hebben iets gezien dat niet deugt. Het eerste kan aan ons liggen,
+  // het tweede niet.
+  //
+  // En anders dan 'bestaat niet' is dit omkeerbaar: een lab kan zijn werk
+  // verbeteren. Of daar een herstelcriterium bij hoort ligt bij Annemarie.
+  'afgekeurd - kwaliteitsborging'
 ];
 
 // Bij welke standen mag een COA niet als onafhankelijk geverifieerd bewijs
 // gelden? Bij alles behalve 'erkend'. Identity, purity en quantity die
 // uitsluitend op zo'n rapport rusten blijven ONBEVESTIGD - niet afwezig, niet
 // weerlegd. Dat onderscheid is de hele methodiek.
-const LAB_TELT_NIET_MEE = ['onvoldoende verifieerbaar', 'niet onafhankelijk', 'bestaat niet'];
+const LAB_TELT_NIET_MEE = ['onvoldoende verifieerbaar', 'niet onafhankelijk', 'bestaat niet',
+  'afgekeurd - kwaliteitsborging'];
 
 // A22 - BESLUIT ANNEMARIE, 21 SEPTEMBER.
 //
@@ -923,7 +939,9 @@ function bewijskrachtVanLab(oordeel) {
         ? 'het laboratorium bestaat niet'
         : (oordeel.status === 'niet onafhankelijk'
           ? 'het laboratorium is niet onafhankelijk van de leverancier'
-          : 'het laboratorium is onvoldoende onafhankelijk te verifieren')
+          : (oordeel.status === 'afgekeurd - kwaliteitsborging'
+            ? 'in de rapporten van dit laboratorium zijn concrete gebreken in de uitvoering of rapportage vastgesteld'
+            : 'het laboratorium is onvoldoende onafhankelijk te verifieren'))
     };
   }
   return onbeoordeeldeStand();

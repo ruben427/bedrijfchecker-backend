@@ -130,6 +130,7 @@
     'niet bereikbaar voor ons': ['warn', 'Zegt niets over het lab of de leverancier. Bewijs blijft "gerapporteerd" tot een mens een referentie natrekt; die tilt hem alsnog naar geverifieerd.'],
     'onvoldoende verifieerbaar': ['warn', 'Identiteit, zuiverheid en hoeveelheid die alleen op deze rapporten rusten blijven onbevestigd. Niet weerlegd — onbevestigd.'],
     'niet onafhankelijk': ['danger', 'Het lab hoort bij de leverancier. Bewijs telt niet als onafhankelijk.'],
+    'afgekeurd - kwaliteitsborging': ['danger', 'Er zijn in de rapporten zelf gebreken vastgesteld in de uitvoering of rapportage. Bewijs telt niet mee. Anders dan "onvoldoende verifieerbaar": daar lag het aan wat wij konden nagaan, hier aan wat wij hebben gezien.'],
     'bestaat niet': ['danger', 'De zwaarste uitspraak in het systeem: elk certificaat dat hiernaar wijst wordt waardeloos, hoe echt het er ook uitziet.'],
     'geen lab - databron/testplatform': ['warn', 'Geen oordeel over kwaliteit. Deze partij doet zelf geen analyses, dus levert zij zelf geen bewijs; de bewijswaarde komt van het lab dat de meting uitvoerde. Noemt het rapport dat lab niet, dan telt het niet mee.']
   };
@@ -137,6 +138,17 @@
   // De werkindeling van Annemarie. Bewust een andere vorm dan de statuschip:
   // dit is haar voorlopige indeling, geen vastgelegd oordeel, en die twee
   // horen op het scherm niet op elkaar te lijken.
+  //
+  // LET OP - sinds 22 september verdwijnt deze chip zodra er een vastgelegde
+  // stand is. Reden: de indeling is een voorlopige sortering en heeft zijn
+  // werk gedaan zodra iemand het lab echt heeft beoordeeld. Bleef hij staan,
+  // dan kreeg je twee labels die elkaar tegenspreken - bij ILS stond de stand
+  // 'onvoldoende verifieerbaar' naast 'op je lijst: onbetrouwbaar', terwijl
+  // Annemarie die drie labs juist uit elkaar had getrokken. En 'onbetrouwbaar'
+  // is nu net het woord waar zij vanaf wilde, omdat het niet zegt waarom.
+  //
+  // Daarom staat 'onbetrouwbaar' ook NIET in de keuzelijst: dat is geen stand
+  // maar een verzamelwoord.
   var INDELING = {
     'betrouwbaar': ['ok', 'op je lijst: betrouwbaar'],
     'onbetrouwbaar': ['danger', 'op je lijst: onbetrouwbaar'],
@@ -202,7 +214,9 @@
     return '<div class="lab" data-lab="' + esc(sl) + '" data-open="' + (open[sl] ? '1' : '0') + '">' +
       '<div class="lab-kop" data-toggle="' + esc(sl) + '">' +
         '<span class="lab-naam">' + esc(l.lab) + '</span>' +
-        statusChip + vestigingChip(l.vestiging) + indelingChip(l.werkindeling, l.notitie) +
+        statusChip + vestigingChip(l.vestiging) +
+        // De werkindeling alleen zolang er nog geen stand is. Zie indelingChip.
+        (l.oordeel ? '' : indelingChip(l.werkindeling, l.notitie)) +
         (l.nogNietGezien
           ? '<span class="chip grey">nog niet in onze data</span>'
           : toegangChip(l.onzeToegang) +
