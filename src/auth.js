@@ -53,26 +53,42 @@ function isPlausibleToken(token) {
 // dan een sleutel.
 const MIN_LEESTOKEN = 16;
 
-function leestokenGeldig() {
-  const t = process.env.VIEWER_TOKEN;
+function tokenGeldig(naam) {
+  const t = process.env[naam];
   if (!t) return null;
   if (String(t).length < MIN_LEESTOKEN) {
-    console.warn('[auth] VIEWER_TOKEN is korter dan ' + MIN_LEESTOKEN + ' tekens en wordt genegeerd.');
+    console.warn('[auth] ' + naam + ' is korter dan ' + MIN_LEESTOKEN + ' tekens en wordt genegeerd.');
     return null;
   }
   if (process.env.ADMIN_TOKEN && String(t) === String(process.env.ADMIN_TOKEN)) {
-    console.warn('[auth] VIEWER_TOKEN is gelijk aan ADMIN_TOKEN en wordt genegeerd.');
+    console.warn('[auth] ' + naam + ' is gelijk aan ADMIN_TOKEN en wordt genegeerd.');
     return null;
   }
   return String(t);
 }
 
+function leestokenGeldig() {
+  return tokenGeldig('VIEWER_TOKEN');
+}
+
+// Twee sleutels voor dezelfde rol, 22 september.
+//
+// De beoordelaar werkt op twee plekken: op de stafpagina's (deze HTTP-kant) en
+// via de connector (de MCP-kant, COA_REDACTIE_TOKEN). Dat waren twee losse
+// geheimen voor een en dezelfde persoon met een en dezelfde rol, en dan wordt
+// er een van de twee ergens opgeschreven.
+//
+// Daarom telt COA_REDACTIE_TOKEN hier ook als leestoken. VIEWER_TOKEN blijft
+// werken, zodat bestaande koppelingen niet omvallen.
+//
+// LET OP de grens die blijft staan: dit geeft de REDACTIEROL op de HTTP-kant,
+// niet de beheerdersrol. Uploaden, resolverruns en de audit trace hangen aan
+// ADMIN_TOKEN en dat verandert hier niet.
 function isViewer(req) {
-  const lees = leestokenGeldig();
-  if (!lees) return false;
   const token = readToken(req);
   if (!token) return false;
-  return safeEqual(token, lees);
+  const sleutels = [leestokenGeldig(), tokenGeldig('COA_REDACTIE_TOKEN')].filter(Boolean);
+  return sleutels.some((s) => safeEqual(token, s));
 }
 
 function isAdmin(req) {
@@ -122,4 +138,4 @@ function requireCaseAccess(db) {
   };
 }
 
-module.exports = { hashToken, readToken, isAdmin, isViewer, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual, MIN_LEESTOKEN };
+module.exports = { hashToken, readToken, isAdmin, isViewer, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual, MIN_LEESTOKEN, tokenGeldig };
