@@ -483,6 +483,23 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
    11 + 80 - 41 = 50px overhang, plus lucht. */
 .wrap{ padding-top:60px; }
 
+/* Beta-label naast het logo. Staat hier en niet in een van de paginas: hij
+   hangt op bedrijfchecker.html en bedrijfchecker-test.html, en twee plekken
+   waar hetzelfde wordt geregeld is precies hoe de dubbele .site-logo img is
+   ontstaan.
+   De margin-top lijnt hem uit op het midden van de pill: 41px paginatop, min
+   de eigen halve hoogte, min de 11px padding-top van .site-header-inner. */
+.betavlag{
+  margin:15px 0 0 16px; align-self:flex-start; white-space:nowrap;
+  font-family:"Baloo 2", sans-serif; font-weight:600; font-size:.85rem;
+  letter-spacing:.06em; color:var(--accent-strong);
+  background:var(--accent-soft); border:1px solid var(--accent);
+  border-radius:999px; padding:4px 14px;
+}
+@media (max-width:640px){
+  .betavlag{ margin:19px 0 0 10px; font-size:.75rem; padding:3px 10px; }
+}
+
 .detail-head-slim{ margin:14px 0 4px; }
 .rapport{ display:flex; flex-direction:column; gap:22px; margin-top:18px; }
 
