@@ -14,17 +14,55 @@
      als het blijft. Alle kleuren via de tokens uit solike.css, zodat de
      donkere modus meeloopt zonder aparte regels. -->
 <style>
-  .testvlag{
-    margin-left:12px; align-self:center;
-    font-family:"IBM Plex Mono", monospace; font-size:.7rem; letter-spacing:.06em;
-    text-transform:uppercase; color:var(--accent-strong);
+  .betavlag{
+    /* Uitgelijnd op het midden van de pill: 53px paginatop, min de eigen
+       halve hoogte, min de padding-top van de header-inner. */
+    margin:24px 0 0 16px; align-self:flex-start;
+    font-family:"Baloo 2", sans-serif; font-weight:600; font-size:.85rem;
+    letter-spacing:.02em; color:var(--accent-strong);
     background:var(--accent-soft); border:1px solid var(--accent);
-    border-radius:999px; padding:3px 10px;
+    border-radius:999px; padding:4px 14px; white-space:nowrap;
   }
 
-  /* Het ontwerp zet alles onder elkaar in een kolom van 744px, met de
-     startknop ONDER de velden in plaats van ernaast. Dat is anders dan de
-     live checker, waar knop en URL naast elkaar staan. */
+  /* --- Het logo in de header --------------------------------------------
+     Regel van Ruben: de scheiding tussen neutrals/25 (de balk, wit) en
+     neutrals/50 (de pagina, #F9F9F8) valt in het MIDDEN van de paarse pill.
+     Het logo steekt dus onder de balk uit; de regel "LEVERANCIER CHECKER"
+     hangt helemaal op de paginakleur.
+
+     Gemeten aan het logo zoals het op de server staat (viewBox 0 0 259 83):
+       pill      y 0    tot 62,1
+       PEPPROOF  y 16,8 tot 45,3   (wit, in de pill)
+       ondertitel y 74  tot 82,9   (paars, onder de pill)
+     Het midden van de pill zit dus op 31,05 van 82,9 = 37,46% van de
+     logohoogte. Daaruit volgt alles:
+
+       hoogte balk = ruimte boven de pill + 0,3746 x logohoogte
+                   = 14 + 0,3746 x 104 = 53px
+
+     LET OP - in bedrijfchecker.css staat .site-logo img TWEE keer: 104px op
+     r454 (met de comment "ruimte onder de balk voor het deel van het logo dat
+     eronder uitsteekt") en daarna 44/56px op r463-464. De tweede wint, en
+     daardoor viel de rand net onder de pill in plaats van er middendoor. Een
+     specifiekere selector zet dat hier recht; in de live css hoort een van de
+     twee regels weg.
+
+     LET OP 2 - het PEPPROOF-LOGO.svg in deze repo is OUDER dan dat op de
+     server: 258x80 met de ondertitel IN de pill, tegen 259x83 met de
+     ondertitel eronder. Deze maten horen bij het serverbestand. Haal de
+     nieuwe op via SFTP, anders klopt de verhouding lokaal niet. */
+  .site-header{ height:53px; }
+  .site-header-inner{ align-items:flex-start; padding-top:14px; }
+  .site-header .site-logo img{ height:104px; width:auto; display:block; }
+  .wrap{ padding-top:76px; }   /* 65px overhang + lucht */
+
+  @media (max-width:640px){
+    .site-header{ height:38px; }
+    .site-header-inner{ padding-top:10px; }
+    .site-header .site-logo img{ height:74px; }
+    .wrap{ padding-top:56px; }
+  }
+
   .check-form{
     display:flex; flex-direction:column; align-items:flex-start;
     width:100%; max-width:744px; gap:0;
@@ -98,7 +136,7 @@
     <button type="button" class="site-logo" id="brand-home" aria-label="Naar de startpagina">
       <img src="PEPPROOF-LOGO.svg" alt="Pep Proof" width="258" height="80">
     </button>
-    <span class="testvlag">testversie</span>
+    <span class="betavlag">Beta</span>
   </div>
 </header>
 
