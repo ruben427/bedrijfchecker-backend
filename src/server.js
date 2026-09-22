@@ -815,16 +815,14 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
     for (const c of lijst) {
       if (gedaan.length >= max) break;
       if (!c) { overgeslagen.push({ id: b.caseId || null, reden: 'niet gevonden' }); continue; }
-      if (!c.categoryAssessments || !Object.keys(c.categoryAssessments).length) {
-        overgeslagen.push({ id: c.id, reden: 'geen categoriebeoordeling' });
-        continue;
-      }
+
+      // Opschonen gebeurt voor ELKE case, ook een gestopte of een zonder
+      // categoriebeoordeling. Een onterechte klasse D of een onterechte rode
+      // vlag hoort nergens te blijven staan, en het opschonen heeft die
+      // beoordeling niet nodig: het is alleen herlezen van wat er ligt.
+      let klassenGewist = 0;
+      let vlaggenAf = 0;
       try {
-        // Eerst het archief opschonen: klassen die niet door de resolver of
-        // een mens zijn vastgesteld tellen niet mee. Die stonden nog in
-        // records van voor 20 september en kwamen zo alsnog als rode
-        // bevinding terug. Moet voor de engine, die deze records leest.
-        let klassenGewist = 0;
         const recs = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data
           && c.phaseData.coaDataset.data.coaRecords) || null;
         if (recs && recs.length) {
@@ -837,18 +835,29 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
             await db.updateCase(c.id, { phaseData });
           }
         }
-        const engineResult = await pipeline.applyScoringEngine(c.id);
-        const bl = engineResult && engineResult.blokken;
-        // Ook de al opgeslagen rapporttekst langs dezelfde rood-toets: die is
-        // door het model geschreven en ging niet door filterRood(). Geen
-        // modelaanroep, puur herlezen van wat er staat.
-        let vlaggenAf = 0;
+        // De rode vlaggen uit de rapporttekst zijn door het model geschreven
+        // en gingen niet door filterRood(). Geen modelaanroep, puur herlezen.
         if (c.report && Array.isArray(c.report.rodeVlaggen)) {
           const voor = c.report.rodeVlaggen.length;
           const report = pipeline.filterRodeVlaggen(Object.assign({}, c.report));
           vlaggenAf = voor - report.rodeVlaggen.length;
           if (vlaggenAf) await db.updateCase(c.id, { report });
         }
+      } catch (e) {
+        overgeslagen.push({ id: c.id, reden: 'opschonen mislukt' });
+        continue;
+      }
+
+      // De engine opnieuw draaien kan alleen met een categoriebeoordeling.
+      // Zonder die beoordeling is de case wel opgeschoond, maar krijgt hij
+      // geen nieuwe blokken.
+      if (!c.categoryAssessments || !Object.keys(c.categoryAssessments).length) {
+        overgeslagen.push({ id: c.id, reden: 'geen categoriebeoordeling', klassenGewist, rodeVlaggenAfgekeurd: vlaggenAf });
+        continue;
+      }
+      try {
+        const engineResult = await pipeline.applyScoringEngine(c.id);
+        const bl = engineResult && engineResult.blokken;
         gedaan.push({
           id: c.id, website: c.website,
           blokkenVersie: bl ? bl.versie : null,
@@ -861,7 +870,14 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
         overgeslagen.push({ id: c.id, reden: 'herberekening mislukt' });
       }
     }
-    res.json({ herberekend: gedaan.length, overgeslagen: overgeslagen.length, gedaan, overgeslagen });
+    const tel = (lijst, veld) => lijst.reduce((a, x) => a + (Number(x[veld]) || 0), 0);
+    res.json({
+      herberekend: gedaan.length,
+      overgeslagen: overgeslagen.length,
+      klassenGewist: tel(gedaan, 'klassenGewist') + tel(overgeslagen, 'klassenGewist'),
+      rodeVlaggenAfgekeurd: tel(gedaan, 'rodeVlaggenAfgekeurd') + tel(overgeslagen, 'rodeVlaggenAfgekeurd'),
+      gedaan, overgeslagen
+    });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
