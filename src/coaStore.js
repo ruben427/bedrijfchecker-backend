@@ -758,7 +758,18 @@ const LAB_STATUSSEN = [
   'niet bereikbaar voor ons',    // het lab deugt, wij komen er niet in
   'onvoldoende verifieerbaar',   // niet genoeg onafhankelijke bevestiging gevonden
   'niet onafhankelijk',          // bestaat, maar hoort bij de leverancier
-  'bestaat niet'                 // vastgesteld dat het niet bestaat
+  'bestaat niet',                // vastgesteld dat het niet bestaat
+  // Toegevoegd 22 september, besluit Annemarie. Finnrick paste in geen van de
+  // zes. Haar woorden: "We hebben niet vastgesteld dat Finnrick een slecht of
+  // onvoldoende verifieerbaar laboratorium is. We hebben vastgesteld dat we
+  // het uberhaupt niet als analytisch lab moeten classificeren."
+  //
+  // Zonder deze stand moest zo een partij op 'onvoldoende verifieerbaar', en
+  // dan lezen wij over een half jaar terug dat er iets mis was met Finnrick.
+  // Dat is niet wat er is vastgesteld. Zelfde soort fout als 'niet bereikbaar
+  // voor ons': een uitspraak over ons of over de soort partij verkleed als
+  // een oordeel over het lab.
+  'geen lab - databron/testplatform'
 ];
 
 // Bij welke standen mag een COA niet als onafhankelijk geverifieerd bewijs
@@ -817,6 +828,23 @@ function bewijskrachtVanLab(oordeel) {
       reden: 'het laboratorium laat onze server niet toe; wij kunnen de rapporten niet zelf ophalen'
     };
   }
+  // Geen lab, maar een platform. Dit oordeel WIJST DOOR: de bewijswaarde komt
+  // van het lab dat de analyse echt heeft gedaan. Annemarie:
+  //   Finnrick + Janoshik  -> stand van Janoshik
+  //   Finnrick + Krause    -> stand van Krause
+  //   Finnrick zonder identificeerbaar uitvoerend lab -> geen labbewijs
+  //
+  // Daarom telt: null en geenLab: true. De aanroeper moet het uitvoerende lab
+  // opzoeken; doet hij dat niet, dan gebeurt er niets - en niets doen is hier
+  // de veilige kant, want het platform zelf levert geen bewijs maar is ook
+  // geen bevinding.
+  if (oordeel.status === 'geen lab - databron/testplatform') {
+    return {
+      telt: null, geenLab: true,
+      reden: 'dit is geen analytisch laboratorium maar een databron of testplatform; ' +
+        'de bewijswaarde komt van het lab dat de analyse heeft uitgevoerd'
+    };
+  }
   if (LAB_TELT_NIET_MEE.indexOf(oordeel.status) !== -1) {
     return {
       telt: false,
@@ -828,6 +856,40 @@ function bewijskrachtVanLab(oordeel) {
     };
   }
   return onbeoordeeldeStand();
+}
+
+// Het platform doorwijzen naar het uitvoerende lab. Aparte functie omdat de
+// regel op twee plekken nodig is - de bewijskracht per rapport en de niveaus -
+// en omdat hij een eigen fout kent die anders stil zou blijven: een rapport
+// van een platform zonder identificeerbaar uitvoerend lab.
+//
+// Annemarie, uitdrukkelijk: dat is NIET 'nog niet beoordeeld'. "Nog niet
+// beoordeeld betekent voor mij dat we wel weten welk lab het is, maar dat wij
+// dat lab nog niet hebben beoordeeld. Als we niet eens kunnen vaststellen welk
+// analytisch lab de meting heeft uitgevoerd, ontbreekt een essentieel
+// onderdeel van de herkomst van het bewijs."
+//
+// Het blijft geen nieuwe labstand: het is een eigenschap van het RAPPORT.
+function bewijskrachtViaPlatform(platformOordeel, uitvoerendLabNaam, oordelenPerSleutel) {
+  const basis = bewijskrachtVanLab(platformOordeel);
+  if (!basis.geenLab) return basis;
+  const naam = String(uitvoerendLabNaam || '').trim();
+  if (!naam) {
+    return {
+      telt: false, uitvoerendLabOnbekend: true, viaPlatform: platformOordeel.lab || null,
+      reden: 'het rapport komt van een databron of testplatform en noemt geen uitvoerend laboratorium; ' +
+        'zonder dat is de herkomst van de analyse niet vast te stellen'
+    };
+  }
+  const nette = normaliseerLab(naam).naam;
+  const oordeel = (oordelenPerSleutel || {})[labSleutel(nette)] || null;
+  const door = bewijskrachtVanLab(oordeel);
+  return Object.assign({}, door, {
+    viaPlatform: platformOordeel.lab || null,
+    uitvoerendLab: nette,
+    reden: (door.reden || 'het uitvoerende laboratorium telt mee') +
+      ' (analyse uitgevoerd door ' + nette + ', gevonden via een databron of testplatform)'
+  });
 }
 
 function labSleutel(naam) {
@@ -1203,7 +1265,15 @@ function veldvergelijkingUit(c) {
     // de telling: vier van de zes vergelijkingen op 20 september sloegen aan op
     // "SS-31 50mg" tegenover "SS-31", en dat is geen bevinding.
     afwijkend: velden.filter((v) => v.gelijk === false && !v.bijnaGelijk).length,
-    afwijkendAlleenSchrijfwijze: velden.filter((v) => v.gelijk === false && v.bijnaGelijk).length
+    afwijkendAlleenSchrijfwijze: velden.filter((v) => v.gelijk === false && v.bijnaGelijk).length,
+    // A15b, besluit Annemarie 22 september. Een handmatige controle moet
+    // dezelfde driedeling opleveren als de resolver - presentatie, labwaarde,
+    // koppeling - anders hangt het gevolg af van wie de controle deed.
+    // beoordeelAfwijkingen verwacht de vorm van vergelijkVelden, dus alleen
+    // de echte verschillen erin.
+    a15b: janoshik.beoordeelAfwijkingen({
+      verschillen: velden.filter((v) => v.gelijk === false)
+    })
   };
 }
 
@@ -2541,7 +2611,7 @@ async function andereLeveranciersVoor(shaList) {
 
 module.exports = {
   vialSpreidingUit,
-  bewijskrachtVanLab, LAB_TELT_NIET_MEE, A22_STRIKT,
+  bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,

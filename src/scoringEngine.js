@@ -164,16 +164,24 @@ function evidenceGate(intake) {
     // terwijl de rapporten prima gelezen zijn. Ze tellen niet mee omdat nog
     // niet is vastgesteld dat ze over DIT product gaan. De gebruiker kreeg
     // dan het advies zijn documenten te uploaden, en dat lost niets op.
-    const doorKoppeling = leesbaar.filter((i) => i.naamkoppeling && i.naamkoppeling.telt === false &&
+    // Twee wegen naar dezelfde stand: de productnaam wijkt af van de getoetste
+    // stof (A16), of batch/lot/product wijkt af van het labrapport (A15b). In
+    // beide gevallen is het rapport gelezen en authentiek, maar is niet
+    // vastgesteld dat het over DIT product of DEZE batch gaat.
+    const koppelingTeltNiet = (i) =>
+      (i.naamkoppeling && i.naamkoppeling.telt === false) ||
+      (i.koppeling && ['zwak', 'geen/tegenstrijdig'].indexOf(i.koppeling.stand) !== -1);
+    const doorKoppeling = leesbaar.filter((i) => koppelingTeltNiet(i) &&
       (i.analytical_fields_gelezen || []).length > 0);
     if (doorKoppeling.length) {
-      const wacht = doorKoppeling.filter((i) => i.naamkoppeling.wacht).length;
+      const wacht = doorKoppeling.filter((i) => i.naamkoppeling && i.naamkoppeling.wacht).length;
       return {
         status: 'FAIL', code: 'KOPPELING_NIET_VASTGESTELD',
         foundCount: found.length, usableCount: 0,
         gelezenCount: leesbaar.length, doorKoppelingCount: doorKoppeling.length,
         wachtOpBeoordeling: wacht,
-        koppelingReden: doorKoppeling[0].naamkoppeling.reden || null
+        koppelingReden: (doorKoppeling[0].naamkoppeling && doorKoppeling[0].naamkoppeling.reden) ||
+          (doorKoppeling[0].koppeling && doorKoppeling[0].koppeling.reden) || null
       };
     }
     return { status: 'FAIL', code: 'COA_ACCESS_OR_PARSE_BLOCKED', foundCount: found.length, usableCount: 0, gelezenCount: leesbaar.length };

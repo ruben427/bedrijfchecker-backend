@@ -48,7 +48,11 @@ function isGelezen(r) {
 // --- per rapport: wat is de verificatiestand? ------------------------------
 //
 // geverifieerd      klasse A of B: bij het lab opgehaald en het bestaat
-// weerlegd          klasse D: lost niet op, of wijkt af van de kopie
+//                   LET OP - sinds A15b levert de resolver geen B meer. Een
+//                   veldverschil maakt het rapport niet minder echt; dat staat
+//                   nu in shopkopieAfwijking en koppeling. B kan nog uit een
+//                   handmatige controle komen en blijft daarom staan.
+// weerlegd          klasse D: lost niet op
 // niet_verifieerbaar klasse C: referentie aanwezig, lab biedt geen controle
 // wachtrij          code aanwezig, nog niet nagetrokken (bv. Janoshik)
 // code_weggehaald   het rapport noemt verificatie, de code zelf ontbreekt
@@ -375,6 +379,10 @@ function waardenBlok(recordsIn) {
   });
   // A13: hetzelfde rapport bij twee leveranciers is een analyse, niet twee.
   const gedeeld = records.filter((r) => Array.isArray(r.gedeeldMet) && r.gedeeldMet.length).length;
+  // A15b: de shop toont een ander meetresultaat dan het lab. Het rapport is
+  // echt; de weergave van de leverancier klopt niet met de bron.
+  const afwijkendeKopie = records.filter((r) => r.shopkopieAfwijking).length;
+  const labbronGebruikt = records.filter((r) => r.labbronLeidend).length;
 
   // Een regel per uitspraak, en alleen als er iets over te zeggen valt.
   // "0 van de 12" is geen mededeling maar ruis.
@@ -416,6 +424,21 @@ function waardenBlok(recordsIn) {
     });
   }
 
+  if (afwijkendeKopie) {
+    regels.push({
+      onderdeel: null, stand: 'shopkopie_wijkt_af', aantal: afwijkendeKopie,
+      zin: (afwijkendeKopie === 1
+        ? 'Bij een rapport toont de leverancier een ander meetresultaat dan het laboratorium zelf teruggeeft.'
+        : 'Bij ' + afwijkendeKopie + ' rapporten toont de leverancier een ander meetresultaat dan het ' +
+          'laboratorium zelf teruggeeft.') +
+        (labbronGebruikt ? ' Wij gebruiken de waarde van het laboratorium.' : ''),
+      // De grens die Annemarie trok: wel vaststellen dat het afwijkt, niet
+      // concluderen waarom of of het bewust is.
+      toelichting: 'Het labrapport zelf is bij het laboratorium opgehaald en is echt. Wat afwijkt is de ' +
+        'weergave bij de leverancier. Waarom dat zo is, hebben wij niet vastgesteld.'
+    });
+  }
+
   if (gedeeld) {
     regels.push({
       onderdeel: null, stand: 'gedeeld_labbewijs', aantal: gedeeld,
@@ -442,7 +465,8 @@ function waardenBlok(recordsIn) {
   return {
     beschikbaar: true, kleur: null, kleurregelOpen: 'A24',
     rapporten: records.length, telling, promotieGeblokkeerd,
-    methodeNietVerifieerbaar, gedeeldLabbewijs: gedeeld, regels,
+    methodeNietVerifieerbaar, gedeeldLabbewijs: gedeeld,
+    shopkopieWijktAf: afwijkendeKopie, labbronGebruikt, regels,
     werkregel: records.length + ' rapport(en) beoordeeld op leeszekerheid en verificatie'
   };
 }
@@ -450,7 +474,7 @@ function waardenBlok(recordsIn) {
 // Alles bij elkaar, in leesvolgorde.
 function bouwBlokken(engineResult, records, bedrijf, shopHost) {
   return {
-    versie: '1.4',
+    versie: '1.5',
     openheid: openheidBlok(records, bedrijf),
     verificatie: verificatieBlok(records),
     productbewijs: productbewijsBlok(engineResult, records, shopHost),

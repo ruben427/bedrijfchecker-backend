@@ -37,7 +37,7 @@ const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 30;
 // in dit bestand; een vierde kopie erbij zetten voor het eigen certificaat van
 // de koper zou betekenen dat een veld toevoegen op vier plekken moet gebeuren
 // en er ergens een wordt vergeten.
-const COA_RECORD_SCHEMA = 'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,"client":string,"manufacturer":string,"laboratorium":string,"purityPercent":number|null,"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string}]}]}';
+const COA_RECORD_SCHEMA = 'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,"client":string,"manufacturer":string,"laboratorium":string,"uitvoerendLab":string,"purityPercent":number|null,"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string}]}]}';
 // Tijdsbudget voor de documentlus. Een aantal alleen is geen begrenzing: 30
 // documenten die elk een vision-call nodig hebben kunnen bij tegenslag (een
 // herkansing van 120s per stuk) een uur duren. Gemeten op 20 september: de
@@ -73,6 +73,7 @@ const EVIDENCE_RULES = [
   '6. Geef bij elke individuele claim de bron-URL waar die vandaan komt. Geen bron beschikbaar betekent classificatie ONBEKEND.',
   '7. Schrijf beknopt, zakelijk Nederlands zonder em-dashes.',
   "8. Over de identiteitsvelden in een COA-schema, als die gevraagd worden. identiteitsmethode is de methode waarmee het rapport vaststelt WELKE stof is aangetroffen, bijvoorbeeld MS, LC-MS, MS/MS, moleculair gewicht, aminozuuranalyse of vergelijking met een referentiestandaard. Neem die letterlijk over of gebruik null. identiteitBevestigd is alleen true wanneer het rapport zelf de aangetroffen stof benoemt op grond van zo een methode; een productnaam op het etiket of een zuiverheidspercentage is GEEN identiteitsbepaling. blindTest is true wanneer het rapport vermeldt dat het lab vooraf niet wist welke stof het moest aantreffen. Bij twijfel null. vialen is voor een rapport dat HETZELFDE product in meerdere vialen meet. Zo een regel ziet eruit als '25.29 mg; 25.19 mg; 25.41 mg' met daarnaast '99.829%; 99.810%; 99.795%': drie vialen van een stof, niet drie stoffen. Zet elke viaal apart in vialen met zijn eigen gemeten milligrammen en zuiverheid. Verwar dit NIET met componenten - dat zijn verschillende stoffen in een vial. Middel de waarden niet zelf; de spreiding tussen vialen is zelf een waarneming. geclaimdMg per component is optioneel en meestal leeg: bij een blend als 'Glow 70mg' staat nergens wat die 70 per stof claimt. Laat het dan weg en vul alleen claimedQuantity op productniveau. componenten is voor blends: een vial met meer dan een stof erin, zoals GLOW of KLOW. Zo een rapport geeft per stof een eigen gemeten hoeveelheid. Neem elke regel over als eigen component met de stofnaam en de gemeten milligrammen. Is een van de componenten zelf een metaalcomplex, zet dan het metaalcomplex BIJ DIE COMPONENT. Voorbeeld: 'GHK-Cu (GHK content) [Copper Content] 68.27 mg (59.83 mg) [8.44 mg]' plus 'TB-500 (TB4) 13.20 mg' plus 'BPC-157 13.13 mg' geeft drie componenten, waarvan de eerste een kopercomplex is. Laat componenten leeg bij een vial met een enkele stof. Tel de componenten NIET bij elkaar op tot een totaal - dat doen wij verderop, en alleen als duidelijk is wat het etiket claimt. metaalcomplex is iets heel anders dan zwareMetalen: sommige peptiden WORDEN geleverd als complex met een metaal, en dan hoort dat metaal in het product. GHK-Cu is het bekendste voorbeeld. Zo een rapport toont drie getallen, bijvoorbeeld 'GHK-Cu (GHK content) [Copper Content]  61.77 mg (51.71 mg) [10.06 mg]': het totaal van het complex, het peptidegehalte, en het metaalgehalte. Neem alle drie over in metaalcomplex met de naam van het metaal. Zet ze NIET in zwareMetalen - dat veld is voor verontreiniging, en koper in GHK-Cu is geen verontreiniging maar het product. Laat metaalcomplex null als het rapport geen complex noemt. zwareMetalen hoort apart van overigeContaminanten: zet daar lood, cadmium, kwik, arseen, chroom en andere zware metalen in, met de gemeten waarde en de norm zoals ze op het rapport staan. tested is true zodra het rapport zware metalen rapporteert, ook als er geen norm bij staat. overigeContaminanten blijft voor de rest. Sommige leveranciers laten de zware metalen als APART certificaat per batch maken, los van het zuiverheidsrapport; dat is dan een eigen coaRecord waarin alleen zwareMetalen gevuld is en purityPercent null blijft. identiteitGetoetstTegen is de stof die het rapport bij de identiteitsbepaling noemt als de verwachte of aangetroffen stof, letterlijk overgenomen. Dat is NIET hetzelfde als de productnaam op het etiket: een rapport kan als product 'GLP-3' noemen terwijl de identiteit is getoetst tegen retatrutide. Neem beide velden over zoals ze er staan en maak ze niet gelijk aan elkaar. Null als het rapport geen stof bij de identiteitsbepaling noemt.",
+  "10. Over het veld uitvoerendLab. Sommige rapporten komen van een databron of testplatform dat zelf geen analyses doet, maar de monsters door een extern laboratorium laat testen - Finnrick is daar het voorbeeld van. Staat in het rapport welk laboratorium de analyse daadwerkelijk heeft uitgevoerd, neem die naam dan letterlijk over in uitvoerendLab. Is dat niet te vinden, gebruik dan null: niet raden, en niet de naam van het platform herhalen. Bij een gewoon labrapport, waar het lab de analyse zelf heeft gedaan, blijft uitvoerendLab null.",
   "9. Over het veld norm, als een testschema erom vraagt. norm is de grenswaarde of specificatie waartegen het lab de uitkomst afzet, letterlijk overgenomen: 'NMT 0.5 ppm', '< 1.0 EU/mg', 'USP <232>', 'Conforms'. Staat er geen grenswaarde bij de test, dan null - ook niet afleiden uit wat gebruikelijk is. Een meting zonder norm is een meting, geen geslaagde test, en wij behandelen die verderop ook zo.",
   'Antwoord UITSLUITEND met geldige JSON volgens het gevraagde schema hieronder. Geen andere tekst, geen markdown-codeblok.'
 ].join('\n') + '\n\nVandaag is ' + vandaagNL() + '. Een datum op of voor vandaag ligt in het VERLEDEN en is op zichzelf niets bijzonders. Noem een datum alleen opvallend als hij aantoonbaar NA vandaag ligt, en zeg er dan bij ten opzichte van welke datum.';
@@ -326,6 +327,11 @@ function controleVoorRecord(r, index) {
 // blijven ongemoeid.
 const VELD_NAAR_ONDERDEEL = { quantity: 'vulling', purity: 'zuiverheid', identity: 'identiteit' };
 
+// A15b, as 2. Bij deze twee standen mag het rapport niet als bewijs voor die
+// batch meetellen. 'aannemelijk' en 'sterk' wel; null betekent dat wij er
+// niets over hebben vastgesteld en verandert dus niets.
+const KOPPELING_TELT_NIET = ['zwak', 'geen/tegenstrijdig'];
+
 function bruikbareVelden(r, velden) {
   if (!r || !r.niveau || !r.niveau.perOnderdeel) return velden;
   return velden.filter((veld) => {
@@ -477,7 +483,7 @@ async function runPhase(ctx, opts, caseId) {
 // coaStore.saveVerification. Zie correctie 3 in het Janoshik-protocol.
 async function extractCoaFromUpload(naam, doc) {
   const prompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, handmatig geupload door een staflid, dat een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is.\n\n' +
-    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}]}]}';
+    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"uitvoerendLab":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}]}]}';
   const isPdf = /pdf/i.test(doc.mediaType || '');
   const opts = { label: 'admin-coa-upload' };
   if (isPdf) opts.documents = [{ data: doc.data, mediaType: doc.mediaType }];
@@ -525,7 +531,7 @@ function stepOpts(key, ctx, waarneming) {
       key: 'coaDataset', title: 'COA-dataset en -authenticiteit',
       searchQueries: [ctx.naam + ' COA certificate of analysis', ctx.naam + ' COA verification lab report number', ctx.naam + ' lab results batch'],
       researchQuery: 'Zoek alle publiek vindbare COA\'s (certificates of analysis) van leverancier "' + ctx.naam + '" (website: ' + ctx.website + '). Verzamel per COA: product, geclaimde en gemeten hoeveelheid met eenheid, purity-percentage en meetmethode, batchnummer, report/task-ID, verification key, laboratoriumnaam, order/ontvangst/analyse/rapportdatum, sterility- en endotoxin-testresultaten indien vermeld, overige contaminantentests, en of het rapport extern controleerbaar is (bijv. via een verification key of publiek opzoeksysteem bij het lab). Verzamel daarnaast de kwaliteitsbeloften die de leverancier ZELF op zijn site doet over zuiverheid: elke zin waarin een drempel of ondergrens staat, bijvoorbeeld "batches below 98% purity are rejected" of "minimaal 99% zuiverheid". Neem de zin letterlijk over met de bron-URL.',
-      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string,"accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"kwaliteitsbeloften":[{"belofte":string,"drempelPercent":number|null,"bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. "kwaliteitsbeloften" zijn uitspraken van de LEVERANCIER zelf over een zuiverheidsdrempel, niet van het lab: neem de zin letterlijk over in "belofte" en zet het genoemde percentage in "drempelPercent". Staat er geen percentage in de zin, dan null. Lege lijst als de site geen drempel noemt. Verzin geen cijfers: onbekende velden worden null. Ken zelf GEEN authenticiteitsklasse toe en geef geen oordeel over echtheid. Dat gebeurt verderop, door de referentie bij het laboratorium zelf op te lossen of door een mens. Lees in plaats daarvan letterlijk uit: "verificatieDomein" is het webadres dat het rapport noemt om de test te controleren (bijvoorbeeld www.janoshik.com/verify/), exact zoals het er staat - ook als het er vreemd uitziet, want een afwijkend domein is zelf een waarneming. "verificatieInstructie" is de volledige zin waarin dat staat. Null als er niets over verificatie op het rapport staat.'
+      schemaHint: 'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"sample":string,"laboratorium":string,"uitvoerendLab":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string,"accessStatus":"readable|inaccessible|unreadable|error","bronUrl":string}],"kwaliteitsbeloften":[{"belofte":string,"drempelPercent":number|null,"bronUrl":string}],"zoekactieVoltooid":boolean,"kortSamenvatting":string}. "kwaliteitsbeloften" zijn uitspraken van de LEVERANCIER zelf over een zuiverheidsdrempel, niet van het lab: neem de zin letterlijk over in "belofte" en zet het genoemde percentage in "drempelPercent". Staat er geen percentage in de zin, dan null. Lege lijst als de site geen drempel noemt. Verzin geen cijfers: onbekende velden worden null. Ken zelf GEEN authenticiteitsklasse toe en geef geen oordeel over echtheid. Dat gebeurt verderop, door de referentie bij het laboratorium zelf op te lossen of door een mens. Lees in plaats daarvan letterlijk uit: "verificatieDomein" is het webadres dat het rapport noemt om de test te controleren (bijvoorbeeld www.janoshik.com/verify/), exact zoals het er staat - ook als het er vreemd uitziet, want een afwijkend domein is zelf een waarneming. "verificatieInstructie" is de volledige zin waarin dat staat. Null als er niets over verificatie op het rapport staat.'
     };
     case 'socialAffiliates': return {
       key: 'socialAffiliates', title: 'Social media, affiliates en commerciële relaties',
@@ -888,7 +894,7 @@ async function resolveerLabReferenties(lab, max, opties) {
         'gebruik null waar een veld niet vermeld of onleesbaar is. Neem het veld Client over zoals het er staat, ' +
         'ook als dat een andere partij is dan de verkopende shop.\n\n' +
         'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,' +
-        '"client":string,"manufacturer":string,"laboratorium":string,"purityPercent":number|null,' +
+        '"client":string,"manufacturer":string,"laboratorium":string,"uitvoerendLab":string,"purityPercent":number|null,' +
         '"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,' +
         '"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,' +
         '"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string,"status":string}]}]}';
@@ -966,7 +972,7 @@ async function herleesDocument(sha256, opties) {
   const prompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, opgehaald van ' + bron.url +
     ', dat een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + naam +
     '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is.\n\n' +
-    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"verificatieDomein":string,"verificatieInstructie":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}]}]}';
+    'Antwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"uitvoerendLab":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"verificatieDomein":string,"verificatieInstructie":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}]}]}';
 
   const data = await sampleJsonSafe(prompt, { documents: [bestand], label: 'herlezen' });
   const eerste = (data && data.coaRecords && data.coaRecords[0]) || null;
@@ -1066,7 +1072,7 @@ async function runResearchStep(caseId, ctx, key) {
       ((crawl && crawl.verificatieLinks) || []).map((v) => Object.assign({}, v, { lab: v.lab || 'Janoshik' }))
     ).catch(() => ({ opgeslagen: 0, onleesbaar: 0 }));
     if (ctx.images && ctx.images.length) {
-      const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
+      const docPrompt = EVIDENCE_RULES + '\n\nBekijk de bijgevoegde afbeelding(en) van door de gebruiker geuploade documenten (COA, screenshot, productfoto) voor leverancier ' + ctx.naam + '. Beschrijf per afbeelding alleen wat letterlijk zichtbaar is. Verzin niets; gebruik null waar iets onleesbaar of niet zichtbaar is. Dit is geen onafhankelijke verificatie op zichzelf, maar telt als direct geziene brondata (accessStatus readable, parseStatus valid).\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"uitvoerendLab":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
       const docData = await sampleJsonSafe(docPrompt, { images: ctx.images, label: 'coaDataset-upload' });
       const uploadedRecords = ((docData && docData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: null, uit: 'upload' }));
       records = records.concat(uploadedRecords);
@@ -1273,7 +1279,7 @@ async function runResearchStep(caseId, ctx, key) {
         continue;
       }
       try {
-        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
+        const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"uitvoerendLab":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
         noteer(url, 'wordt gelezen');
         const autofetchData = await sampleJsonSafe(autofetchPrompt, {
           documents: [doc], label: 'coaDataset-autofetch',
@@ -1363,24 +1369,94 @@ async function runResearchStep(caseId, ctx, key) {
         }
       }
 
-      const klasse = janoshik.bepaalKlasse(res, vergelijking);
+      const klasse = janoshik.bepaalKlasse(res);
+      // A15b: de veldvergelijking bepaalt niet langer de klasse, maar drie
+      // aparte antwoorden - presentatie, labwaarde, koppeling.
+      const afwijking = vergelijking ? janoshik.beoordeelAfwijkingen(vergelijking) : null;
       // 'failed' betekent: geprobeerd bij het lab en het lag er niet. Dat is
       // iets heel anders dan 'er stond geen verwijzing op het rapport' of
       // 'dit lab heeft geen verificatiesysteem dat wij aankunnen'. Die twee
       // zijn 'unavailable' - anders lezen ze als een verwijt dat we niet
       // kunnen onderbouwen.
       const geenReferentie = res.resolved === false && /geen bruikbare verificatiereferentie/i.test(res.status || '');
+      // 'contradicted' ging over de oude klasse B en zou daarmee nooit meer
+      // vuren. Hij hangt nu waar hij altijd al over ging: het lab spreekt de
+      // kopie van de shop tegen. Alleen bij een INHOUDELIJK verschil - een
+      // ander meetresultaat - en niet bij een schrijfwijze of een batchnummer.
       const extern = res.resolved === true
-        ? (klasse === 'B' ? 'contradicted' : (klasse === 'A' ? 'verified' : 'pending'))
+        ? ((afwijking && afwijking.shopkopieWijktAf) ? 'contradicted' : (klasse === 'A' ? 'verified' : 'pending'))
         : (res.resolved === false && !geenReferentie ? 'failed' : 'unavailable');
 
-      records[i] = Object.assign({}, r, {
+      // --- de labbron is leidend (A15b) --------------------------------
+      //
+      // Annemarie: "Voor PepProof moet vervolgens altijd de rechtstreeks
+      // geverifieerde labwaarde leidend zijn. De afwijkende shopwaarde mag
+      // niet worden overgenomen als bewijs."
+      //
+      // Tot nu las de pijplijn de zuiverheid uit de KOPIE van de shop, ook
+      // als het lab een ander getal teruggaf. Dat is precies het geval dat
+      // zij beschrijft: bij cjc1295-no-dac van omegapeptides zegt Janoshik
+      // 98,933% en de shop 99,533%. Het cijfer van de shop stond in het
+      // rapport en telde mee als bewijs.
+      //
+      // De shopwaarde verdwijnt niet - hij verhuist naar een eigen veld, want
+      // het verschil zelf is de waarneming.
+      const labOvernames = [];
+      if (afwijking && afwijking.shopkopieWijktAf && res.labRecord) {
+        afwijking.labwaarde.forEach((v) => {
+          if (v.veld !== 'Purity') return;
+          const labWaarde = res.labRecord.purityPercent;
+          if (labWaarde == null) return;
+          labOvernames.push({ veld: 'purityPercent', vanShop: r.purityPercent, vanLab: labWaarde });
+        });
+      }
+
+      const shopkopieAfwijking = (afwijking && afwijking.shopkopieWijktAf) ? {
+        velden: afwijking.labwaarde.map((v) => ({
+          veld: v.veld, opKopieLeverancier: v.opKopieLeverancier, bijHetLab: v.bijHetLab
+        })),
+        labbronLeidend: labOvernames.length > 0,
+        overgenomen: labOvernames,
+        // Haar formulering, en haar grens: wel vaststellen DAT het afwijkt,
+        // niet concluderen waarom of dat het bewust is.
+        stand: 'shopkopie wijkt inhoudelijk af van labbron',
+        toelichting: 'De leverancier toont bij dit rapport een ander meetresultaat dan het laboratorium ' +
+          'zelf teruggeeft. Wij gebruiken de waarde van het laboratorium. Waarom de weergave afwijkt, ' +
+          'hebben wij niet vastgesteld.'
+      } : null;
+
+      // As 2, koppeling. Alleen gezet als er iets over te zeggen valt: een
+      // verschil in batch, lot, product, opdrachtgever of datum. Geen verschil
+      // betekent niet automatisch 'sterk' - dat zou een uitspraak zijn die wij
+      // niet hebben gedaan.
+      const koppeling = (afwijking && afwijking.koppelingsstand) ? {
+        stand: afwijking.koppelingsstand,
+        velden: afwijking.koppeling.map((v) => ({
+          veld: v.veld, opKopieLeverancier: v.opKopieLeverancier, bijHetLab: v.bijHetLab
+        })),
+        reden: 'het labrapport is authentiek, maar ' +
+          afwijking.koppeling.map((v) => v.veld.toLowerCase()).join(' en ') +
+          ' wijkt af van wat de leverancier toont; of dit rapport bij deze batch hoort is niet vastgesteld'
+      } : null;
+
+      const labWaarden = {};
+      labOvernames.forEach((o) => {
+        labWaarden[o.veld] = o.vanLab;
+        labWaarden[o.veld + 'Shopkopie'] = o.vanShop;
+      });
+
+      records[i] = Object.assign({}, r, labWaarden, {
         // De klasse komt uitsluitend uit de resolutie bij het lab. De
         // aftopping van een door het model geraden D op C is vervallen: het
         // model stelt sinds 20 september geen klasse meer voor, het leest
         // alleen. Zie 'Wie kent de klasse toe' in de projectdocumenten.
         authenticiteitsklasse: klasse || null,
         klasseBron: klasse ? 'resolver' : null,
+        // A15b: drie aparte antwoorden naast de klasse.
+        afwijkingssoorten: afwijking ? afwijking.telling : null,
+        shopkopieAfwijking,
+        koppeling,
+        labbronLeidend: labOvernames.length > 0,
         klasseReden: klasse ? res.status : ('geen klasse: ' + (res.status || 'resolutie leverde geen oordeel')),
         externalVerification: extern,
         verificatie: {
@@ -1398,8 +1474,15 @@ async function runResearchStep(caseId, ctx, key) {
       verificaties.push({
         product: r.product || null, taskNumber: res.taskNumber || null,
         klasse: klasse || null, status: res.status,
-        verschillen: (vergelijking && vergelijking.verschillen.length) || 0
+        verschillen: (vergelijking && vergelijking.verschillen.length) || 0,
+        afwijkingssoorten: afwijking ? afwijking.telling : null,
+        shopkopieWijktAf: !!(afwijking && afwijking.shopkopieWijktAf),
+        koppelingsstand: (afwijking && afwijking.koppelingsstand) || null
       });
+      if (shopkopieAfwijking) {
+        await meldStap(caseId, 'LET OP: de leverancier toont bij dit rapport een ander meetresultaat dan ' +
+          'het laboratorium. Wij gebruiken de waarde van het laboratorium.');
+      }
     }
 
     // Menselijk geverifieerde COA's van deze leverancier altijd meenemen,
@@ -1625,13 +1708,34 @@ async function runResearchStep(caseId, ctx, key) {
       if (!r) return;
       const naam = r.laboratorium ? coaStore.normaliseerLab(r.laboratorium).naam : null;
       const oordeel = naam ? (labOordelenNu[coaStore.labSleutel(naam)] || null) : null;
-      const bk = coaStore.bewijskrachtVanLab(oordeel);
+      // Besluit 22 september: staat hier een databron of testplatform, dan
+      // komt de bewijswaarde van het lab dat de analyse echt heeft gedaan.
+      // Is dat niet te achterhalen, dan telt het rapport niet - en dat is
+      // iets anders dan een onbeoordeeld lab.
+      const bk = coaStore.bewijskrachtViaPlatform(oordeel, r.uitvoerendLab, labOordelenNu);
       r.bewijskracht = bk.telt === true ? 'onafhankelijk geverifieerd'
         : (bk.telt === false ? 'onbevestigd' : 'lab nog niet beoordeeld');
       r.bewijskrachtReden = bk.reden;
       r.labStatus = oordeel ? oordeel.status : null;
-      if (naam && !oordeel) labsZonderOordeel.add(naam);
+      r.labTelt = bk.telt;
+      r.viaPlatform = bk.viaPlatform || null;
+      r.uitvoerendLabNaam = bk.uitvoerendLab || null;
+      r.uitvoerendLabOnbekend = !!bk.uitvoerendLabOnbekend;
+      // Een platform hoeft zelf geen oordeel meer te krijgen - dat heeft het
+      // net gehad. Het UITVOERENDE lab wel, als dat er is en onbeoordeeld is.
+      if (bk.geenLab || bk.viaPlatform) {
+        if (bk.uitvoerendLab && !labOordelenNu[coaStore.labSleutel(bk.uitvoerendLab)]) {
+          labsZonderOordeel.add(bk.uitvoerendLab);
+        }
+      } else if (naam && !oordeel) {
+        labsZonderOordeel.add(naam);
+      }
     });
+    const zonderUitvoerendLab = records.filter((r) => r && r.uitvoerendLabOnbekend).length;
+    if (zonderUitvoerendLab) {
+      await meldStap(caseId, 'LET OP: ' + zonderUitvoerendLab + ' rapport(en) komen van een databron of ' +
+        'testplatform zonder identificeerbaar uitvoerend laboratorium; die tellen niet als labbewijs');
+    }
     const onbevestigd = records.filter((r) => r && r.bewijskracht === 'onbevestigd').length;
     if (onbevestigd) {
       await meldStap(caseId, 'LET OP: ' + onbevestigd + ' rapport(en) rusten op een laboratorium dat niet als onafhankelijk geverifieerd geldt');
@@ -1662,7 +1766,9 @@ async function runResearchStep(caseId, ctx, key) {
       if (!r) return;
       const naam = r.laboratorium ? coaStore.normaliseerLab(r.laboratorium).naam : null;
       const oordeel = naam ? (labOordelenNu[coaStore.labSleutel(naam)] || null) : null;
-      const labTelt = coaStore.bewijskrachtVanLab(oordeel).telt;   // true | false | null
+      // Hergebruikt uit de lus hierboven, zodat het doorwijzen van een platform
+      // naar het uitvoerende lab niet op twee plekken apart wordt bedacht.
+      const labTelt = r.labTelt !== undefined ? r.labTelt : coaStore.bewijskrachtVanLab(oordeel).telt;
       const controle = controleVoorRecord(r, controleIndex);
       r.niveau = niveaus.beoordeelRecord(r, controle, labTelt);
       r.niveau.herkomstControle = (controle && controle.herkomstControle) || 'geen controle';
@@ -1701,6 +1807,30 @@ async function runResearchStep(caseId, ctx, key) {
       r.gedeeldMet = (perSha[r.sha256] || [])
         .filter((k) => k && k !== supplierKey && !String(k).startsWith('lab:'));
     });
+    // A15b per leverancier: hoe vaak toont deze shop iets anders dan het lab?
+    // Annemarie wil dit als negatief transparantiesignaal bewaren, zonder
+    // conclusie over waarom. Een enkel geval is een waarneming; een patroon
+    // is iets anders, en dat is alleen te zien als je het telt.
+    const metAfwijking = records.filter((r) => r && r.shopkopieAfwijking);
+    const shopkopieAfwijkingen = {
+      aantal: metAfwijking.length,
+      vanDeGecontroleerde: records.filter((r) => r && r.verificatie && r.verificatie.opgelost === true).length,
+      labbronGebruikt: metAfwijking.filter((r) => r.labbronLeidend).length,
+      gevallen: metAfwijking.map((r) => ({
+        product: r.product || null, bronUrl: r.bronUrl || null,
+        velden: r.shopkopieAfwijking.velden, overgenomen: r.shopkopieAfwijking.overgenomen
+      })),
+      signaal: metAfwijking.length
+        ? 'de leverancier toont bij ' + metAfwijking.length + ' rapport(en) een ander meetresultaat dan het laboratorium'
+        : null
+    };
+    const zwakkeKoppeling = records.filter((r) => r && r.koppeling &&
+      KOPPELING_TELT_NIET.indexOf(r.koppeling.stand) !== -1).length;
+    if (shopkopieAfwijkingen.aantal) {
+      await meldStap(caseId, 'LET OP: ' + shopkopieAfwijkingen.signaal +
+        '. De waarde van het laboratorium is leidend.');
+    }
+
     const gedeeldLabbewijs = dekkingMod.gedeeldBeeld(records, supplierKey);
     if (gedeeldLabbewijs.aantal) {
       await meldStap(caseId, gedeeldLabbewijs.zin + ' Dat telt als een analyse, niet als twee.');
@@ -1751,12 +1881,19 @@ async function runResearchStep(caseId, ctx, key) {
         // vastgesteld, dan telt het bewijs van dit rapport niet mee. Het
         // verdwijnt niet - het staat in analytical_fields_gelezen en in
         // naamkoppeling staat waarom het wacht.
+        // En A15b erbij: is de koppeling aan deze batch verlaagd omdat batch,
+        // lot, product of opdrachtgever afwijkt van het labrapport, dan mag
+        // het rapport niet als bewijs voor die batch meetellen. Het rapport
+        // zelf blijft authentiek - dat is het hele punt van de twee assen.
         analytical_fields_usable: (r.bewijskracht === 'onbevestigd' ||
-          (r.naamkoppeling && r.naamkoppeling.telt === false)) ? [] : bruikbareVelden(r, fields),
+          (r.naamkoppeling && r.naamkoppeling.telt === false) ||
+          (r.koppeling && KOPPELING_TELT_NIET.indexOf(r.koppeling.stand) !== -1)) ? [] : bruikbareVelden(r, fields),
         analytical_fields_gelezen: fields,
         bewijskracht: r.bewijskracht || null,
         bewijskracht_reden: r.bewijskrachtReden || null,
         naamkoppeling: r.naamkoppeling || null,
+        koppeling: r.koppeling || null,
+        shopkopie_wijkt_af: r.shopkopieAfwijking ? r.shopkopieAfwijking.stand : null,
         gedeeld_met: r.gedeeldMet && r.gedeeldMet.length ? r.gedeeldMet : null
       };
     });
@@ -1788,7 +1925,9 @@ async function runResearchStep(caseId, ctx, key) {
     };
     result = { key: 'coaDataset', title: 'COA-dataset en -authenticiteit', data: Object.assign({}, phase.data, { coaRecords: records, intake, archief: archiveNotes, crawl: crawlInfo, labverificatie: verificaties, kwaliteitsbeloften: beloften, beloftetoets, testdekking, handmatigeControles,
       labsZonderOordeel: [...labsZonderOordeel], rapportenOnbevestigd: onbevestigd, niveauTelling,
-      dekking, testpatroon, normbeeld, gedeeldLabbewijs, naamkoppeling }) };
+      zonderUitvoerendLab,
+      dekking, testpatroon, normbeeld, gedeeldLabbewijs, naamkoppeling,
+      shopkopieAfwijkingen, zwakkeKoppeling }) };
   } else if (key === 'laboratorium') {
     // Begin bij wat de COA-stap al gezien heeft. Draait deze stap zonder
     // voorafgaande COA-stap, dan is waarneming gewoon leeg en valt stepOpts
@@ -1860,13 +1999,19 @@ async function runCategorize(caseId, ctx, tier) {
     'Geef zo een categorie geen groen. Beschrijf hem als "getest, geen norm beschikbaar". Testdekking (is er getest) en testresultaat (voldeed het) zijn twee verschillende dingen.';
   const a13Note = 'Komt hetzelfde labrapport ook bij een andere leverancier voor (veld gedeeldLabbewijs), dan is dat EEN laboratoriumanalyse en niet twee onafhankelijke bewijzen. ' +
     'Tel het een keer. Waarom het gedeeld wordt is niet vastgesteld, dus trek er geen conclusie over de leverancier uit; noem het als aandachtspunt.';
+  // A15b - besluit Annemarie, 22 september.
+  const a15bNote = 'Het veld shopkopieAfwijkingen telt de rapporten waarbij de leverancier een ANDER meetresultaat toont dan het laboratorium zelf teruggeeft. ' +
+    'Het labrapport blijft daarbij authentiek: dat is rechtstreeks bij het lab opgehaald. Wat afwijkt is de weergave van de leverancier, en de waarde van het lab is gebruikt. ' +
+    'Behandel dit bij R02 (Affiliate/commerciele transparantie) en B01 als een negatief transparantiesignaal over de leverancier, en niet als een probleem met het laboratorium of met C01 (COA-authenticiteit). ' +
+    'Concludeer NIET waarom het getal afwijkt of dat het bewust is aangepast; stel alleen vast dat de leverancier iets anders toont dan het lab. ' +
+    'Het veld zwakkeKoppeling telt de rapporten waarbij batch, lot, product of opdrachtgever afwijkt: die rapporten tellen niet als bewijs voor die batch, maar zijn geen aanwijzing dat het rapport vals is.';
   const a20Note = 'Het veld dekking telt per BATCH en per unieke testsoort, niet per document. Drie bewijscomponenten per batch: zuiverheid/identiteit/hoeveelheid, zware metalen, endotoxinen. ' +
     'Of die op een of op drie certificaten staan maakt niet uit, en dezelfde testsoort in meerdere documenten levert geen extra dekking. ' +
     'Gebruik dat veld bij C05 (Batchtraceerbaarheid) in plaats van het aantal gevonden certificaten.';
   const b02Note = tier === 'deep'
     ? 'Beoordeel B02 (Eigenaren/bestuurders) net als de andere categorieën inhoudelijk, op basis van de aangeleverde fasegegevens (identiteitsstap, eventueel KvK-uittreksel).'
     : 'B02 (Eigenaren/bestuurders) hoort bij Deep en blijft in deze gratis check "white" met reden "buiten scope van de gratis check", tenzij een van de fasegegevens toevallig al een bestuurder/eigenaar noemt.';
-  const prompt = EVIDENCE_RULES + '\n\nWijs voor leverancier ' + ctx.naam + ' (' + ctx.website + ') een kleur en onderbouwing toe aan elk van de ' + AANTAL_CATEGORIEEN + ' vaste categorieën, uitsluitend gegrond op de aangeleverde fasegegevens. Gebruik exact: "green" (sterk/goed verifieerbaar), "orange" (beoordeelbaar met aandachtspunten), "red" (concreet aantoonbaar probleem, nooit alleen wegens ontbrekende informatie), "white" (onvoldoende informatie). Voor C02 (Identity), C03 (Purity), C04 (Quantity): zet independentlyAssessable op false als de ENIGE analytische onderbouwing van onvoldoende onafhankelijk verifieerbare labs komt (bijv. alleen het lab zelf, geen externe verificatie) — de score-engine zet die dan automatisch op wit. ' + l01Note + ' ' + b02Note + ' ' + c10Note + ' ' + a17Note + ' ' + a13Note + ' ' + a20Note + ' Beoordeel ook adequacy: kunnen authenticiteit, identiteit en monster-naar-rapport-naar-verkochte-batch inhoudelijk beoordeeld worden (adequacy.coa), en zijn de relevante labs/rapporten onafhankelijk voldoende verifieerbaar (adequacy.lab)? Geef bij elke categorie een korte (1-2 zinnen) onderbouwing.\n\n' +
+  const prompt = EVIDENCE_RULES + '\n\nWijs voor leverancier ' + ctx.naam + ' (' + ctx.website + ') een kleur en onderbouwing toe aan elk van de ' + AANTAL_CATEGORIEEN + ' vaste categorieën, uitsluitend gegrond op de aangeleverde fasegegevens. Gebruik exact: "green" (sterk/goed verifieerbaar), "orange" (beoordeelbaar met aandachtspunten), "red" (concreet aantoonbaar probleem, nooit alleen wegens ontbrekende informatie), "white" (onvoldoende informatie). Voor C02 (Identity), C03 (Purity), C04 (Quantity): zet independentlyAssessable op false als de ENIGE analytische onderbouwing van onvoldoende onafhankelijk verifieerbare labs komt (bijv. alleen het lab zelf, geen externe verificatie) — de score-engine zet die dan automatisch op wit. ' + l01Note + ' ' + b02Note + ' ' + c10Note + ' ' + a17Note + ' ' + a13Note + ' ' + a20Note + ' ' + a15bNote + ' Beoordeel ook adequacy: kunnen authenticiteit, identiteit en monster-naar-rapport-naar-verkochte-batch inhoudelijk beoordeeld worden (adequacy.coa), en zijn de relevante labs/rapporten onafhankelijk voldoende verifieerbaar (adequacy.lab)? Geef bij elke categorie een korte (1-2 zinnen) onderbouwing.\n\n' +
     'Samengevatte fasegegevens (JSON):\n' + JSON.stringify(slimPhases) + '\n\n' +
     'Ruwe COA-dataset (JSON, voor C01-C10):\n' + JSON.stringify(trimList(coaRecords, 12, 400)) + '\n\n' +
     // Deze vier zijn al geteld, deterministisch, in dekking.js. Het model mag
@@ -1877,7 +2022,9 @@ async function runCategorize(caseId, ctx, tier) {
       testpatroon: coaFase.testpatroon || null,
       normbeeld: coaFase.normbeeld || null,
       gedeeldLabbewijs: coaFase.gedeeldLabbewijs || null,
-      naamkoppeling: coaFase.naamkoppeling || null
+      naamkoppeling: coaFase.naamkoppeling || null,
+      shopkopieAfwijkingen: coaFase.shopkopieAfwijkingen || null,
+      zwakkeKoppeling: coaFase.zwakkeKoppeling || 0
     }) + '\n\n' +
     'Antwoord met compacte JSON, exact dit schema: {"categories":{"C01":{"color":string,"rationale":string},"C02":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C03":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C04":{"color":string,"rationale":string,"independentlyAssessable":boolean},"C05":{"color":string,"rationale":string},"C06":{"color":string,"rationale":string},"C07":{"color":string,"rationale":string},"C08":{"color":string,"rationale":string},"C09":{"color":string,"rationale":string},"C10":{"color":string,"rationale":string},"L01":{"color":string,"rationale":string},"B01":{"color":string,"rationale":string},"B02":{"color":string,"rationale":string},"B03":{"color":string,"rationale":string},"B04":{"color":string,"rationale":string},"B05":{"color":string,"rationale":string},"R01":{"color":string,"rationale":string},"R02":{"color":string,"rationale":string}},"adequacy":{"coa":boolean|null,"lab":boolean|null,"rationale":string}}';
   const data = await sampleJsonSafe(prompt, { label: 'categorize' });

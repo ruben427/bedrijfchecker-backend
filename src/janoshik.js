@@ -280,17 +280,103 @@ function vergelijkVelden(leverancier, lab) {
   return { gelijk, verschillen };
 }
 
-function bepaalKlasse(resolutie, vergelijking) {
+// --- A15b: waar landt een verschil tussen shopkopie en labrapport? --------
+//
+// BESLUIT ANNEMARIE, 22 SEPTEMBER. Zij koos optie 3 en scherpte A15 aan:
+//
+//   "As 1 moet de authenticiteit van het oorspronkelijke labrapport
+//   beschrijven, niet de betrouwbaarheid van alles wat een shop daaromheen
+//   publiceert."
+//
+// En: "niet alle verschillen hetzelfde behandelen." Drie soorten, met drie
+// verschillende gevolgen:
+//
+//   presentatie  schrijfwijze, dosering in de naam. Geen gevolg.
+//   labwaarde    het lab zegt 98,933%, de shop toont 99,533%. Het rapport
+//                blijft authentiek, maar de shopkopie wijkt inhoudelijk af
+//                van de bron. De LABBRON is leidend; de shopwaarde mag niet
+//                als bewijs worden overgenomen. Los daarvan een negatief
+//                transparantiesignaal over de leverancier.
+//   koppeling    batch, lot, product, opdrachtgever, datums. Het rapport
+//                blijft authentiek, maar de vraag is of het bij DEZE partij
+//                hoort. Dat is as 2.
+//
+// Uitdrukkelijk geen conclusie over waarom een getal afwijkt of of het bewust
+// is aangepast. Wel de harde vaststelling dat de leverancier iets anders
+// toont dan het lab.
+//
+// Welke velden waar horen. Annemarie noemde drie voorbeelden; de overige
+// velden zijn daarnaartoe gelegd langs haar eigen scheidslijn: een
+// MEETRESULTAAT hoort bij labwaarde, alles wat zegt WELK rapport dit is en
+// van WIE het is hoort bij de koppeling.
+const AFWIJKINGSSOORT = {
+  Purity: 'labwaarde',
+  Batch: 'koppeling',
+  Sample: 'koppeling',
+  Client: 'koppeling',
+  Manufacturer: 'koppeling',
+  'Testing ordered': 'koppeling',
+  'Sample received': 'koppeling',
+  'Analysis conducted': 'koppeling'
+};
+
+function beoordeelAfwijkingen(vergelijking) {
+  const uit = { presentatie: [], labwaarde: [], koppeling: [], onbekendVeld: [] };
+  ((vergelijking && vergelijking.verschillen) || []).forEach((v) => {
+    // bijnaGelijk betekent: de normalisatie stelt vast dat dit inhoudelijk
+    // hetzelfde is, alleen anders opgeschreven. Dat is haar geval 1 en heeft
+    // geen gevolg - ook niet als het veld anders bij de koppeling zou horen.
+    if (v.bijnaGelijk) { uit.presentatie.push(v); return; }
+    const soort = AFWIJKINGSSOORT[v.veld];
+    if (!soort) { uit.onbekendVeld.push(v); return; }
+    uit[soort].push(v);
+  });
+
+  uit.shopkopieWijktAf = uit.labwaarde.length > 0;
+  // De stand van as 2. Annemarie: "zwak of geen/tegenstrijdig", zonder te
+  // zeggen wanneer welke. Wij kiezen die grens niet zelf - dat is precies de
+  // fout die bij A18 is teruggedraaid - en houden de mildste van de twee. Het
+  // gevolg is hetzelfde: het rapport telt niet als bewijs voor deze batch.
+  uit.koppelingsstand = uit.koppeling.length ? 'zwak' : null;
+  uit.telling = {
+    presentatie: uit.presentatie.length,
+    labwaarde: uit.labwaarde.length,
+    koppeling: uit.koppeling.length
+  };
+  return uit;
+}
+
+// LET OP - HERZIEN 22 SEPTEMBER, BESLUIT A15b.
+//
+// Hier stond: referentie lost op en de velden kloppen -> A, lost op maar een
+// veld wijkt af -> B. Die B betekende "het rapport is echt, maar de kopie die
+// de shop toont is bewerkt".
+//
+// Bij Annemarie betekent B iets anders, bijna het tegenovergestelde:
+// authentiek met sterke verificatie, maar NIET rechtstreeks bij het lab
+// bevestigd. En juist in dit geval is het rapport wel rechtstreeks bij het
+// lab opgehaald.
+//
+// Haar regel: "Als Janoshik rechtstreeks oplost, is het rapport op as 1 A."
+// De veldvergelijking zegt dus niets meer over as 1. Wat zij wel zegt staat
+// nu in beoordeelAfwijkingen, en dat is drie antwoorden in plaats van een
+// letter.
+//
+// De tweede parameter blijft staan zodat bestaande aanroepers niet breken,
+// maar hij doet niets meer. Dat is met opzet zichtbaar gelaten: stilletjes
+// een argument laten vallen maakt later onvindbaar waarom het er ooit was.
+function bepaalKlasse(resolutie, vergelijkingNietMeerGebruikt) {  // eslint-disable-line no-unused-vars
   if (!resolutie || resolutie.resolved !== true) return (resolutie && resolutie.klasse) || null;
-  if (!vergelijking) return null;
-  if (vergelijking.verschillen.length) return 'B';
-  if (!vergelijking.gelijk.length) return null; // niets vergelijkbaars: nog geen oordeel
+  // resolveer() geeft alleen resolved:true terug als het lab een echt rapport
+  // teruggaf - doorgestuurd of zonder rapportafbeelding is al D. Dat is de
+  // authenticiteit van het labrapport, en dus as 1 = A.
   return 'A';
 }
 
 module.exports = {
   parseReferentie, bouwReferentie, resolveUrl, resolveer,
-  vergelijkVelden, bepaalKlasse, isOfficieleHost, OFFICIELE_HOSTS,
+  vergelijkVelden, bepaalKlasse, beoordeelAfwijkingen, AFWIJKINGSSOORT,
+  isOfficieleHost, OFFICIELE_HOSTS,
   // Gedeeld met de handmatige route, zodat een menselijke vergelijking exact
   // dezelfde velden en dezelfde normalisatie gebruikt als de resolver.
   TE_VERGELIJKEN, normaliseer, normaliseerVeld, kaleNaam, naarDatum, naamLijktOp
