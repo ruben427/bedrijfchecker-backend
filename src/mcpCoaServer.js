@@ -351,6 +351,40 @@ async function buildServer() {
     }
   );
 
+  // A16 - BESLUIT ANNEMARIE, 21 SEPTEMBER. Een afwijkende productnaam is een
+  // controletrigger geworden. Zonder een plek om de uitkomst vast te leggen
+  // blijft zo een rapport voor altijd wachten, en telt het bewijs nooit mee.
+  server.registerTool(
+    'beoordeel_naamkoppeling',
+    {
+      title: 'Legt vast of een afwijkende productnaam een handelsnaam is',
+      description: 'Voor het geval dat het labrapport de identiteit toetste tegen een ANDERE stof dan de productnaam op het etiket. Gezien bij NextGen: een vial verkocht als "GLP-3" waarvan ILS de identiteit toetste tegen retatrutide. Het rapport liegt niet en het etiket hoeft ook niet fout te zijn - GLP-3 kan een handelsnaam zijn - maar tot iemand dat heeft nagekeken is niet vastgesteld dat dit rapport over dit product gaat. Twee uitkomsten, en alleen bij de eerste telt het bewijs van dat rapport normaal mee. Dit is uitdrukkelijk GEEN oordeel over de leverancier: "koppeling onvoldoende aangetoond" betekent dat wij het verband niet konden aantonen, niet dat er bedrog is.',
+      inputSchema: z.object({
+        leverancier: z.string().min(2).describe('De leverancierssleutel, meestal de hostname van de shop, bijvoorbeeld "nextgenpeptides.com"'),
+        product: z.string().min(1).describe('De productnaam zoals die op het etiket of in het rapport staat, bijvoorbeeld "GLP-3"'),
+        getoetsteStof: z.string().min(1).describe('De stof waartegen het lab de identiteit toetste, bijvoorbeeld "Retatrutide"'),
+        status: z.enum(['wacht op beoordeling', 'handmatig bevestigd als handelsnaam/alias', 'koppeling onvoldoende aangetoond']).describe('handmatig bevestigd als handelsnaam/alias = je hebt vastgesteld dat de productnaam een handelsnaam of alias is voor die stof; het bewijs van dat rapport telt daarna normaal mee. koppeling onvoldoende aangetoond = je hebt gekeken en kon het verband niet aantonen; het bewijs telt niet mee, zonder dat wij daarmee iets over de leverancier zeggen. wacht op beoordeling = terugzetten naar onbeoordeeld.'),
+        onderbouwing: z.string().min(10).describe('Waar je dit op baseert. Bij een handelsnaam: waar je die naam als alias hebt teruggevonden.'),
+        vastgelegdDoor: z.string().min(1).describe('Naam van de persoon die dit heeft vastgesteld')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const opgeslagen = await coaStore.saveNaamOordeel(a.leverancier, a.product, a.getoetsteStof, {
+        status: a.status, onderbouwing: a.onderbouwing, vastgelegdDoor: a.vastgelegdDoor
+      });
+      return {
+        content: [{ type: 'text', text: opgeslagen
+          ? ('Vastgelegd: ' + a.product + ' tegenover ' + a.getoetsteStof + ' bij ' + a.leverancier + ' - ' + a.status + '.' +
+             (a.status === 'handmatig bevestigd als handelsnaam/alias'
+               ? ' Het bewijs van dat rapport telt vanaf nu normaal mee.'
+               : ' Het bewijs van dat rapport telt voorlopig niet mee.'))
+          : 'Opslaan mislukt. Controleer leverancier, product, stof en status.' }],
+        structuredContent: { leverancier: a.leverancier, product: a.product, status: a.status, opgeslagen: !!opgeslagen }
+      };
+    }
+  );
+
   // Zevende en achtste tool, 21 september. Aanleiding: de pijplijn legde alles
   // vast en wees niemand ergens op. Iemand voert een onbekende shop in, de
   // FREE loopt door, het lab erachter kent niemand - en dat blijft stil tot
@@ -431,7 +465,7 @@ async function buildServer() {
 const TOOL_NAMEN = [
   'zoek_leverancier_coas', 'upload_coa', 'verifieer_coa',
   'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium',
-  'nieuwe_signalen', 'markeer_gesignaleerd'
+  'nieuwe_signalen', 'markeer_gesignaleerd', 'beoordeel_naamkoppeling'
 ];
 function toolNamen() { return TOOL_NAMEN; }
 

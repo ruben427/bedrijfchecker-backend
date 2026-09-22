@@ -486,6 +486,57 @@ app.post('/api/admin/laboratoria/beoordeling', rl.caseAction, auth.requireOwnerT
   }
 });
 
+// A16 - de handmatige naambeoordeling. Een productnaam die afwijkt van de
+// stof waartegen het lab de identiteit toetste is een controletrigger, geen
+// afkeuring: twee uitkomsten, en alleen bij "handmatig bevestigd als
+// handelsnaam/alias" telt het bewijs van dat rapport normaal mee.
+//
+// Zelfde opzet als bij de laboratoria: lezen mag een lezer, vastleggen vraagt
+// een beoordelaar, en een uitkomst zonder onderbouwing wordt geweigerd. Wat
+// hier wordt vastgelegd houdt een rapport binnen of buiten het bewijs; dat
+// moet over een half jaar nog na te gaan zijn.
+app.get('/api/admin/naamkoppelingen', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const leverancier = String(req.query.leverancier || '').trim() || null;
+    const oordelen = await coaStore.naamOordelen(leverancier);
+    res.json({
+      statussen: coaStore.NAAM_STATUSSEN,
+      aantal: Object.keys(oordelen).length,
+      oordelen: Object.values(oordelen)
+    });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+app.post('/api/admin/naamkoppelingen/beoordeling', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const leverancier = String(b.leverancier || '').trim();
+    const product = String(b.product || '').trim();
+    const stof = String(b.getoetsteStof || '').trim();
+    if (!leverancier || !product || !stof) {
+      return res.status(400).json({ error: 'onvolledig', message: 'Geef leverancier, product en getoetsteStof mee.' });
+    }
+    if (coaStore.NAAM_STATUSSEN.indexOf(b.status) === -1) {
+      return res.status(400).json({ error: 'ongeldige_status', message: 'status moet een van: ' + coaStore.NAAM_STATUSSEN.join(', ') });
+    }
+    const vastgelegdDoor = String(b.vastgelegdDoor || '').trim();
+    if (!vastgelegdDoor) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie dit heeft vastgesteld.' });
+    const onderbouwing = String(b.onderbouwing || '').trim();
+    if (b.status !== 'wacht op beoordeling' && onderbouwing.length < 10) {
+      return res.status(400).json({ error: 'geen_onderbouwing', message: 'Schrijf op waar je dit op baseert: is dit een bekende handelsnaam, of is de koppeling niet aangetoond?' });
+    }
+    const opgeslagen = await coaStore.saveNaamOordeel(leverancier, product, stof, {
+      status: b.status, onderbouwing: onderbouwing || null, vastgelegdDoor
+    });
+    if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'Het oordeel kon niet worden opgeslagen.' });
+    res.json({ ok: true, oordeel: opgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Stafoverzicht: een regel per leverancier, en per leverancier alles wat we
 // hebben. Bestond nog niet - alles zat in de database maar er was geen plek
 // waar je het zag.

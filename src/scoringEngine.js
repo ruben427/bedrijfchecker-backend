@@ -17,6 +17,12 @@ const CATEGORY_DEFS = [
   { id: 'C07', pillar: 'COA', label: 'Sterility' },
   { id: 'C08', pillar: 'COA', label: 'Endotoxin' },
   { id: 'C09', pillar: 'COA', label: 'Overige contaminantentests' },
+  // A19 - BESLUIT ANNEMARIE, 21 SEPTEMBER. Zware metalen uit de verzamelbak
+  // C09 gehaald en een eigen categorie gegeven: "achttien in plaats van
+  // zeventien". Reden: een shop die lood, cadmium, kwik en arseen laat meten
+  // was niet te onderscheiden van een shop die een willekeurige extra
+  // parameter rapporteert. C09 houdt de contaminanten zonder eigen categorie.
+  { id: 'C10', pillar: 'COA', label: 'Zware metalen' },
   { id: 'L01', pillar: 'LAB', label: 'Lab' },
   { id: 'B01', pillar: 'COMPANY', label: 'Juridische transparantie' },
   { id: 'B02', pillar: 'COMPANY', label: 'Eigenaren/bestuurders' },
@@ -88,13 +94,16 @@ function coaCap(assessments) {
 
 // Free Evidence Score: 60% COA (na cap) + 40% LAB, alleen gepubliceerd als de
 // gate PASS/PARTIAL is, beide pijlers berekenbaar zijn, de gedeelde coverage
-// (C01-C09+L01, noemer 10) >=50% is, en adequacy.coa/lab beide true zijn.
+// (alle COA-categorieen + L01, noemer uit de lijst zelf) >=50% is, en adequacy.coa/lab beide true zijn.
 function freeEvidenceScore(assessments, adequacy, gateStatus) {
   const coa = pillarStats(assessments, 'COA');
   const lab = pillarStats(assessments, 'LAB');
   const cap = coaCap(assessments);
   const candidate = (cap.final != null && lab.normal != null) ? (0.6 * cap.final + 0.4 * lab.normal) : null;
-  const coverage = (100 * (coa.assessable + lab.assessable)) / 10;
+  // Noemer uit de lijst zelf. Stond als 10 ingetypt en klopte niet meer zodra
+  // A19 een categorie toevoegde.
+  const gedeeldeNoemer = pillarCategoryIds('COA').length + pillarCategoryIds('LAB').length;
+  const coverage = (100 * (coa.assessable + lab.assessable)) / gedeeldeNoemer;
   const gateOk = gateStatus === 'PASS' || gateStatus === 'PARTIAL';
   const adequacyOk = !!(adequacy && adequacy.coa === true && adequacy.lab === true);
   const canPublish = gateOk && candidate != null && coverage >= 50 && adequacyOk;
@@ -114,7 +123,7 @@ function supplierScore(assessments) {
   const parts = [{ w: 0.45, v: cap.final }, { w: 0.3, v: lab.normal }, { w: 0.15, v: company.normal }, { w: 0.1, v: reputation.normal }];
   const anyNull = parts.some((p) => p.v == null);
   const value = anyNull ? null : parts.reduce((s, p) => s + p.w * p.v, 0);
-  const coverage = (100 * (coa.assessable + lab.assessable + company.assessable + reputation.assessable)) / 17;
+  const coverage = (100 * (coa.assessable + lab.assessable + company.assessable + reputation.assessable)) / CATEGORY_DEFS.length;
   return { value: value == null ? null : Math.round(value * 100) / 100, coverage, coa, lab, company, reputation, cap };
 }
 
@@ -147,6 +156,24 @@ function evidenceGate(intake) {
         // De reden zoals die bij het labooordeel is vastgelegd, zodat de
         // uitleg naar buiten niet opnieuw wordt bedacht.
         labReden: doorLab[0].bewijskracht_reden || null
+      };
+    }
+    // A16, dezelfde les als hierboven. Zonder deze tak viel een leverancier
+    // waarvan de productnaam afwijkt van de getoetste stof om als
+    // COA_ACCESS_OR_PARSE_BLOCKED - "wij konden de bestanden niet openen" -
+    // terwijl de rapporten prima gelezen zijn. Ze tellen niet mee omdat nog
+    // niet is vastgesteld dat ze over DIT product gaan. De gebruiker kreeg
+    // dan het advies zijn documenten te uploaden, en dat lost niets op.
+    const doorKoppeling = leesbaar.filter((i) => i.naamkoppeling && i.naamkoppeling.telt === false &&
+      (i.analytical_fields_gelezen || []).length > 0);
+    if (doorKoppeling.length) {
+      const wacht = doorKoppeling.filter((i) => i.naamkoppeling.wacht).length;
+      return {
+        status: 'FAIL', code: 'KOPPELING_NIET_VASTGESTELD',
+        foundCount: found.length, usableCount: 0,
+        gelezenCount: leesbaar.length, doorKoppelingCount: doorKoppeling.length,
+        wachtOpBeoordeling: wacht,
+        koppelingReden: doorKoppeling[0].naamkoppeling.reden || null
       };
     }
     return { status: 'FAIL', code: 'COA_ACCESS_OR_PARSE_BLOCKED', foundCount: found.length, usableCount: 0, gelezenCount: leesbaar.length };
@@ -213,7 +240,7 @@ function filterRood(assessmentsIn) {
   const assessments = {};
   Object.keys(assessmentsIn).forEach((k) => { assessments[k] = Object.assign({}, assessmentsIn[k]); });
   Object.keys(assessments).forEach((id) => {
-    if (!/^C0[1-9]$/.test(id)) return;
+    if (!/^C(0[1-9]|1[0-9])$/.test(id)) return;
     const a = assessments[id];
     if (!a || a.color !== 'red') return;
     if (roodGedragen(a.rationale)) return;
@@ -224,8 +251,41 @@ function filterRood(assessmentsIn) {
   return assessments;
 }
 
-function runScoringEngine(rawAssessments, adequacy, intake) {
-  const assessments = applyDependencyRule(filterRood(rawAssessments || {}));
+// A17 - BESLUIT ANNEMARIE, 21 SEPTEMBER.
+//
+// "Registreren als uitgevoerd, nooit automatisch pass. Onderscheid tussen
+// testdekking en testresultaat. Gebruikersweergave: getest, geen norm
+// beschikbaar."
+//
+// Een rapport dat endotoxinen meet en "0.05 EU/mg" noemt zegt niet of dat
+// goed is. Zonder norm is er een meting en geen uitslag. Het model gaf zo een
+// categorie tot nu toe gewoon groen - begrijpelijk, want er is getest - en
+// daarmee gaven wij een geslaagd-oordeel dat nergens staat.
+//
+// Deze rem is deterministisch en staat achter het model, net als filterRood.
+// Groen kan niet als wij voor die categorie NERGENS een norm hebben gelezen.
+// Het wordt oranje: de test is uitgevoerd, dat is iets, alleen geen geslaagde
+// uitslag. Rood blijft rood; dit is geen strafregel maar een rem op
+// automatisch goedkeuren.
+function filterZonderNorm(assessmentsIn, normbeeld) {
+  const assessments = {};
+  Object.keys(assessmentsIn).forEach((k) => { assessments[k] = Object.assign({}, assessmentsIn[k]); });
+  if (!normbeeld) return assessments;
+  Object.keys(normbeeld).forEach((id) => {
+    const beeld = normbeeld[id];
+    const a = assessments[id];
+    if (!a || !beeld || !beeld.uitsluitendZonderNorm) return;
+    if (a.color !== 'green') return;
+    a.color = 'orange';
+    a.zonderNorm = true;
+    a.zonderNormReden = 'de test is aantoonbaar uitgevoerd, maar in de rapporten staat geen norm ' +
+      'om de uitkomst tegen af te zetten; getest is niet hetzelfde als geslaagd';
+  });
+  return assessments;
+}
+
+function runScoringEngine(rawAssessments, adequacy, intake, normbeeld) {
+  const assessments = applyDependencyRule(filterZonderNorm(filterRood(rawAssessments || {}), normbeeld));
   const gate = evidenceGate(intake);
   const evidenceScore = freeEvidenceScore(assessments, adequacy, gate.status);
   const pillars = {};
@@ -236,5 +296,5 @@ function runScoringEngine(rawAssessments, adequacy, intake) {
 module.exports = {
   CATEGORY_DEFS, PILLARS, categoryDef, pillarCategoryIds, pillarStats,
   applyDependencyRule, coaCap, freeEvidenceScore, supplierScore, evidenceGate,
-  computeQuantity, runScoringEngine, filterRood, roodGedragen
+  computeQuantity, runScoringEngine, filterRood, roodGedragen, filterZonderNorm
 };

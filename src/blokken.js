@@ -359,6 +359,9 @@ function waardenBlok(recordsIn) {
   const onderdelen = Object.keys(ONDERDEEL_WOORD);
   const telling = {};
   let promotieGeblokkeerd = 0;
+  // A14: identiteit gerapporteerd terwijl de methode niet te verifieren is.
+  // Apart geteld, want dat is een derde stand en geen half geverifieerd.
+  let methodeNietVerifieerbaar = 0;
   onderdelen.forEach((o) => {
     const t = { geverifieerd: 0, gerapporteerd: 0, niets: 0 };
     records.forEach((r) => {
@@ -366,9 +369,12 @@ function waardenBlok(recordsIn) {
       if (!vak) return;
       t[vak.uitkomst.tonen] = (t[vak.uitkomst.tonen] || 0) + 1;
       if (vak.uitkomst.geblokkeerdeUpgrade) promotieGeblokkeerd++;
+      if (vak.uitkomst.methodeNietVerifieerbaar) methodeNietVerifieerbaar++;
     });
     telling[o] = t;
   });
+  // A13: hetzelfde rapport bij twee leveranciers is een analyse, niet twee.
+  const gedeeld = records.filter((r) => Array.isArray(r.gedeeldMet) && r.gedeeldMet.length).length;
 
   // Een regel per uitspraak, en alleen als er iets over te zeggen valt.
   // "0 van de 12" is geen mededeling maar ruis.
@@ -399,6 +405,29 @@ function waardenBlok(recordsIn) {
     }
   });
 
+  if (methodeNietVerifieerbaar) {
+    regels.push({
+      onderdeel: 'identiteit', stand: 'methode_niet_verifieerbaar', aantal: methodeNietVerifieerbaar,
+      zin: (methodeNietVerifieerbaar === 1
+        ? 'Bij een rapport staat de identiteit van de stof wel vermeld, '
+        : 'Bij ' + methodeNietVerifieerbaar + ' rapporten staat de identiteit van de stof wel vermeld, ') +
+        'maar noemt het document geen methode waarmee die bepaling na te gaan is.',
+      toelichting: niveaus.IDENTITEIT_TOELICHTING
+    });
+  }
+
+  if (gedeeld) {
+    regels.push({
+      onderdeel: null, stand: 'gedeeld_labbewijs', aantal: gedeeld,
+      // De zin die Annemarie zelf voorschreef bij A13.
+      zin: gedeeld === 1
+        ? 'Dit labrapport wordt ook door een andere leverancier gebruikt.'
+        : gedeeld + ' van deze labrapporten worden ook door een andere leverancier gebruikt.',
+      toelichting: 'Hetzelfde rapport bij twee leveranciers is een laboratoriumanalyse, geen twee ' +
+        'onafhankelijke bewijzen. Waarom het gedeeld wordt, hebben wij niet vastgesteld.'
+    });
+  }
+
   if (promotieGeblokkeerd) {
     regels.push({
       onderdeel: null, stand: 'promotie_geblokkeerd', aantal: promotieGeblokkeerd,
@@ -412,7 +441,8 @@ function waardenBlok(recordsIn) {
 
   return {
     beschikbaar: true, kleur: null, kleurregelOpen: 'A24',
-    rapporten: records.length, telling, promotieGeblokkeerd, regels,
+    rapporten: records.length, telling, promotieGeblokkeerd,
+    methodeNietVerifieerbaar, gedeeldLabbewijs: gedeeld, regels,
     werkregel: records.length + ' rapport(en) beoordeeld op leeszekerheid en verificatie'
   };
 }
@@ -420,7 +450,7 @@ function waardenBlok(recordsIn) {
 // Alles bij elkaar, in leesvolgorde.
 function bouwBlokken(engineResult, records, bedrijf, shopHost) {
   return {
-    versie: '1.3',
+    versie: '1.4',
     openheid: openheidBlok(records, bedrijf),
     verificatie: verificatieBlok(records),
     productbewijs: productbewijsBlok(engineResult, records, shopHost),

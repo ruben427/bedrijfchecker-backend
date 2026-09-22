@@ -105,6 +105,13 @@
      verdwijnen bij een re-render van #app. -->
 <div id="sheet-root"></div>
 
+<!-- Umami, zelf gehost. Vul het website-ID in dat Umami geeft nadat je de
+     site hebt toegevoegd; laat het script staan, het doet niets zonder ID.
+     Geen cookies, dus geen bannerplicht. -->
+<script defer
+        data-website-id="VUL-WEBSITE-ID-IN"
+        src="https://stats.deannemethode.nl/script.js"></script>
+
 <script>
 (function(){
 
@@ -114,6 +121,23 @@
   // window.claude-capabilities (db/mcp/sample/assets) meer nodig, dus dit
   // werkt voor iedere bezoeker, ook zonder Claude-account.
   var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
+
+  // ---------- meten ----------
+  // Eigen gebeurtenissen naar Umami. Het gaat niet om bezoekersaantallen maar
+  // om het verloop: hoeveel mensen die beginnen, komen ook bij een rapport uit.
+  // Umami kan er nog niet zijn (defer, of geblokkeerd) - dan gebeurt er niets.
+  var gemeten = {};
+  function meet(naam, data){
+    try {
+      if (window.umami && typeof window.umami.track === 'function') window.umami.track(naam, data || {});
+    } catch(e){ /* meten mag nooit de pagina breken */ }
+  }
+  // Voor gebeurtenissen die bij elke re-render langskomen maar een keer tellen.
+  function meetEenmalig(sleutel, naam, data){
+    if (gemeten[sleutel]) return;
+    gemeten[sleutel] = true;
+    meet(naam, data);
+  }
 
   // ---------- app state ----------
   var state = {
@@ -163,7 +187,7 @@
     // LET OP: dit getal komt uit CATEGORY_DEFS in src/scoringEngine.js. Deze
     // pagina kan die lijst niet lezen, dus bij een nieuwe categorie moet het
     // hier met de hand mee.
-    { key:'categorize', label:'Categoriebeoordeling (17 categorieën)' },
+    { key:'categorize', label:'Categoriebeoordeling (18 categorieën)' },
     { key:'reportA', label:'Evidence Check samenstellen (1/2)' },
     { key:'reportB', label:'Evidence Check samenstellen (2/2)' }
   ];
@@ -212,6 +236,9 @@
     { id:'C07', pillar:'COA', label:'Sterility' },
     { id:'C08', pillar:'COA', label:'Endotoxin' },
     { id:'C09', pillar:'COA', label:'Overige contaminantentests' },
+    // A19 (Annemarie, 21 september): zware metalen uit C09 gehaald en een
+    // eigen categorie gegeven. Achttien in plaats van zeventien.
+    { id:'C10', pillar:'COA', label:'Zware metalen' },
     { id:'L01', pillar:'LAB', label:'Lab' },
     { id:'B01', pillar:'COMPANY', label:'Juridische transparantie' },
     { id:'B02', pillar:'COMPANY', label:'Eigenaren/bestuurders' },
@@ -280,7 +307,7 @@
     var m = Math.floor(s/60), r = s%60;
     return '~' + m + 'm' + (r ? ' ' + r + 's' : '');
   }
-  // Kleurmapping voor de 17 vaste categorieën (Supplier Evidence Scoring &
+  // Kleurmapping voor de 18 vaste categorieën (Supplier Evidence Scoring &
   // Result Logic v1.0): green/orange/red/white, nooit de oude groen/oranje/
   // rood/grijs-scorekaart-strings.
   function catColorClass(color){
@@ -512,6 +539,7 @@
           if (vlaggen > 0) chip = '<span class="chip danger">' + vlaggen + ' rode vlag' + (vlaggen === 1 ? '' : 'gen') + '</span>';
           else if (es && es.published) chip = '<span class="chip ok">Evidence Score ' + es.value + '</span>';
           else if (c.engineResult && c.engineResult.gate && c.engineResult.gate.code === 'LAB_NOT_VERIFIABLE') chip = '<span class="chip warn">Lab niet verifieerbaar</span>';
+          else if (c.engineResult && c.engineResult.gate && c.engineResult.gate.code === 'KOPPELING_NIET_VASTGESTELD') chip = '<span class="chip warn">Koppeling niet vastgesteld</span>';
           else if (c.engineResult && c.engineResult.gate && (c.engineResult.gate.code === 'NO_COA_FOUND' || c.engineResult.gate.code === 'COA_ACCESS_OR_PARSE_BLOCKED')) chip = '<span class="chip grey">Geen bruikbare COA</span>';
           // LET OP: dit is de laatste tak, dus alles wat hierboven niet is
           // afgevangen komt hier terecht. 'Geen rode vlaggen' is groen en leest
@@ -705,6 +733,7 @@
       );
       delete state.runningCaseIds['__new__'];
       state.cases.unshift(created);
+      meet('check-gestart', { domein: domainOf(website) });
       goDetail(created.id);
     } catch(e){
       delete state.runningCaseIds['__new__'];
@@ -766,8 +795,10 @@
       if (c.progress && c.progress.length) html += renderProgress(c);
     }
     if (toontRapport){
+      meetEenmalig('rapport-' + c.id, 'rapport-getoond', { domein: domainOf(c.website || ''), soort: c.tier === 'deep' ? 'deep' : 'gratis' });
       html += renderReport(c);
-      html += '<section class="report-block"><h3>Afgeronde stappen</h3>' + renderProgress(c) + '</section>';
+      // Stappenlijst onder het rapport verborgen (22 sep): de pagina wordt gedeeld
+      // met testlezers en de stappen zijn interne informatie.
       html += '<div style="margin-top:24px;"><button class="btn secondary" id="retry-audit">Opnieuw analyseren</button></div>';
     }
 
@@ -813,7 +844,7 @@
     klemCheck(app);
     startBalken(app);
     Array.prototype.forEach.call(app.querySelectorAll('.js-deepdive-info'), function(btn){
-      btn.addEventListener('click', function(){ openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
+      btn.addEventListener('click', function(){ meet('deepdive-uitleg-geopend'); openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
     });
     // De Deep Dive is vanaf twee plekken te starten: de kaart en de knop
     // onder de stappenlijst. Beide lopen via dezelfde klasse.
@@ -821,6 +852,7 @@
       var oorspronkelijk = btn.textContent;
       btn.addEventListener('click', function(){
         btn.disabled = true; btn.textContent = 'Starten…';
+        meet('deepdive-gestart', { domein: domainOf(c.website || '') });
         apiContinueDeep(c.id).then(function(updated){
           if (state.currentCaseId !== c.id) return;
           state.currentCase = updated;
@@ -1140,6 +1172,19 @@
     // die raadt aan de bestanden te uploaden - wat hier niets oplost, want
     // hetzelfde lab staat er dan nog steeds onder. De tekst hieronder stond al
     // in UI_STATES maar werd nergens gebruikt.
+    // A16: de rapporten zijn gelezen, maar nog niet is vastgesteld dat ze over
+    // dit product gaan. Geen afkeuring en geen leesprobleem - uploaden helpt
+    // hier dus net zo min als bij LAB_NOT_VERIFIABLE.
+    if (gate.code === 'KOPPELING_NIET_VASTGESTELD'){
+      var wacht = gate.wachtOpBeoordeling || 0;
+      return '<div class="banner"><strong>De rapporten zijn gelezen, de koppeling naar dit product nog niet vastgesteld</strong><br>' +
+        'Bij ' + (gate.doorKoppelingCount || 1) + ' van de ' + gate.foundCount + ' gevonden rapporten toetste het laboratorium de ' +
+        'identiteit tegen een andere stof dan de productnaam op het etiket. Dat kan een handelsnaam zijn, ' +
+        'maar zolang dat niet is nagekeken tellen die rapporten niet mee als bewijs voor dit product.' +
+        (wacht ? '<br>' + wacht + ' geval(len) wachten op een handmatige beoordeling.' : '') +
+        (gate.koppelingReden ? '<br>' + escapeHtml(gate.koppelingReden) : '') +
+        '<br>Uploaden van de bestanden verandert dit niet: de rapporten zijn leesbaar, het verband met het product is nog niet aangetoond.</div>';
+    }
     if (gate.code === 'LAB_NOT_VERIFIABLE'){
       var aantal = gate.doorLabCount || gate.gelezenCount || gate.foundCount;
       var telling = aantal

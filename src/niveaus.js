@@ -47,14 +47,52 @@ const ONDERDELEN = ['vulling', 'zuiverheid', 'identiteit'];
 //
 // Streng met opzet. "HPLC" bewijst zuiverheid, geen identiteit. Een
 // massaspectrum, een moleculair gewicht of een aminozuuranalyse wel.
-function heeftIdentiteitsbepaling(r) {
-  if (!r) return false;
-  if (r.identiteitBevestigd === true) return true;
-  if (r.blindTest === true && r.product) return true;
+// LET OP - HERZIEN 22 SEPTEMBER, BESLUIT A14 VAN ANNEMARIE.
+//
+// Hier stond een binaire test: identiteitsbepaling ja of nee. Die had twee
+// gezichten en allebei waren ze fout.
+//
+// Te soepel: "Identity: Confirmed" zonder methode telde volledig mee. Anne:
+// "Alleen Identity: Confirmed zonder methode is onvoldoende."
+//
+// Te streng: een rapport dat wel iets over identiteit zegt maar geen geschikte
+// methode noemt, verdween in dezelfde stand als een rapport dat over
+// identiteit zwijgt. Anne: de uitkomst is dan NIET failed maar "identity
+// gerapporteerd, methode niet verifieerbaar".
+//
+// Dus drie standen. Geschikt volgens haar besluit: MS/LC-MS, aminozuuranalyse,
+// gevalideerde vergelijking met een referentiestandaard. "HPLC mag niet
+// automatisch worden uitgesloten, maar een gewone purity-HPLC is op zichzelf
+// geen voldoende identiteitsbewijs" - vandaar dat HPLC hieronder niet in de
+// lijst staat en een rapport met alleen HPLC op GERAPPORTEERD blijft steken
+// in plaats van te verdwijnen.
+const IDENTITEIT = { BEPAALD: 'bepaald', GERAPPORTEERD: 'gerapporteerd', GEEN: 'geen' };
+
+const GESCHIKTE_IDENTITEITSMETHODE =
+  /(^|[^a-z])ms([^a-z]|$)|mass spec|massaspec|lc-?ms|ms\/ms|moleculair|molecular weight|aminozuur|amino acid|referentiestandaard|reference standard/;
+
+function identiteitStand(r) {
+  if (!r) return IDENTITEIT.GEEN;
   const m = r.identiteitsmethode ? String(r.identiteitsmethode).toLowerCase() : '';
-  if (!m) return false;
-  return /(^|[^a-z])ms([^a-z]|$)|mass spec|massaspec|lc-?ms|ms\/ms|moleculair|molecular weight|aminozuur|amino acid|referentiestandaard|reference standard/.test(m);
+  if (m && GESCHIKTE_IDENTITEITSMETHODE.test(m)) return IDENTITEIT.BEPAALD;
+  // Vanaf hier: het document zegt wel IETS over identiteit, maar niet HOE het
+  // is vastgesteld. Dat is de derde stand.
+  if (m) return IDENTITEIT.GERAPPORTEERD;
+  if (r.identiteitBevestigd === true) return IDENTITEIT.GERAPPORTEERD;
+  if (heeftIets(r.identiteitGetoetstTegen)) return IDENTITEIT.GERAPPORTEERD;
+  if (r.blindTest === true && heeftIets(r.product)) return IDENTITEIT.GERAPPORTEERD;
+  return IDENTITEIT.GEEN;
 }
+
+// De oude ingang. Blijft betekenen wat hij betekende voor de Evidence Gate:
+// telt dit als identiteitsBEPALING. Alleen de bovenste stand.
+function heeftIdentiteitsbepaling(r) {
+  return identiteitStand(r) === IDENTITEIT.BEPAALD;
+}
+
+const IDENTITEIT_TOELICHTING =
+  'Het rapport noemt de identiteit van de stof, maar geen methode waarmee die bepaling na te gaan is. ' +
+  'Een zuiverheids-HPLC alleen is daarvoor niet genoeg. Wij tonen dit als gerapporteerd, niet als vastgesteld.';
 
 function heeftIets(v) {
   return v != null && String(v).trim() !== '';
@@ -118,7 +156,7 @@ function leeszekerheidVoor(r, onderdeel) {
 
   if (onderdeel === 'identiteit') {
     if (!heeftIets(r.product)) return { niveau: 'L0', reden: 'geen productnaam bij de identiteitsbepaling' };
-    if (!heeftIdentiteitsbepaling(r)) return { niveau: 'L0', reden: 'geen identiteitsbepaling in het document' };
+    if (identiteitStand(r) === IDENTITEIT.GEEN) return { niveau: 'L0', reden: 'het document zegt niets over de identiteit van de stof' };
     return metAnkers(r, 'identiteit', 'identiteitsbepaling gelezen, weinig houvast in de rest van het document');
   }
 
@@ -232,10 +270,32 @@ function beoordeelRecord(r, controle, labVoldoendeVerifieerbaar) {
   const perOnderdeel = {};
   ONDERDELEN.forEach((onderdeel) => {
     const L = leeszekerheidVoor(r, onderdeel);
-    const m = magGetoondWorden(L.niveau, V.niveau, labVoldoendeVerifieerbaar);
+    let m = magGetoondWorden(L.niveau, V.niveau, labVoldoendeVerifieerbaar);
+    let stand = null;
+
+    // A14: een identiteitsuitspraak zonder verifieerbare methode kan nooit
+    // naar 'geverifieerd'. Ook niet als de referentie bij het lab oplost - die
+    // bevestigt dat het rapport echt is, niet dat de identiteitsbepaling
+    // deugt. Dat zijn twee verschillende vragen; ze op een hoop gooien is
+    // precies waar A15 over ging.
+    if (onderdeel === 'identiteit') {
+      stand = identiteitStand(r);
+      if (stand === IDENTITEIT.GERAPPORTEERD && m.tonen === TONEN.GEVERIFIEERD) {
+        m = {
+          tonen: TONEN.GERAPPORTEERD, methodeNietVerifieerbaar: true,
+          reden: 'identiteit gerapporteerd, methode niet verifieerbaar'
+        };
+      } else if (stand === IDENTITEIT.GERAPPORTEERD) {
+        m = Object.assign({}, m, { methodeNietVerifieerbaar: true });
+      }
+    }
+
     perOnderdeel[onderdeel] = {
-      leeszekerheid: L, uitkomst: m,
-      toelichting: m.tonen === TONEN.GERAPPORTEERD ? GERAPPORTEERD_TOELICHTING : null
+      leeszekerheid: L, uitkomst: m, identiteitStand: stand,
+      toelichting: m.tonen === TONEN.GERAPPORTEERD ? GERAPPORTEERD_TOELICHTING : null,
+      // Staat naast de gewone toelichting, niet in plaats daarvan: allebei
+      // zijn waar en ze zeggen iets anders.
+      methodeToelichting: m.methodeNietVerifieerbaar ? IDENTITEIT_TOELICHTING : null
     };
   });
   const vulling = perOnderdeel.vulling;
@@ -260,6 +320,7 @@ const RANG = { [TONEN.NIETS]: 0, [TONEN.GERAPPORTEERD]: 1, [TONEN.GEVERIFIEERD]:
 
 module.exports = {
   leeszekerheid, leeszekerheidVoor, verificatiegraad, magGetoondWorden, beoordeelRecord,
-  heeftIdentiteitsbepaling,
-  TONEN, RANG, GERAPPORTEERD_TOELICHTING, KERNVELDEN, ONDERDELEN
+  heeftIdentiteitsbepaling, identiteitStand,
+  TONEN, RANG, GERAPPORTEERD_TOELICHTING, KERNVELDEN, ONDERDELEN,
+  IDENTITEIT, IDENTITEIT_TOELICHTING
 };

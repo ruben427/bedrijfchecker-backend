@@ -89,7 +89,7 @@
     // LET OP: dit getal komt uit CATEGORY_DEFS in src/scoringEngine.js. Deze
     // pagina kan die lijst niet lezen, dus bij een nieuwe categorie moet het
     // hier met de hand mee.
-    { key:'categorize', label:'Categoriebeoordeling (17 categorieën)' },
+    { key:'categorize', label:'Categoriebeoordeling (18 categorieën)' },
     { key:'reportA', label:'Evidence Check samenstellen (1/2)' },
     { key:'reportB', label:'Evidence Check samenstellen (2/2)' }
   ];
@@ -131,6 +131,9 @@
     { id:'C07', pillar:'COA', label:'Sterility' },
     { id:'C08', pillar:'COA', label:'Endotoxin' },
     { id:'C09', pillar:'COA', label:'Overige contaminantentests' },
+    // A19 (Annemarie, 21 september): zware metalen uit C09 gehaald en een
+    // eigen categorie gegeven. Achttien in plaats van zeventien.
+    { id:'C10', pillar:'COA', label:'Zware metalen' },
     { id:'L01', pillar:'LAB', label:'Lab' },
     { id:'B01', pillar:'COMPANY', label:'Juridische transparantie' },
     { id:'B02', pillar:'COMPANY', label:'Eigenaren/bestuurders' },
@@ -195,7 +198,7 @@
     var m = Math.floor(s/60), r = s%60;
     return '~' + m + 'm' + (r ? ' ' + r + 's' : '');
   }
-  // Kleurmapping voor de 17 vaste categorieën (Supplier Evidence Scoring &
+  // Kleurmapping voor de 18 vaste categorieën (Supplier Evidence Scoring &
   // Result Logic v1.0): green/orange/red/white, nooit de oude groen/oranje/
   // rood/grijs-scorekaart-strings.
   function catColorClass(color){
@@ -566,7 +569,7 @@
         '</div>' +
         '<div class="ladder-card featured">' +
           '<div class="ladder-top">' +
-            '<div class="ladder-badges"><span class="ladder-badge tier2">Stap 2 &middot; &euro; 2,95</span><span class="ladder-tier-label">Deep Dive</span></div>' +
+            '<div class="ladder-badges"><span class="ladder-badge tier2">Stap 2 &middot; &euro; 3,50</span><span class="ladder-tier-label">Deep Dive</span></div>' +
             '<div class="ladder-body">' +
               '<div class="ladder-title">Wie zit erachter?</div>' +
               '<ul class="ladder-list">' +
@@ -702,7 +705,7 @@
       html += renderReport(c);
       if (c.status === 'gratis_klaar'){
         html += '<section class="report-block"><h3>Meer weten over deze leverancier?</h3>' +
-          '<p style="color:var(--text-muted);">De gratis Evidence Check is klaar. Een betaalde Deep Dive (&euro;2,95) onderzoekt ook de leverancier zelf: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p>' +
+          '<p style="color:var(--text-muted);">De gratis Evidence Check is klaar. Een betaalde Deep Dive (&euro;3,50) onderzoekt ook de leverancier zelf: officiële bedrijfsregistratie, eigenaren/bestuurders, bedrijfshistorie, domein-tijdlijn en regelgeving/toezicht.</p>' +
           '<button type="button" class="btn-cta" id="continue-deep">Start Deep Dive (nog zonder betaalstraat)</button></section>';
       }
       html += '<section class="report-block"><h3>Stappen opnieuw uitvoeren</h3>' + renderProgress(c) + '</section>';

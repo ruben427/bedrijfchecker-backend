@@ -254,6 +254,24 @@ async function initCoaSchema() {
       PRIMARY KEY (soort, sleutel)
     );
   `);
+  // A16 - BESLUIT ANNEMARIE, 21 SEPTEMBER. Een productnaam die afwijkt van de
+  // stof waartegen het lab de identiteit toetste, is geen afkeuring maar een
+  // controletrigger met twee uitkomsten. Die uitkomst moet ergens blijven
+  // staan, anders wordt elke run opnieuw hetzelfde gevraagd en telt het
+  // bewijs elke keer weer niet mee.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS naam_oordelen (
+      sleutel TEXT PRIMARY KEY,
+      supplier_key TEXT NOT NULL,
+      product TEXT NOT NULL,
+      getoetste_stof TEXT NOT NULL,
+      status TEXT NOT NULL,
+      onderbouwing TEXT,
+      vastgelegd_door TEXT NOT NULL,
+      vastgelegd_op BIGINT NOT NULL
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS naam_oordelen_supplier_idx ON naam_oordelen (supplier_key);`);
   await herstelOpdrachtgeverAliassen();
 }
 
@@ -749,8 +767,43 @@ const LAB_STATUSSEN = [
 // weerlegd. Dat onderscheid is de hele methodiek.
 const LAB_TELT_NIET_MEE = ['onvoldoende verifieerbaar', 'niet onafhankelijk', 'bestaat niet'];
 
+// A22 - BESLUIT ANNEMARIE, 21 SEPTEMBER.
+//
+// "Onbekend is niet hetzelfde als onbetrouwbaar, maar ook niet hetzelfde als
+// betrouwbaar." Drie standen: betrouwbaar telt mee, afgekeurd telt niet mee,
+// en onbeoordeeld wordt geregistreerd en zichtbaar gemaakt maar telt NIET mee
+// voor de verificatiescore.
+//
+// Vandaag doet een onbeoordeeld lab niets: telt = null, en null blokkeert
+// nergens. Dat is te soepel volgens haar besluit, en meetbaar: Bridge
+// Analytical hangt met 45 verwijzingen aan een shop en telt op dit moment
+// volledig mee omdat niemand er een oordeel bij heeft gezet.
+//
+// Haar eigen voorwaarde staat erbij: "Voor de testversie hoeft dit nog niet
+// blokkerend te zijn, zolang de bestaande lablijst eerst wordt weggewerkt.
+// Daarna activeren als standaardregel." Daarom een schakelaar, en daarom
+// staat hij UIT. Aanzetten met A22_STRIKT=1 zodra de lablijst rond is.
+//
+// LET OP bij het aanzetten: telt=false leest verderop als "dit lab deugt
+// niet". Dat is hier niet aan de hand. Daarom draagt de uitkomst
+// onbeoordeeld:true mee, zodat de tekst naar buiten "nog niet beoordeeld" kan
+// zeggen en niet "onvoldoende verifieerbaar". Hetzelfde onderscheid als bij
+// 'niet bereikbaar voor ons'.
+const A22_STRIKT = process.env.A22_STRIKT === '1';
+
+function onbeoordeeldeStand() {
+  return {
+    telt: A22_STRIKT ? false : null,
+    onbeoordeeld: true,
+    strikt: A22_STRIKT,
+    reden: A22_STRIKT
+      ? 'het laboratorium is nog niet beoordeeld; zolang dat zo is telt het rapport niet mee als onafhankelijk geverifieerd bewijs'
+      : 'laboratorium nog niet beoordeeld'
+  };
+}
+
 function bewijskrachtVanLab(oordeel) {
-  if (!oordeel) return { telt: null, reden: 'laboratorium nog niet beoordeeld' };
+  if (!oordeel) return onbeoordeeldeStand();
   if (oordeel.status === 'erkend') return { telt: true, reden: null };
   // Het lab is in orde; wij kunnen het alleen zelf niet ophalen. Bewijs blijft
   // dus GERAPPORTEERD in plaats van geverifieerd - maar dat is een uitspraak
@@ -774,7 +827,7 @@ function bewijskrachtVanLab(oordeel) {
           : 'het laboratorium is onvoldoende onafhankelijk te verifieren')
     };
   }
-  return { telt: null, reden: 'laboratorium nog niet beoordeeld' };
+  return onbeoordeeldeStand();
 }
 
 function labSleutel(naam) {
@@ -2373,6 +2426,99 @@ async function crossSupplierOverview() {
 // Bij welke andere leveranciers staat dit document nog meer? Bewust een losse
 // functie: getDocumentsBySupplier draait ook in de pipeline en mag geen extra
 // query per audit krijgen.
+// --- A16: de afwijkende productnaam ----------------------------------------
+//
+// "naamKomtOvereen = false wordt een controletrigger, geen afkeuring. Twee
+// uitkomsten: handmatig bevestigd als handelsnaam/alias, of koppeling
+// onvoldoende aangetoond. Alleen bij de eerste telt het bewijs normaal mee."
+//
+// Gevonden bij NextGen op 20 september: een vial verkocht als 'GLP-3' waarvan
+// ILS de identiteit toetste tegen retatrutide. Het rapport liegt niet en het
+// etiket ook niet per se - GLP-3 kan een handelsnaam zijn. Maar dat weten wij
+// niet, en tot iemand het heeft nagekeken is de koppeling tussen dit rapport
+// en dit product niet aangetoond.
+//
+// Drie standen, want "nog niemand heeft gekeken" is er ook een. Die is bewust
+// niet hetzelfde als 'koppeling onvoldoende aangetoond': dat laatste is een
+// vaststelling, het eerste is werk dat nog moet gebeuren.
+const NAAM_STATUSSEN = [
+  'wacht op beoordeling',
+  'handmatig bevestigd als handelsnaam/alias',
+  'koppeling onvoldoende aangetoond'
+];
+
+function naamSleutel(supplierKey, product, stof) {
+  const kaal = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const p = kaal(product), q = kaal(stof), k = kaal(supplierKey);
+  if (!k || !p || !q) return null;
+  return k + '|' + p + '|' + q;
+}
+
+async function saveNaamOordeel(supplierKey, product, stof, oordeel) {
+  const sleutel = naamSleutel(supplierKey, product, stof);
+  const o = oordeel || {};
+  if (!sleutel || NAAM_STATUSSEN.indexOf(o.status) === -1 || !o.vastgelegdDoor) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO naam_oordelen (sleutel, supplier_key, product, getoetste_stof, status, onderbouwing, vastgelegd_door, vastgelegd_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (sleutel) DO UPDATE SET
+         status = EXCLUDED.status, onderbouwing = EXCLUDED.onderbouwing,
+         vastgelegd_door = EXCLUDED.vastgelegd_door, vastgelegd_op = EXCLUDED.vastgelegd_op
+       RETURNING *`,
+      [sleutel, String(supplierKey).slice(0, 200), String(product).slice(0, 200),
+       String(stof).slice(0, 200), o.status, o.onderbouwing || null, o.vastgelegdDoor, Date.now()]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    console.error('coaStore.saveNaamOordeel:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Alle vastgelegde oordelen voor een leverancier, als map op sleutel.
+async function naamOordelen(supplierKey) {
+  try {
+    const { rows } = supplierKey
+      ? await pool.query('SELECT * FROM naam_oordelen WHERE supplier_key = $1', [supplierKey])
+      : await pool.query('SELECT * FROM naam_oordelen ORDER BY vastgelegd_op DESC LIMIT 500');
+    const uit = {};
+    rows.forEach((r) => {
+      uit[r.sleutel] = {
+        sleutel: r.sleutel, supplierKey: r.supplier_key, product: r.product,
+        getoetsteStof: r.getoetste_stof, status: r.status, onderbouwing: r.onderbouwing,
+        vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op)
+      };
+    });
+    return uit;
+  } catch (e) {
+    console.error('coaStore.naamOordelen:', (e && e.message) || e);
+    return {};
+  }
+}
+
+// Wat betekent de stand voor het bewijs van DIT rapport? Alleen de bevestigde
+// stand laat het bewijs normaal meetellen. De andere twee houden het tegen -
+// zonder er een bevinding over de leverancier van te maken.
+function naamkoppelingVan(oordeel) {
+  const status = (oordeel && oordeel.status) || 'wacht op beoordeling';
+  if (status === 'handmatig bevestigd als handelsnaam/alias') {
+    return { status, telt: true, reden: null };
+  }
+  if (status === 'koppeling onvoldoende aangetoond') {
+    return {
+      status, telt: false,
+      reden: 'het labrapport toetste de identiteit tegen een andere stof dan de productnaam, en de ' +
+        'koppeling tussen die twee is na beoordeling niet aangetoond'
+    };
+  }
+  return {
+    status: 'wacht op beoordeling', telt: false, wacht: true,
+    reden: 'de productnaam wijkt af van de stof waartegen de identiteit is getoetst; een mens moet ' +
+      'nog vaststellen of dat een handelsnaam of alias is'
+  };
+}
+
 async function andereLeveranciersVoor(shaList) {
   const lijst = (shaList || []).filter(Boolean);
   if (!lijst.length) return {};
@@ -2395,9 +2541,10 @@ async function andereLeveranciersVoor(shaList) {
 
 module.exports = {
   vialSpreidingUit,
-  bewijskrachtVanLab, LAB_TELT_NIET_MEE,
+  bewijskrachtVanLab, LAB_TELT_NIET_MEE, A22_STRIKT,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
+  saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
