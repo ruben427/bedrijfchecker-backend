@@ -18,20 +18,55 @@
 const express = require('express');
 const { z } = require('zod');
 const coaStore = require('./coaStore');
+const teksten = require('./teksten');
+const db = require('./db');
 const pipeline = require('./pipeline');
 const { safeEqual } = require('./auth');
 
-function requireStaffToken(req, res, next) {
-  const configured = process.env.COA_STAFF_TOKEN;
-  if (!configured) {
-    return res.status(503).json({ error: 'niet_geconfigureerd', message: 'COA_STAFF_TOKEN is niet gezet op de server.' });
-  }
+// --- twee rollen, twee tokens ----------------------------------------------
+//
+// Tot 22 september was er een token en kon iedereen alles: ook COA's uploaden
+// en resolverruns starten. Aan de HTTP-kant bestaat dat onderscheid al wel -
+// daar is een apart leestoken, juist om de beoordelaar niet alles te geven -
+// maar aan deze kant niet.
+//
+// REDACTIE is de rol van de beoordelaar: kijken, oordelen over labs en
+// naamkoppelingen, en teksten redigeren. Dat zijn allemaal uitspraken, en
+// uitspraken horen bij haar. Wat er NIET in zit is het binnenhalen en
+// verifieren van bewijs: uploaden, resolveren, signalen afvinken. Dat is
+// beheer van de pijplijn, en dat is een andere verantwoordelijkheid.
+//
+// De rol bepaalt ook de TOOLLIJST, niet alleen of een aanroep lukt. Een tool
+// tonen die je vervolgens niet mag gebruiken is een uitnodiging tot een
+// foutmelding.
+const REDACTIE_TOOLS = [
+  'zoek_leverancier_coas', 'zoek_labreferenties', 'nieuwe_signalen',
+  'toon_laboratoria', 'toon_leveranciers', 'toon_naamkoppelingen', 'toon_rapport',
+  'beoordeel_laboratorium', 'beoordeel_naamkoppeling',
+  'geef_tekstfeedback', 'verklaar_tekst', 'open_tekstoordelen', 'schrijfregels'
+];
+
+function rolVanToken(req) {
+  const staf = process.env.COA_STAFF_TOKEN;
+  const redactie = process.env.COA_REDACTIE_TOKEN;
   const header = req.get('Authorization') || '';
   const m = /^Bearer\s+(.+)$/i.exec(header);
   const token = m ? m[1].trim() : null;
-  if (!token || !safeEqual(token, configured)) {
+  if (!token) return null;
+  if (staf && safeEqual(token, staf)) return 'staf';
+  if (redactie && safeEqual(token, redactie)) return 'redactie';
+  return null;
+}
+
+function requireStaffToken(req, res, next) {
+  if (!process.env.COA_STAFF_TOKEN) {
+    return res.status(503).json({ error: 'niet_geconfigureerd', message: 'COA_STAFF_TOKEN is niet gezet op de server.' });
+  }
+  const rol = rolVanToken(req);
+  if (!rol) {
     return res.status(401).json({ error: 'unauthorized', message: 'Ongeldig of ontbrekend token.' });
   }
+  req.mcpRol = rol;
   next();
 }
 
@@ -41,9 +76,20 @@ function janoshikLinkFrom(task, sample, key) {
   return 'https://verify.janoshik.com/tests/' + encodeURIComponent(ref);
 }
 
-async function buildServer() {
+async function buildServer(rol) {
   const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
-  const server = new McpServer({ name: 'bedrijfchecker-coa-staff', version: '1.0.0' });
+  const server = new McpServer({ name: 'bedrijfchecker-coa-' + (rol || 'staf'), version: '1.1.0' });
+
+  // De rolfilter zit op registerTool zelf, niet bij elke tool apart. Dertien
+  // keer dezelfde controle overschrijven is dertien plekken om er een te
+  // vergeten, en vergeten betekent hier dat iemand meer mag dan de bedoeling.
+  if (rol === 'redactie') {
+    const origineel = server.registerTool.bind(server);
+    server.registerTool = function (naam) {
+      if (REDACTIE_TOOLS.indexOf(naam) === -1) return null;
+      return origineel.apply(server, arguments);
+    };
+  }
 
   server.registerTool(
     'zoek_leverancier_coas',
@@ -385,6 +431,163 @@ async function buildServer() {
     }
   );
 
+  // --- rondkijken ----------------------------------------------------------
+  //
+  // Tot nu kon je alleen per leverancier zoeken. Dat werkt als je al weet welke
+  // shop je zoekt, en niet als de vraag "welke labs wachten nog op mij" is.
+  // Die gegevens zaten wel in het systeem, maar alleen achter de stafpagina's.
+  server.registerTool(
+    'toon_laboratoria',
+    {
+      title: 'Alle laboratoria met hun stand',
+      description: 'Geeft elk laboratorium dat wij zijn tegengekomen, met de stand die een beoordelaar eraan heeft gegeven en de onderbouwing daarbij. Labs zonder stand staan er ook in: dat is de werkvoorraad. Twee signalen komen er automatisch bij: komt dit lab maar bij een leverancier voor, en is er ook maar een verwijzing die een buitenstaander zelf kan nalopen. Gebruik dit om te zien wat er nog open staat en wat er eerder over een lab is vastgelegd.',
+      inputSchema: z.object({
+        alleenZonderOordeel: z.boolean().optional().describe('Alleen de labs waar nog geen stand op zit')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const labs = await coaStore.labSignalen();
+      const lijst = a.alleenZonderOordeel ? labs.filter((l) => !l.oordeel) : labs;
+      const tekst = lijst.length
+        ? lijst.map((l) => '- ' + l.lab + ': ' + (l.oordeel ? l.oordeel.status : 'NOG GEEN STAND') +
+            (l.oordeel && l.oordeel.onderbouwing ? '\n    ' + String(l.oordeel.onderbouwing).slice(0, 300) : '')).join('\n')
+        : 'Geen laboratoria gevonden.';
+      return {
+        content: [{ type: 'text', text: tekst }],
+        structuredContent: { aantal: lijst.length, statussen: coaStore.LAB_STATUSSEN, labs: lijst }
+      };
+    }
+  );
+
+  server.registerTool(
+    'toon_leveranciers',
+    {
+      title: 'Overzicht van alle leveranciers',
+      description: 'Een regel per leverancier die wij kennen, met hoeveel labverwijzingen er bekend zijn, hoeveel daarvan handmatig zijn gecontroleerd en hoeveel er op naam van een derde partij staan. Gebruik dit om te zien waar het werk zit, of om een leverancierssleutel op te zoeken die je bij de andere tools nodig hebt.',
+      inputSchema: z.object({}).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async () => {
+      const rijen = await coaStore.leveranciersOverzicht();
+      const tekst = rijen.length
+        ? rijen.map((r) => '- ' + (r.supplierKey || '?') + ': ' + (r.referenties || 0) +
+            ' verwijzing(en), ' + (r.gecontroleerd || 0) + ' gecontroleerd' +
+            (r.opNaamVanDerde ? ', ' + r.opNaamVanDerde + ' op naam van een derde' : '')).join('\n')
+        : 'Nog geen leveranciers in het archief.';
+      return { content: [{ type: 'text', text: tekst }], structuredContent: { aantal: rijen.length, leveranciers: rijen } };
+    }
+  );
+
+  server.registerTool(
+    'toon_naamkoppelingen',
+    {
+      title: 'Producten waarvan de naam afwijkt van de geteste stof',
+      description: 'Geeft de gevallen waarin het labrapport de identiteit toetste tegen een ANDERE stof dan de productnaam op het etiket, met de stand die eraan is gegeven. Zolang die op "wacht op beoordeling" staat telt het bewijs van dat rapport niet mee - niet omdat er iets mis is, maar omdat niet is vastgesteld dat het rapport over dat product gaat. Dit is dus een werkvoorraad, geen lijst met bevindingen.',
+      inputSchema: z.object({
+        leverancier: z.string().optional().describe('Beperk tot een leverancier, bijvoorbeeld nextgenpeptides.com')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const oordelen = await coaStore.naamOordelen(a.leverancier || null);
+      const lijst = Object.values(oordelen);
+      const tekst = lijst.length
+        ? lijst.map((o) => '- ' + o.supplierKey + ': "' + o.product + '" getoetst tegen "' + o.getoetsteStof +
+            '" -> ' + o.status + (o.onderbouwing ? '\n    ' + o.onderbouwing : '')).join('\n')
+        : 'Geen vastgelegde naamkoppelingen.';
+      return {
+        content: [{ type: 'text', text: tekst }],
+        structuredContent: { aantal: lijst.length, statussen: coaStore.NAAM_STATUSSEN, koppelingen: lijst }
+      };
+    }
+  );
+
+  server.registerTool(
+    'toon_rapport',
+    {
+      title: 'De uitkomst van een controle, zoals de gebruiker hem ziet',
+      description: 'Haalt het rapport van een uitgevoerde controle op: de uitkomst van de Evidence Gate, de vier blokken met hun zinnen, en de narratieve tekst. Gebruik dit om een tekst in zijn CONTEXT te zien voordat je hem beoordeelt - een losse zin redigeren zonder te zien waar hij staat en wat eromheen staat levert meestal de verkeerde correctie op. Geef een caseId, of een leverancier: dan komt de laatste controle van die shop terug.',
+      inputSchema: z.object({
+        caseId: z.string().optional().describe('Het id van de controle'),
+        leverancier: z.string().optional().describe('Of de shop, bijvoorbeeld omegapeptides.eu - dan de laatst afgeronde controle')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      let c = null;
+      if (a.caseId) {
+        c = await db.getCase(a.caseId).catch(() => null);
+      } else if (a.leverancier) {
+        const kaal = String(a.leverancier).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+        const alle = await db.listCases().catch(() => []);
+        const passend = alle.filter((x) => String(x.website || '').toLowerCase().includes(kaal));
+        c = passend.sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0))[0] || null;
+        if (c) c = await db.getCase(c.id).catch(() => null);
+      }
+      if (!c) {
+        return { content: [{ type: 'text', text: 'Geen controle gevonden. Geef een caseId of een leverancier die al een keer is gecontroleerd.' }] };
+      }
+      const er = c.engineResult || {};
+      const blokken = er.blokken || {};
+      const zinnen = [];
+      ['openheid', 'verificatie', 'productbewijs', 'waarden'].forEach((k) => {
+        const b = blokken[k];
+        if (!b) return;
+        if (b.werkregel) zinnen.push(k + ': ' + b.werkregel);
+        (b.regels || []).forEach((r) => { if (r && r.zin) zinnen.push(k + ': ' + r.zin); });
+      });
+      const rap = c.report || {};
+      const tekst = [
+        'Controle van ' + (c.naam || c.website || c.id),
+        'Evidence Gate: ' + ((er.gate && er.gate.status) || 'onbekend') + (er.gate && er.gate.code ? ' (' + er.gate.code + ')' : ''),
+        '',
+        'Zinnen uit de blokken:',
+        zinnen.length ? zinnen.map((z) => '- ' + z).join('\n') : '- (geen)',
+        '',
+        'Narratieve tekst:',
+        String(rap.executiveSummary || '(geen samenvatting)')
+      ].join('\n');
+      return {
+        content: [{ type: 'text', text: tekst }],
+        structuredContent: {
+          caseId: c.id, website: c.website, gate: er.gate || null,
+          blokzinnen: zinnen, executiveSummary: rap.executiveSummary || null,
+          aandachtspunten: rap.belangrijksteAandachtspunten || [],
+          positief: rap.sterkstePositieveBevindingen || []
+        }
+      };
+    }
+  );
+
+  // Wat betekent deze zin, en waarom staat hij er zo?
+  //
+  // Zonder deze tool vult een chat het zelf in met algemene kennis, en dat
+  // klinkt overtuigend terwijl het er volledig naast kan zitten. Het antwoord
+  // stond er al: in deze code staat de reden boven de regel, meestal met het
+  // besluitnummer erbij.
+  server.registerTool(
+    'verklaar_tekst',
+    {
+      title: 'Wat betekent deze tekst, en waarom staat hij er zo',
+      description: 'Plak een zin uit een rapport en krijg terug waar hij vandaan komt en waarom hij zo luidt. Bij een VASTE zin komt de uitleg uit de code zelf - daar staat de reden boven de regel, vaak met het besluitnummer erbij (A13, A24, L01), zodat je kunt zien op welk besluit een formulering rust. Bij GEGENEREERDE tekst is er geen vaste betekenis: die is voor dat ene rapport geschreven. Gebruik dit voordat je een tekst afkeurt: soms staat er iets met opzet zo, en dan is de vraag of dat besluit nog klopt en niet of de zin mooier kan.',
+      inputSchema: z.object({
+        tekst: z.string().min(12).describe('De zin zoals hij in het rapport staat')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const v = teksten.verklaarTekst(a.tekst);
+      return {
+        content: [{ type: 'text', text: v.antwoord || v.uitleg || 'Geen herkomst gevonden.' }],
+        structuredContent: {
+          soort: v.soort, aandeel: v.aandeel || 0, bron: v.bron || null,
+          besluiten: v.besluiten || [], verklaring: v.verklaring || null
+        }
+      };
+    }
+  );
+
   // --- de redactielus, 22 september ---------------------------------------
   //
   // Annemarie beoordeelt niet alleen shops en labs, maar ook de teksten die
@@ -586,14 +789,19 @@ const TOOL_NAMEN = [
   'zoek_leverancier_coas', 'upload_coa', 'verifieer_coa',
   'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium',
   'nieuwe_signalen', 'markeer_gesignaleerd', 'beoordeel_naamkoppeling',
-  'geef_tekstfeedback', 'open_tekstoordelen', 'verwerk_tekstoordeel', 'schrijfregels'
+  'geef_tekstfeedback', 'open_tekstoordelen', 'verwerk_tekstoordeel', 'schrijfregels',
+  'toon_laboratoria', 'toon_leveranciers', 'toon_naamkoppelingen', 'toon_rapport', 'verklaar_tekst'
 ];
-function toolNamen() { return TOOL_NAMEN; }
+function toolNamen(rol) {
+  if (rol === 'redactie') return TOOL_NAMEN.filter((n) => REDACTIE_TOOLS.indexOf(n) !== -1);
+  return TOOL_NAMEN;
+}
 
-let serverPromise = null;
-function getServer() {
-  if (!serverPromise) serverPromise = buildServer();
-  return serverPromise;
+const serverPerRol = new Map();
+function getServer(rol) {
+  const sleutel = rol === 'redactie' ? 'redactie' : 'staf';
+  if (!serverPerRol.has(sleutel)) serverPerRol.set(sleutel, buildServer(sleutel));
+  return serverPerRol.get(sleutel);
 }
 
 let transportClassPromise = null;
@@ -640,7 +848,7 @@ const MCP_VOORBEELDPADEN = ['/mcp', '/mcp/v2', '/mcp/v3'];
 function mount(app) {
   app.post(MCP_PADEN, requireStaffToken, express.json({ limit: '25mb' }), async (req, res) => {
     try {
-      const [server, TransportClass] = await Promise.all([getServer(), getTransportClass()]);
+      const [server, TransportClass] = await Promise.all([getServer(req.mcpRol), getTransportClass()]);
       const transport = new TransportClass({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on('close', () => transport.close());
       await server.connect(transport);
@@ -652,4 +860,4 @@ function mount(app) {
   });
 }
 
-module.exports = { mount, toolNamen, MCP_PADEN, MCP_VOORBEELDPADEN };
+module.exports = { mount, toolNamen, MCP_PADEN, MCP_VOORBEELDPADEN, REDACTIE_TOOLS };

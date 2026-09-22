@@ -405,6 +405,14 @@ function waardenBlok(recordsIn) {
         toelichting: niveaus.GERAPPORTEERD_TOELICHTING
       });
     }
+    // "Wij zeggen niets" in plaats van "niet getest" of "ontbreekt". Dat is
+    // hetzelfde onderscheid als bij de rode vlaggen: wat wij niet hebben
+    // kunnen lezen is geen bevinding over de leverancier. De zin zegt daarom
+    // wat WIJ niet konden, niet wat de leverancier naliet.
+    //
+    // Alleen als er verder niets over die uitspraak te melden is. Staat er ook
+    // een geverifieerde of gerapporteerde waarde, dan is "wij zeggen niets"
+    // eenvoudig onwaar.
     if (t.niets && !t.geverifieerd && !t.gerapporteerd) {
       regels.push({
         onderdeel: o, stand: 'niets', aantal: t.niets,

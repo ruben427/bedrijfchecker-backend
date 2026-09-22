@@ -105,7 +105,7 @@ function dekking(kaalTekst) {
       vak.stukken.push([van, van + r.kaal.length]);
       van = kaalTekst.indexOf(r.kaal, van + 1);
     }
-    vak.regels.push({ regel: r.regel, fragment: r.fragment });
+    vak.regels.push({ regel: r.regel, fragment: r.fragment, lengte: r.kaal.length });
   });
 
   const uit = [];
@@ -120,7 +120,11 @@ function dekking(kaalTekst) {
     uit.push({
       bestand: vak.bestand,
       aandeel: kaalTekst.length ? Math.round((gedekt / kaalTekst.length) * 100) / 100 : 0,
-      regels: vak.regels.sort((a, b) => a.regel - b.regel).slice(0, 6)
+      // Op LENGTE gesorteerd, niet op regelnummer. Het langste fragment is de
+      // beste aanwijzing waar de zin echt staat; het laagste regelnummer is
+      // vaak een kort stukje dat toevallig eerder in het bestand voorkomt, en
+      // het commentaar daarboven hoort dan bij een heel andere functie.
+      regels: vak.regels.sort((a, b) => b.lengte - a.lengte).slice(0, 6)
     });
   });
   return uit.sort((a, b) => b.aandeel - a.aandeel);
@@ -165,4 +169,89 @@ function zoekHerkomst(tekst) {
   };
 }
 
-module.exports = { zoekHerkomst, register, kaal, dekking, BRONBESTANDEN };
+// --- waarom staat het er zo? -----------------------------------------------
+//
+// Annemarie gaat vragen wat een zin betekent, en dan is "hij staat in
+// blokken.js regel 396" geen antwoord. Zonder iets beters vult haar eigen
+// Claude het in met algemene kennis, en dat klinkt overtuigend terwijl het er
+// volledig naast kan zitten. Dat is erger dan geen antwoord.
+//
+// Het goede nieuws: het waarom staat er al. Dit bestand staat vol met de
+// reden boven de regel, meestal met haar eigen besluitnummer erbij. Dat
+// commentaarblok is dus het antwoord - we hoefden het alleen op te halen.
+//
+// Bewust het blok DIRECT erboven, zonder tussenliggende lege regel. Verder
+// omhoog zoeken levert het commentaar van de vorige functie op, en dat is een
+// uitleg bij iets anders.
+const BESLUITCODE = /\b(A\d{1,2}[a-z]?|L\d{2}|M\d{1,2}|C\d{2}|O\d{2}|B\d{2}|R\d{2})\b/g;
+
+function commentaarBoven(bestand, regelnummer) {
+  let inhoud;
+  try {
+    inhoud = fs.readFileSync(path.join(__dirname, bestand.replace(/^src\//, '')), 'utf8');
+  } catch (e) {
+    return null;
+  }
+  const regels = inhoud.split('\n');
+  const uit = [];
+  // Omhoog lopen vanaf de regel waar de zin staat. Codereglen onderweg worden
+  // overgeslagen: een lange zin wordt vaak over meerdere regels aan elkaar
+  // geplakt, en dan staat het commentaar niet direct erboven maar een paar
+  // regels hoger, boven de const.
+  //
+  // Bij een lege regel stoppen we wel. Daar houdt het blok op, en verder
+  // omhoog staat de uitleg van iets anders.
+  let overgeslagen = 0;
+  for (let i = regelnummer - 2; i >= 0; i--) {
+    const r = regels[i];
+    if (/^\s*\/\//.test(r)) { uit.unshift(r.replace(/^\s*\/\/ ?/, '')); continue; }
+    if (/^\s*$/.test(r)) break;
+    if (uit.length) break;              // commentaarblok is af
+    if (++overgeslagen > 14) break;     // te ver: dit hoort er niet meer bij
+  }
+  if (!uit.length) return null;
+  // Aaneengesloten stuk, en niet eindeloos: een blok van veertig regels leest
+  // niemand meer als antwoord op een vraag.
+  const tekst = uit.join('\n').trim();
+  return tekst.length > 2400 ? tekst.slice(-2400) : tekst;
+}
+
+function besluitenIn(tekst) {
+  const gevonden = String(tekst || '').match(BESLUITCODE) || [];
+  return [...new Set(gevonden)];
+}
+
+// Wat betekent deze tekst, en waarom staat het er zo?
+function verklaarTekst(tekst) {
+  const herkomst = zoekHerkomst(tekst);
+  if (herkomst.soort === 'gegenereerd') {
+    return Object.assign({}, herkomst, {
+      verklaring: null,
+      besluiten: [],
+      antwoord: 'Deze tekst staat niet in de code: hij is voor dit ene rapport door het model geschreven, ' +
+        'op grond van de bevindingen van die run. Er is dus geen vaste betekenis achter te zoeken. ' +
+        'Wil je dat zulke tekst anders gaat luiden, dan is een schrijfregel het middel - die geldt voor ' +
+        'alle volgende rapporten.'
+    });
+  }
+  if (!herkomst.bron || !herkomst.bron.regels || !herkomst.bron.regels.length) {
+    return Object.assign({}, herkomst, { verklaring: null, besluiten: [], antwoord: herkomst.uitleg || null });
+  }
+
+  // De hoogste regel van het gevonden blok: daar staat de uitleg boven.
+  const eerste = herkomst.bron.regels[0].regel;
+  const verklaring = commentaarBoven(herkomst.bron.bestand, eerste);
+  const besluiten = besluitenIn(verklaring);
+  return Object.assign({}, herkomst, {
+    verklaring,
+    besluiten,
+    antwoord: verklaring
+      ? ('Deze zin staat in ' + herkomst.bron.bestand + ' (rond regel ' + eerste + '). ' +
+         'De reden staat er in de code bij:\n\n' + verklaring +
+         (besluiten.length ? '\n\nGenoemde besluiten: ' + besluiten.join(', ') : ''))
+      : ('Deze zin staat in ' + herkomst.bron.bestand + ' (rond regel ' + eerste + '), maar er staat geen ' +
+         'uitleg bij in de code. Dat is zelf een bevinding: een zin naar buiten zonder opgeschreven reden.')
+  });
+}
+
+module.exports = { zoekHerkomst, verklaarTekst, commentaarBoven, besluitenIn, register, kaal, dekking, BRONBESTANDEN };

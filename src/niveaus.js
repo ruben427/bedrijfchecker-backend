@@ -90,6 +90,15 @@ function heeftIdentiteitsbepaling(r) {
   return identiteitStand(r) === IDENTITEIT.BEPAALD;
 }
 
+// De zin die hoort bij de derde stand van A14. Hij moet twee dingen tegelijk
+// doen: niet suggereren dat er iets mis is met het rapport, en ook niet
+// suggereren dat de identiteit vaststaat. Het rapport noemt de stof - dat is
+// waar - maar zonder methode kunnen wij die bepaling niet navoelen, en dan is
+// "vastgesteld" een woord dat wij niet mogen gebruiken.
+//
+// De HPLC-zin staat er met opzet in: dat is de meest voorkomende reden dat
+// deze stand optreedt, en zonder die uitleg leest de zin als een verwijt aan
+// een lab dat gewoon zijn werk heeft gedaan.
 const IDENTITEIT_TOELICHTING =
   'Het rapport noemt de identiteit van de stof, maar geen methode waarmee die bepaling na te gaan is. ' +
   'Een zuiverheids-HPLC alleen is daarvoor niet genoeg. Wij tonen dit als gerapporteerd, niet als vastgesteld.';
