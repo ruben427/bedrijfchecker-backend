@@ -459,7 +459,11 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
    logohoogte verandert:
 
      hoogte balk = ruimte boven de pill + 0,3746 x logohoogte
-                 = 14 + 0,3746 x 104 = 53px      (mobiel: 10 + 0,3746 x 74 = 38px)
+                 = 11 + 0,3746 x 80 = 41px
+
+   Het logo is overal 80px hoog - ook op desktop. Daardoor is er geen
+   media query meer nodig voor de balk: de verhouding is op elk scherm
+   dezelfde, en op 393px breed past het logo (250px breed) nog ruim.
 
    LET OP - hier stonden tot 22 september TWEE regels voor .site-logo img:
    eerst 104px, daarna 44px met een 56px-variant vanaf 900px. De tweede won,
@@ -467,23 +471,17 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
    middendoor. Een van de twee moest weg; dit is wat er over is. */
 .site-header{
   background:var(--surface); border-bottom:1px solid var(--border);
-  width:100%; height:53px; position:relative; z-index:2;
+  width:100%; height:41px; position:relative; z-index:2;
 }
 .site-header-inner{
   max-width:1040px; margin:0 auto; padding-inline:20px; height:100%;
-  display:flex; align-items:flex-start; padding-top:14px;
+  display:flex; align-items:flex-start; padding-top:11px;
 }
 .site-logo{ background:none; border:none; padding:0; cursor:pointer; display:inline-flex; line-height:0; }
-.site-logo img{ height:104px; width:auto; display:block; }
+.site-logo img{ height:80px; width:auto; display:block; }
 /* Ruimte onder de balk voor het deel van het logo dat eronder uitsteekt:
-   104 - 39 = 65px overhang, plus lucht. */
-.wrap{ padding-top:76px; }
-@media (max-width:640px){
-  .site-header{ height:38px; }
-  .site-header-inner{ padding-top:10px; }
-  .site-logo img{ height:74px; }
-  .wrap{ padding-top:56px; }
-}
+   11 + 80 - 41 = 50px overhang, plus lucht. */
+.wrap{ padding-top:60px; }
 
 .detail-head-slim{ margin:14px 0 4px; }
 .rapport{ display:flex; flex-direction:column; gap:22px; margin-top:18px; }
