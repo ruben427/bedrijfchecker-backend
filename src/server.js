@@ -81,7 +81,7 @@ app.get('/api/health', (req, res) => res.json({
   // Op welke paden het MCP-eindpunt luistert. Een connector die een oude
   // toollijst blijft tonen kan op een van deze paden opnieuw worden
   // aangemaakt; een pad dat de client nog niet kent haalt wel een verse lijst.
-  mcpPaden: mcpCoaServer.MCP_PADEN || ['/mcp']
+  mcpPaden: mcpCoaServer.MCP_VOORBEELDPADEN || mcpCoaServer.MCP_PADEN || ['/mcp']
 }));
 
 const caseAccess = auth.requireCaseAccess(db);

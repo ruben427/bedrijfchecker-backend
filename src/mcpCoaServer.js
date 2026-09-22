@@ -494,7 +494,27 @@ function getTransportClass() {
 // server er zes met eenentwintig velden had. Vier keer los- en vastkoppelen
 // veranderde niets. Een pad dat de client nog nooit heeft gezien dwingt wel een
 // verse lijst af. /mcp blijft werken voor wie al gekoppeld is.
-const MCP_PADEN = ['/mcp', '/mcp/v2'];
+//
+// 22 SEPTEMBER, TWEEDE KEER. Na het toevoegen van beoordeel_naamkoppeling gaf
+// de connector op /mcp/v2 nog steeds acht tools terug, ook na opnieuw
+// aanzetten en na een expliciete verversing. Op de server stond de negende
+// wel; dat is nagegaan via /api/admin/naamkoppelingen, dat alleen in de
+// nieuwe code bestaat en netjes om een token vroeg.
+//
+// Er komt dus elke keer een pad bij, en elke keer is dat een codewijziging
+// plus een deploy voordat iemand een connector kan maken. Daarom nu een
+// parameter in plaats van een lijst: /mcp/v3, /mcp/v4 en verder werken
+// meteen, zonder hier iets te veranderen. Wat er achter zit is elke keer
+// dezelfde server met dezelfde toollijst - het pad is alleen een manier om
+// de cache van de client te omzeilen.
+//
+// /mcp en /mcp/v2 blijven apart staan zodat bestaande connectoren blijven
+// werken; het patroon eronder vangt de rest.
+const MCP_PADEN = ['/mcp', '/mcp/v2', '/mcp/:versie'];
+
+// Wat er in de statusuitvoer en de documentatie moet staan: de paden die
+// iemand echt kan intypen, niet het patroon.
+const MCP_VOORBEELDPADEN = ['/mcp', '/mcp/v2', '/mcp/v3'];
 
 function mount(app) {
   app.post(MCP_PADEN, requireStaffToken, express.json({ limit: '25mb' }), async (req, res) => {
@@ -511,4 +531,4 @@ function mount(app) {
   });
 }
 
-module.exports = { mount, toolNamen, MCP_PADEN };
+module.exports = { mount, toolNamen, MCP_PADEN, MCP_VOORBEELDPADEN };
