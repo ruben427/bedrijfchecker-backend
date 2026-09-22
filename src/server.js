@@ -1051,6 +1051,16 @@ db.initSchema()
   }))
   .then(() => {
     if (!process.env.ADMIN_TOKEN) console.warn('LET OP: ADMIN_TOKEN is niet gezet — bestaande cases van vóór de eigenaarsmigratie zijn niet meer opvraagbaar.');
+    // Meteen bij het opstarten: elke case die nog op 'bezig' staat is van een
+    // vorig proces en draait dus niet meer. Bij een deploy is dat precies de
+    // situatie. Daarna elke vijf minuten, voor een run die binnen dit proces
+    // sneuvelt zonder zijn fout te kunnen wegschrijven.
+    pipeline.maakGestrandeRunsLos({ grensMs: 60 * 1000 }).catch(() => {});
+    const wachtdienst = setInterval(
+      () => { pipeline.maakGestrandeRunsLos().catch(() => {}); },
+      5 * 60 * 1000
+    );
+    wachtdienst.unref();
     app.listen(port, () => console.log('bedrijfchecker-backend luistert op poort ' + port));
   })
   .catch((e) => {

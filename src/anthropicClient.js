@@ -9,9 +9,17 @@ const Anthropic = require('@anthropic-ai/sdk');
 // geen oneindige hang zoals bij tavilyClient, maar 10 minuten "vast" op een
 // stap voelt voor Ruben nog steeds als hangen. 2 minuten is ruim voor een
 // enkele JSON-samplecall; instelbaar via ANTHROPIC_TIMEOUT_MS.
+//
+// maxRetries staat expliciet op 1 in plaats van de SDK-default 2. Dat is geen
+// detail: de timeout geldt PER POGING, dus met de default kon een enkele call
+// 3 x 120s duren, en sampleJsonSafe doet daarna nog een herkansing met een
+// andere prompt - samen twaalf minuten op een document. Precies wat de
+// COA-documentlus op 22 september liet vastlopen, want die lus kijkt pas naar
+// zijn tijdsbudget wanneer hij aan het volgende document begint.
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
-  timeout: Number(process.env.ANTHROPIC_TIMEOUT_MS) || 120000
+  timeout: Number(process.env.ANTHROPIC_TIMEOUT_MS) || 120000,
+  maxRetries: Number(process.env.ANTHROPIC_MAX_RETRIES) || 1
 });
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
@@ -93,12 +101,18 @@ async function sampleJson(prompt, opts) {
   // toch al kaal JSON, geen toelichting erbuiten), dus schakel het uit i.p.v.
   // te gokken hoeveel budget denken nodig heeft. max_tokens ook iets ruimer
   // gezet als marge voor stappen met veel velden (categorize, reportA/B).
+  // Per aanroep aanscherpbaar. De documentlus geeft hier een krappere waarde
+  // mee dan de standaard, omdat daar tien tot dertig documenten achter elkaar
+  // gaan: een enkel traag document mag de rest niet ophouden.
+  const verzoekOpties = {};
+  if (opts.timeoutMs) verzoekOpties.timeout = opts.timeoutMs;
+  if (opts.maxRetries != null) verzoekOpties.maxRetries = opts.maxRetries;
   const resp = await client.messages.create({
     model: MODEL,
     max_tokens: opts.maxTokens || 8192,
     thinking: { type: 'disabled' },
     messages: [{ role: 'user', content }]
-  });
+  }, verzoekOpties);
   const text = (resp.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
   let detail;
   if (!text) {

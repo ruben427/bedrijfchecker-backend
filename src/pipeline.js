@@ -45,6 +45,12 @@ const COA_RECORD_SCHEMA = 'Antwoord met JSON: {"coaRecords":[{"product":string,"
 // een gemiddelde van 45 seconden. Wat niet binnen het budget past wordt
 // overgeslagen EN gemeld - stilzwijgend stoppen is erger dan lang duren.
 const COA_LUS_BUDGET_MS = Number(process.env.COA_LUS_BUDGET_MS) || 6 * 60 * 1000;
+// Grens per document, niet voor de hele lus. Nodig omdat COA_LUS_BUDGET_MS
+// pas wordt getoetst wanneer de lus aan het VOLGENDE document begint: een
+// document dat blijft hangen, blokkeert de lus voorbij dat budget. Met deze
+// grens plus maxRetries 0 duurt een document hoogstens tweemaal deze waarde
+// (sampleJsonSafe doet nog een herkansing met een stelliger prompt).
+const COA_DOC_TIMEOUT_MS = Number(process.env.COA_DOC_TIMEOUT_MS) || 90 * 1000;
 const LAB_VERIFY_MAX = Number(process.env.LAB_VERIFY_MAX) || 30;
 
 // Het model kent de dag van vandaag niet. Zonder die regel las het een
@@ -558,6 +564,57 @@ async function ensureNotStopped(caseId) {
     throw err;
   }
 }
+// Een gestrande run losmaken.
+//
+// De pipeline draait fire-and-forget in het geheugen van dit proces. Gaat het
+// proces om - een deploy, een herstart, een crash - dan is de run weg, maar
+// de case staat in de database nog op 'bezig'. Voor altijd: geen fout, geen
+// voortgang, geen manier om te zien dat er niets meer gebeurt. Dat is een
+// zombie, en een bezoeker ziet dan een rapport dat nooit klaar komt.
+//
+// Dit overkwam retaeu op 22 september: achttien minuten stil op document 24,
+// precies toen een deploy de server herstartte.
+//
+// Wat hier gebeurt: elke case die op 'bezig' staat en waarvan de laatste
+// wijziging langer dan STRANDING_MS geleden is, krijgt status 'gestopt' met
+// een uitlegbare melding. De case blijft intact en is met /rerun weer op te
+// pakken; er gaat niets verloren.
+//
+// LET OP: alleen cases die dit proces NIET zelf draait. Een lopende run wordt
+// herkend aan stapLog, dat bij elke stap wordt bijgewerkt.
+const STRANDING_MS = Number(process.env.STRANDING_MS) || 15 * 60 * 1000;
+
+async function maakGestrandeRunsLos(opties) {
+  const grens = Date.now() - ((opties && opties.grensMs) || STRANDING_MS);
+  const losgemaakt = [];
+  let cases;
+  try {
+    cases = await db.listCases();
+  } catch (e) {
+    console.error('Kon niet op gestrande runs controleren:', (e && e.message) || e);
+    return losgemaakt;
+  }
+  for (const c of cases) {
+    if (!c || c.status !== 'bezig') continue;
+    if (stapLog.has(c.id)) continue;               // draait in dit proces
+    if (Number(c.updatedAt) > grens) continue;     // recent nog iets gedaan
+    try {
+      await db.updateCase(c.id, {
+        status: 'gestopt',
+        currentStep: null,
+        error: 'De analyse is halverwege afgebroken, waarschijnlijk doordat de server opnieuw startte. Er is niets verloren: start de check opnieuw.'
+      });
+      losgemaakt.push({ id: c.id, website: c.website, stilSinds: Math.round((Date.now() - Number(c.updatedAt)) / 1000) });
+    } catch (e) {
+      console.error('Kon gestrande case ' + c.id + ' niet losmaken:', (e && e.message) || e);
+    }
+  }
+  if (losgemaakt.length) {
+    console.warn('Gestrande runs losgemaakt: ' + losgemaakt.map((x) => x.website + ' (' + x.stilSinds + 's stil)').join(', '));
+  }
+  return losgemaakt;
+}
+
 async function stopAudit(caseId) {
   stapLog.delete(caseId);
   await db.updateCase(caseId, { status: 'gestopt', currentStep: null });
@@ -1218,7 +1275,10 @@ async function runResearchStep(caseId, ctx, key) {
       try {
         const autofetchPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde document, automatisch opgehaald van ' + url + ', dat volgens eerder onderzoek een COA (certificate of analysis) zou moeten bevatten voor leverancier ' + ctx.naam + '. Lees uitsluitend letterlijk wat in het document staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt dit document GEEN COA te zijn (bijv. een algemene productpagina of iets anders), geef dan een lege coaRecords-array terug.\n\nAntwoord met JSON: {"coaRecords":[{"product":string,"claimedQuantity":number|null,"claimedUnit":string,"measuredQuantity":number|null,"measuredUnit":string,"purityPercent":number|null,"purityMethod":string,"identiteitsmethode":string,"identiteitBevestigd":true|false|null,"identiteitGetoetstTegen":string,"blindTest":true|false|null,"batchnummer":string,"reportId":string,"verificationKey":string,"laboratorium":string,"orderDate":string,"receivedDate":string,"analysisDate":string,"reportDate":string,"sterility":{"tested":true|false|null,"result":string,"method":string,"norm":string},"endotoxin":{"tested":true|false|null,"result":string,"unit":string,"norm":string},"zwareMetalen":{"tested":true|false|null,"resultaten":[{"metaal":string,"resultaat":string,"norm":string,"unit":string}]},"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null},"componenten":[{"stof":string,"gemetenMg":number|null,"geclaimdMg":number|null,"metaalcomplex":{"metaal":string,"totaalMg":number|null,"peptideMg":number|null,"metaalMg":number|null}}],"vialen":[{"gemetenMg":number|null,"purityPercent":number|null}],"overigeContaminanten":[{"parameter":string,"resultaat":string,"unit":string,"norm":string}],"verificatieDomein":string,"verificatieInstructie":string}]}';
         noteer(url, 'wordt gelezen');
-        const autofetchData = await sampleJsonSafe(autofetchPrompt, { documents: [doc], label: 'coaDataset-autofetch' });
+        const autofetchData = await sampleJsonSafe(autofetchPrompt, {
+          documents: [doc], label: 'coaDataset-autofetch',
+          timeoutMs: COA_DOC_TIMEOUT_MS, maxRetries: 0
+        });
         const autofetchRecords = ((autofetchData && autofetchData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: url, uit: 'auto-fetch', sha256: (observation && observation.sha256) || docSha }));
         if (observation && observation.sha256) {
           const first = autofetchRecords[0] || {};
@@ -2013,7 +2073,7 @@ async function runDeepTier(caseId, ctx) {
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
   filterRodeVlaggen, schoonKlasse,
-  ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
+  ensureNotStopped, stopAudit, maakGestrandeRunsLos, STRANDING_MS, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
   extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,
   toetsZuiverheidsbelofte,
   // Uitsluitend om na te kunnen rekenen wat de twee assen met een rapport doen:
