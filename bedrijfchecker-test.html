@@ -24,44 +24,9 @@
     border-radius:999px; padding:4px 14px; white-space:nowrap;
   }
 
-  /* --- Het logo in de header --------------------------------------------
-     Regel van Ruben: de scheiding tussen neutrals/25 (de balk, wit) en
-     neutrals/50 (de pagina, #F9F9F8) valt in het MIDDEN van de paarse pill.
-     Het logo steekt dus onder de balk uit; de regel "LEVERANCIER CHECKER"
-     hangt helemaal op de paginakleur.
-
-     Gemeten aan het logo zoals het op de server staat (viewBox 0 0 259 83):
-       pill      y 0    tot 62,1
-       PEPPROOF  y 16,8 tot 45,3   (wit, in de pill)
-       ondertitel y 74  tot 82,9   (paars, onder de pill)
-     Het midden van de pill zit dus op 31,05 van 82,9 = 37,46% van de
-     logohoogte. Daaruit volgt alles:
-
-       hoogte balk = ruimte boven de pill + 0,3746 x logohoogte
-                   = 14 + 0,3746 x 104 = 53px
-
-     LET OP - in bedrijfchecker.css staat .site-logo img TWEE keer: 104px op
-     r454 (met de comment "ruimte onder de balk voor het deel van het logo dat
-     eronder uitsteekt") en daarna 44/56px op r463-464. De tweede wint, en
-     daardoor viel de rand net onder de pill in plaats van er middendoor. Een
-     specifiekere selector zet dat hier recht; in de live css hoort een van de
-     twee regels weg.
-
-     LET OP 2 - het PEPPROOF-LOGO.svg in deze repo is OUDER dan dat op de
-     server: 258x80 met de ondertitel IN de pill, tegen 259x83 met de
-     ondertitel eronder. Deze maten horen bij het serverbestand. Haal de
-     nieuwe op via SFTP, anders klopt de verhouding lokaal niet. */
-  .site-header{ height:53px; }
-  .site-header-inner{ align-items:flex-start; padding-top:14px; }
-  .site-header .site-logo img{ height:104px; width:auto; display:block; }
-  .wrap{ padding-top:76px; }   /* 65px overhang + lucht */
-
-  @media (max-width:640px){
-    .site-header{ height:38px; }
-    .site-header-inner{ padding-top:10px; }
-    .site-header .site-logo img{ height:74px; }
-    .wrap{ padding-top:56px; }
-  }
+  /* Het logo en de balk staan nu goed in bedrijfchecker.css - de dubbele
+     .site-logo img-regel is daar weg en de maten zijn gemeten aan het echte
+     logo. Hier dus niets meer over te zeggen. */
 
   .check-form{
     display:flex; flex-direction:column; align-items:flex-start;

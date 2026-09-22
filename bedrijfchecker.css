@@ -443,25 +443,47 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 /* De balk bovenaan loopt over de volle breedte en eindigt halverwege het
    logo: het logo hangt er met zijn onderste helft onderuit, zoals in het
    ontwerp. De balk heeft daarom een vaste hoogte en het logo mag eroverheen. */
+/* De scheiding tussen de balk (neutrals/25) en de pagina (neutrals/50) valt in
+   het MIDDEN van de paarse pill. Het logo steekt dus onder de balk uit en de
+   regel "LEVERANCIER CHECKER" hangt helemaal op de paginakleur.
+
+   Gemeten in Chrome aan PEPPROOF-LOGO.svg zoals het op de server staat
+   (viewBox 0 0 259 83):
+
+     pill        y 0    tot 62,1
+     PEPPROOF    y 16,8 tot 45,3   wit, in de pill
+     ondertitel  y 74   tot 82,9   paars, onder de pill
+
+   Het midden van de pill ligt op 31,05 van 82,9 = 37,46% van de logohoogte.
+   Daaruit volgt de balkhoogte, en die verhouding moet blijven kloppen als de
+   logohoogte verandert:
+
+     hoogte balk = ruimte boven de pill + 0,3746 x logohoogte
+                 = 14 + 0,3746 x 104 = 53px      (mobiel: 10 + 0,3746 x 74 = 38px)
+
+   LET OP - hier stonden tot 22 september TWEE regels voor .site-logo img:
+   eerst 104px, daarna 44px met een 56px-variant vanaf 900px. De tweede won,
+   dus het logo stond op 56 en de rand viel net onder de pill in plaats van er
+   middendoor. Een van de twee moest weg; dit is wat er over is. */
 .site-header{
   background:var(--surface); border-bottom:1px solid var(--border);
-  width:100%; height:52px; position:relative; z-index:2;
+  width:100%; height:53px; position:relative; z-index:2;
 }
 .site-header-inner{
   max-width:1040px; margin:0 auto; padding-inline:20px; height:100%;
-  display:flex; align-items:flex-start;
-}
-.site-logo img{ height:104px; width:auto; display:block; margin-top:0; }
-/* Ruimte onder de balk voor het deel van het logo dat eronder uitsteekt. */
-.wrap{ padding-top:64px; }
-@media (max-width:640px){
-  .site-header{ height:40px; }
-  .site-logo img{ height:78px; }
-  .wrap{ padding-top:48px; }
+  display:flex; align-items:flex-start; padding-top:14px;
 }
 .site-logo{ background:none; border:none; padding:0; cursor:pointer; display:inline-flex; line-height:0; }
-.site-logo img{ height:44px; width:auto; display:block; }
-@media (min-width:900px){ .site-logo img{ height:56px; } }
+.site-logo img{ height:104px; width:auto; display:block; }
+/* Ruimte onder de balk voor het deel van het logo dat eronder uitsteekt:
+   104 - 39 = 65px overhang, plus lucht. */
+.wrap{ padding-top:76px; }
+@media (max-width:640px){
+  .site-header{ height:38px; }
+  .site-header-inner{ padding-top:10px; }
+  .site-logo img{ height:74px; }
+  .wrap{ padding-top:56px; }
+}
 
 .detail-head-slim{ margin:14px 0 4px; }
 .rapport{ display:flex; flex-direction:column; gap:22px; margin-top:18px; }
