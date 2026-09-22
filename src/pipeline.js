@@ -17,7 +17,7 @@ const ilsLab = require('./ilsLab');
 // (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
 // betekent dat alle eerder gelezen COA's opnieuw door vision gaan.
 const COA_EXTRACTOR_VERSION = 'coa-read-1';
-const { runScoringEngine, computeQuantity, CATEGORY_DEFS } = require('./scoringEngine');
+const { runScoringEngine, computeQuantity, CATEGORY_DEFS, roodGedragen } = require('./scoringEngine');
 const { bouwBlokken } = require('./blokken');
 // Het aantal categorieen stond op vier plekken los ingetypt. Hier komt het
 // uit de lijst zelf, zodat het label niet stilletjes verloopt zodra er een
@@ -1747,6 +1747,39 @@ async function applyScoringEngine(caseId) {
   return engineResult;
 }
 
+// Dezelfde toets als filterRood() in de scoringEngine, maar dan op de rode
+// vlaggen die het model in de rapporttekst schrijft. Rood moet een
+// vaststelling zijn: iets dat is aangetoond. Een vlag die alleen rust op wat
+// NIET kon worden vastgesteld ("niet te verifieren", "ontbreekt",
+// "onleesbaar", "klasse C") is geen rode vlag maar een openstaand punt, en
+// verhuist naar nietVerifieerbaar. De tekst blijft dus staan, alleen niet
+// langer als beschuldiging.
+function filterRodeVlaggen(report) {
+  if (!report || !Array.isArray(report.rodeVlaggen)) return report;
+  const gedragen = [];
+  const verplaatst = [];
+  report.rodeVlaggen.forEach((v) => {
+    if (!v) return;
+    const tekst = [v.omschrijving, v.titel, v.bron].filter(Boolean).join(' ');
+    if (roodGedragen(tekst)) { gedragen.push(v); return; }
+    verplaatst.push(v);
+  });
+  if (!verplaatst.length) return report;
+  const open = Array.isArray(report.nietVerifieerbaar) ? report.nietVerifieerbaar.slice() : [];
+  verplaatst.forEach((v) => {
+    const t = String((v && (v.omschrijving || v.titel)) || '').trim();
+    if (t && open.indexOf(t) === -1) open.push(t);
+  });
+  report.rodeVlaggen = gedragen;
+  report.nietVerifieerbaar = open;
+  report.rodeVlaggenAfgekeurd = verplaatst.map((v) => ({
+    omschrijving: (v && (v.omschrijving || v.titel)) || null,
+    bron: (v && v.bron) || null,
+    reden: 'rood rustte uitsluitend op wat niet kon worden vastgesteld; verplaatst naar openstaande punten'
+  }));
+  return report;
+}
+
 async function runSynthesis(caseId, ctx, tier) {
   const c = await db.getCase(caseId);
   const phaseData = c.phaseData || {};
@@ -1790,7 +1823,7 @@ async function runSynthesis(caseId, ctx, tier) {
   const reportB = await sampleJsonSafe(promptB, { label: 'reportB' });
   await finishStep(caseId, 'reportB', startedB);
 
-  const report = Object.assign({}, reportA, reportB);
+  const report = filterRodeVlaggen(Object.assign({}, reportA, reportB));
   await db.updateCase(caseId, { report });
 }
 
@@ -1857,6 +1890,7 @@ async function runDeepTier(caseId, ctx) {
 
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
+  filterRodeVlaggen,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
   extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,
   toetsZuiverheidsbelofte,

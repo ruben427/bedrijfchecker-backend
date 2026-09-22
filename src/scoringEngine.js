@@ -188,7 +188,7 @@ const ROOD_ZONDER_BEWIJS = [
   /onleesbaar/i,
   /unreadable/i,
   /unavailable/i,
-  /ontbrek/i,                     // ontbreekt, ontbrekend, het ontbreken van
+  /ontbre(e)?k/i,                 // ontbreekt, ontbrekend, het ontbreken van
   /geen bruikbare/i,
   /niet gevonden/i,
   /klasse ['"]?C['"]?/i,
