@@ -408,8 +408,19 @@ function requireLezer(req, res, next) {
   return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders of met een leestoken.' });
 }
 
-// Wie mag een laboratorium beoordelen? Beheerders, en houders van het
-// leestoken.
+// Wie mag een laboratorium beoordelen? Beheerders en beoordelaars.
+//
+// HERZIEN 22 SEPTEMBER. Hier stond dat het LEESTOKEN dit ook mocht, als
+// bewuste uitzondering: het labooordeel is Annemarie's werk, zij werkt in een
+// browser en niet in een chat, en haar het beheerderstoken geven zou haar ook
+// uploads en resolverruns geven.
+//
+// Die reden is vervallen: zij heeft nu een eigen sleutel met precies die rol
+// (COA_REDACTIE_TOKEN). Daarmee kan het leestoken terug naar wat de naam
+// belooft - alleen kijken. Een token dat "alleen lezen" heet en toch iets kan
+// vastleggen is een verrassing die je op het verkeerde moment ontdekt.
+//
+// De oude uitleg, voor de volledigheid:
 //
 // LET OP - dit is de ENIGE route waar het leestoken iets mag veranderen, en
 // dat is een bewuste uitzondering. Het token heette "alleen lezen" en dat
@@ -421,8 +432,13 @@ function requireLezer(req, res, next) {
 // Wat het leestoken hier NIET mag: een oordeel wissen. Alleen vastleggen en
 // bijwerken, en elk oordeel draagt de naam van wie het vastlegde.
 function requireBeoordelaar(req, res, next) {
-  if (req.isAdmin || req.isViewer) return next();
-  return res.status(403).json({ error: 'forbidden', message: 'Alleen toegankelijk voor beheerders of met een leestoken.' });
+  if (req.isAdmin || req.isBeoordelaar) return next();
+  return res.status(403).json({
+    error: 'forbidden',
+    message: req.isLezer
+      ? 'Je kijkt mee met een leestoken. Daarmee kun je niets vastleggen.'
+      : 'Alleen toegankelijk voor beheerders en beoordelaars.'
+  });
 }
 
 // Alle laboratoria die we tegenkomen, met wat we erover weten en twee
@@ -497,8 +513,8 @@ app.post('/api/admin/laboratoria/beoordeling', rl.caseAction, auth.requireOwnerT
 // mensen die hetzelfde token gebruiken zijn voor de server dezelfde.
 app.get('/api/admin/wie-ben-ik', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   res.json({
-    rol: req.isAdmin ? 'beheerder' : 'beoordelaar',
-    magBeoordelen: true,
+    rol: req.rol || 'lezer',
+    magBeoordelen: !!(req.isAdmin || req.isBeoordelaar),
     magUploaden: !!req.isAdmin,
     // Zodat de pagina niet zelf hoeft te weten wat er bestaat.
     labStatussen: coaStore.LAB_STATUSSEN,

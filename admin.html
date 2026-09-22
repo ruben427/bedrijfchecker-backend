@@ -156,6 +156,22 @@
   .aanmelden .uitleg{ font-size:.82rem; color:var(--text-muted); margin:6px 0 0; line-height:1.45; }
   .fout{ color:var(--danger,#cf2443); font-size:.88rem; margin-top:12px; }
   .verborgen{ display:none !important; }
+
+  /* Alleen kijken. De lijsten en de tellingen blijven gewoon staan - daar is
+     niets mis mee - maar de doorkliks naar de beoordelingspagina's worden
+     gedempt. De server weigert daar toch, en een knop die pas bij het
+     opslaan nee zegt is een slechtere mededeling dan een knop die het meteen
+     laat zien. */
+  body.alleen-kijken .nieuw-item,
+  body.alleen-kijken .rij{ pointer-events:none; }
+  body.alleen-kijken .rij .naam{ color:var(--text-muted); }
+  body.alleen-kijken .inzicht.aandacht .v{ color:var(--text); }
+  .kijkbalk{
+    margin:0 0 20px; padding:10px 14px; border-radius:var(--radius-md,12px);
+    background:var(--surface-2); border:1px solid var(--border);
+    font-size:.86rem; color:var(--text-muted); line-height:1.45;
+  }
+  body:not(.alleen-kijken) .kijkbalk{ display:none; }
 </style>
 
 <header class="site-header">
@@ -179,6 +195,7 @@
       <option value="">Kies je naam</option>
       <option value="Annemarie">Annemarie</option>
       <option value="Ruben">Ruben</option>
+      <option value="Viewer">Viewer (alleen kijken)</option>
     </select>
     <p class="uitleg">Komt bij elk oordeel te staan, zodat later na te gaan is wie wat heeft vastgesteld.</p>
     <label for="tk">Toegangssleutel</label>
@@ -204,6 +221,9 @@
         <div class="nieuw-lade" id="nieuwLade"></div>
       </div>
     </div>
+
+    <p class="kijkbalk">Je kijkt mee met een leestoken. Alles is zichtbaar, maar je kunt niets
+      vastleggen - geen labstanden, geen beoordelingen, geen tekstcorrecties.</p>
 
     <div class="inzichten" id="inzichten"></div>
 
@@ -278,7 +298,7 @@
   // rol - niet het keuzelijstje. Kiest iemand de verkeerde naam bij zijn eigen
   // sleutel, dan zeggen we dat, want die naam komt onder zijn oordelen te
   // staan en is achteraf niet meer te corrigeren zonder het oordeel te raken.
-  var NAAM_BIJ_ROL = { beheerder: 'Ruben', beoordelaar: 'Annemarie' };
+  var NAAM_BIJ_ROL = { beheerder: 'Ruben', beoordelaar: 'Annemarie', lezer: 'Viewer' };
 
   function aanmelden(t, n) {
     token = t; naam = n;
@@ -298,7 +318,10 @@
       el('aanmelden').classList.add('verborgen');
       el('binnen').classList.remove('verborgen');
       el('ikNaam').firstChild.nodeValue = n || '—';
-      el('ikRol').textContent = rol;
+      el('ikRol').textContent = rol === 'lezer' ? 'alleen kijken' : rol;
+      // Een lezer mag alles zien en niets vastleggen. Dat staat er, in plaats
+      // van dat hij het ontdekt als een knop 403 teruggeeft.
+      document.body.classList.toggle('alleen-kijken', rol === 'lezer');
       el('ikBol').textContent = (n || '?').trim().charAt(0).toUpperCase() || '?';
       return laden();
     });

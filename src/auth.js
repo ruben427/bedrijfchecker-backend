@@ -71,6 +71,21 @@ function leestokenGeldig() {
   return tokenGeldig('VIEWER_TOKEN');
 }
 
+// DRIE ROLLEN, 22 september. Er zijn drie sleutels en ze doen alle drie iets
+// anders:
+//
+//   ADMIN_TOKEN          beheerder    alles, inclusief uploaden, resolverruns
+//                                     en de audit trace
+//   COA_REDACTIE_TOKEN   beoordelaar  kijken en oordelen: labstanden,
+//                                     naamkoppelingen, teksten
+//   VIEWER_TOKEN         lezer        alleen kijken, niets aanpassen
+//
+// Tot vandaag mocht het leestoken wel degelijk iets veranderen - het
+// labooordeel - en dat was een bewuste uitzondering met een reden: het
+// labooordeel is Annemarie's werk en zij had geen eigen sleutel. Die reden is
+// er niet meer, want die sleutel bestaat nu. De uitzondering is daarmee weg en
+// 'alleen lezen' betekent weer wat het zegt.
+//
 // Twee sleutels voor dezelfde rol, 22 september.
 //
 // De beoordelaar werkt op twee plekken: op de stafpagina's (deze HTTP-kant) en
@@ -84,11 +99,28 @@ function leestokenGeldig() {
 // LET OP de grens die blijft staan: dit geeft de REDACTIEROL op de HTTP-kant,
 // niet de beheerdersrol. Uploaden, resolverruns en de audit trace hangen aan
 // ADMIN_TOKEN en dat verandert hier niet.
-function isViewer(req) {
+function pastBij(req, naam) {
   const token = readToken(req);
   if (!token) return false;
-  const sleutels = [leestokenGeldig(), tokenGeldig('COA_REDACTIE_TOKEN')].filter(Boolean);
-  return sleutels.some((s) => safeEqual(token, s));
+  const sleutel = tokenGeldig(naam);
+  if (!sleutel) return false;
+  return safeEqual(token, sleutel);
+}
+
+// De beoordelaar: kijken en oordelen.
+function isBeoordelaar(req) {
+  return pastBij(req, 'COA_REDACTIE_TOKEN');
+}
+
+// De lezer: alleen kijken.
+function isLezer(req) {
+  return pastBij(req, 'VIEWER_TOKEN');
+}
+
+// Blijft bestaan en betekent nog steeds "geen beheerder, wel binnen". Wordt
+// gebruikt waar het alleen om toegang tot LEZEN gaat.
+function isViewer(req) {
+  return isBeoordelaar(req) || isLezer(req);
 }
 
 function isAdmin(req) {
@@ -102,7 +134,10 @@ function isAdmin(req) {
 // Vereist een geldig owner token. Zet req.ownerTokenHash / req.isAdmin.
 function requireOwnerToken(req, res, next) {
   req.isAdmin = isAdmin(req);
-  req.isViewer = !req.isAdmin && isViewer(req);
+  req.isBeoordelaar = !req.isAdmin && isBeoordelaar(req);
+  req.isLezer = !req.isAdmin && !req.isBeoordelaar && isLezer(req);
+  req.isViewer = req.isBeoordelaar || req.isLezer;
+  req.rol = req.isAdmin ? 'beheerder' : (req.isBeoordelaar ? 'beoordelaar' : (req.isLezer ? 'lezer' : null));
   if (req.isAdmin || req.isViewer) {
     req.ownerTokenHash = null;
     return next();
@@ -138,4 +173,4 @@ function requireCaseAccess(db) {
   };
 }
 
-module.exports = { hashToken, readToken, isAdmin, isViewer, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual, MIN_LEESTOKEN, tokenGeldig };
+module.exports = { hashToken, readToken, isAdmin, isViewer, isBeoordelaar, isLezer, isPlausibleToken, requireOwnerToken, requireCaseAccess, safeEqual, MIN_LEESTOKEN, tokenGeldig };
