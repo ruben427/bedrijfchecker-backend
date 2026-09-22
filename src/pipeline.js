@@ -2128,7 +2128,28 @@ async function runSynthesis(caseId, ctx, tier) {
       }
     } : {}
   ));
-  const contextHeader = EVIDENCE_RULES + '\n\nSamengevatte per-fase bevindingen voor leverancier ' + ctx.naam + ' (' + ctx.website + '), JSON:\n' + slimJson + '\n\n' +
+  // De redactielus komt hier binnen. Annemarie corrigeert teksten; uit die
+  // correcties leiden wij regels af, en zonder deze regel bereikten die regels
+  // de gegenereerde tekst nooit - dan was de hele lus een archief.
+  //
+  // LET OP de grens, en die staat er met opzet hard bij. Deze regels gaan over
+  // FORMULERING. Een regel die zegt hoe je iets opschrijft is in orde; een
+  // regel die zegt wat de uitkomst moet zijn verandert de methodiek via de
+  // tekst, en dat is precies de achterdeur die je niet wilt. De uitkomst komt
+  // uit de deterministische engine en die staat hierboven al vast.
+  const regels = await coaStore.schrijfregels({ geldtVoor: 'rapport' }).catch(() => []);
+  const regelBlok = regels.length
+    ? 'Schrijfregels, vastgelegd door de redactie naar aanleiding van eerdere rapporten. ' +
+      'Deze gaan UITSLUITEND over formulering: woordkeus, lengte, toon, en wat je wel en niet mag beweren. ' +
+      'Ze veranderen NOOIT de uitkomst, de kleur, de score of het oordeel - die staan hierboven al vast en ' +
+      'zijn deterministisch berekend. Komt een regel hiermee in strijd, volg dan de uitkomst en niet de regel.\n' +
+      regels.map((r, i) => (i + 1) + '. ' + r.regel +
+        (r.voorbeeldVoor ? '\n   niet zo: ' + r.voorbeeldVoor : '') +
+        (r.voorbeeldNa ? '\n   wel zo: ' + r.voorbeeldNa : '')).join('\n') + '\n\n'
+    : '';
+
+  const contextHeader = EVIDENCE_RULES + '\n\n' + regelBlok +
+    'Samengevatte per-fase bevindingen voor leverancier ' + ctx.naam + ' (' + ctx.website + '), JSON:\n' + slimJson + '\n\n' +
     'Reeds vastgestelde categoriebeoordelingen (kleur/onderbouwing per categorie, door een eerdere stap bepaald, JSON):\n' + categorySummary + '\n\n' +
     'Reeds berekende gate/score (deterministisch, niet herinterpreteren of een eigen score noemen, JSON):\n' + engineSummary + '\n\n';
 

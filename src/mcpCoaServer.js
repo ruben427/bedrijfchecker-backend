@@ -385,6 +385,126 @@ async function buildServer() {
     }
   );
 
+  // --- de redactielus, 22 september ---------------------------------------
+  //
+  // Annemarie beoordeelt niet alleen shops en labs, maar ook de teksten die
+  // eruit komen. Afgesproken werkwijze: zij kopieert wat er staat en schrijft
+  // eronder wat het moet zijn. Deze tool vangt dat paar op EN vertelt haar
+  // meteen waar die tekst vandaan komt, want dat bepaalt wat er kan gebeuren.
+  server.registerTool(
+    'geef_tekstfeedback',
+    {
+      title: 'Zeg wat een tekst zou moeten zijn',
+      description: 'Voor het redigeren van de teksten die PepProof naar buiten brengt. Plak de tekst zoals hij er staat in origineel, en schrijf in gewenst hoe hij zou moeten luiden. De server zoekt zelf uit waar die tekst vandaan komt en zegt dat terug, want dat maakt uit: een VASTE zin staat letterlijk in de code en verandert in elk rapport tegelijk zodra iemand hem aanpast, terwijl GEGENEREERDE tekst per run door het model wordt geschreven en alleen via een schrijfregel te sturen is. Geef de leverancier mee als je de tekst in een concreet rapport zag - zonder die context is een zin later moeilijk terug te vinden. Dit legt alleen vast; de verwerking gebeurt daarna met de hand.',
+      inputSchema: z.object({
+        origineel: z.string().min(12).describe('De tekst precies zoals hij er staat. Liever een hele zin dan een half stuk: aan losse woorden is de herkomst niet te zien.'),
+        gewenst: z.string().min(3).describe('Hoe de tekst zou moeten luiden. Mag ook een aanwijzing zijn in plaats van een voltooide zin, bijvoorbeeld "korter, en niet suggereren dat wij het zelf hebben gemeten".'),
+        toelichting: z.string().optional().describe('Waarom. Dit is het belangrijkste veld voor het leren: uit de reden valt een regel af te leiden die ook op andere teksten werkt, uit alleen de nieuwe zin niet.'),
+        leverancier: z.string().optional().describe('De shop waar je deze tekst zag, bijvoorbeeld omegapeptides.eu'),
+        caseId: z.string().optional().describe('Het id van de controle, als je dat bij de hand hebt'),
+        door: z.string().min(1).describe('Je naam')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
+    },
+    async (a) => {
+      const opgeslagen = await coaStore.saveTekstoordeel(a);
+      if (!opgeslagen) {
+        return { content: [{ type: 'text', text: 'Opslaan mislukt. Controleer origineel, gewenst en door.' }] };
+      }
+      const h = opgeslagen.herkomst || {};
+      const regels = [];
+      regels.push('Vastgelegd.');
+      regels.push('');
+      regels.push('Herkomst: ' + (h.soort || 'onbekend') + '. ' + (h.uitleg || ''));
+      if (h.soort === 'gegenereerd') {
+        regels.push('');
+        regels.push('Let op: een correctie op deze tekst verandert niets zolang er geen schrijfregel van gemaakt is. ' +
+          'De reden die je meegaf is daarvoor het belangrijkste - daaruit komt de regel.');
+      }
+      return {
+        content: [{ type: 'text', text: regels.join('\n') }],
+        structuredContent: { id: opgeslagen.id, soort: h.soort || null, bron: h.bron || null }
+      };
+    }
+  );
+
+  server.registerTool(
+    'open_tekstoordelen',
+    {
+      title: 'Welke tekstcorrecties wachten nog',
+      description: 'Geeft de aangeleverde tekstcorrecties terug die nog niet zijn verwerkt, met de herkomst die de server erbij heeft gezocht. Bedoeld voor wie ze doorvoert: lees dit, pas de tekst of de prompt aan, en sluit ze daarna af met verwerk_tekstoordeel.',
+      inputSchema: z.object({
+        status: z.enum(['open', 'verwerkt', 'afgewezen']).optional().describe('Standaard open'),
+        max: z.number().optional().describe('Standaard 50')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const lijst = await coaStore.tekstoordelen({ status: a.status || 'open', max: a.max });
+      const tekst = lijst.length
+        ? lijst.map((t) => '- [' + t.soort + '] ' + (t.leverancier ? '(' + t.leverancier + ') ' : '') +
+            '"' + String(t.origineel).slice(0, 120) + '" -> "' + String(t.gewenst).slice(0, 120) + '"' +
+            (t.toelichting ? ' | reden: ' + t.toelichting : '') + ' | id ' + t.id).join('\n')
+        : 'Geen openstaande tekstcorrecties.';
+      return { content: [{ type: 'text', text: tekst }], structuredContent: { aantal: lijst.length, oordelen: lijst } };
+    }
+  );
+
+  server.registerTool(
+    'verwerk_tekstoordeel',
+    {
+      title: 'Sluit een tekstcorrectie af en leg de regel vast',
+      description: 'Markeert een tekstcorrectie als verwerkt en legt er optioneel een SCHRIJFREGEL bij vast. Die regel is het punt van de hele lus: een correctie die alleen die ene zin verbetert leert niets, een regel geldt voor alle tekst die daarna wordt geschreven. Formuleer de regel dus algemeen en zet het oorspronkelijke paar erbij als voorbeeld. LET OP de grens: een schrijfregel gaat over formulering - woordkeus, lengte, toon, wat je wel en niet mag beweren. Nooit over de uitkomst. Een regel die een leverancier gunstiger of ongunstiger laat klinken dan het bewijs toestaat verandert de methodiek via de achterdeur en hoort hier niet.',
+      inputSchema: z.object({
+        id: z.string().min(8).describe('Het id uit open_tekstoordelen'),
+        status: z.enum(['verwerkt', 'afgewezen']).optional().describe('Standaard verwerkt. Afgewezen als de correctie niet is doorgevoerd - zet dan in notitie waarom.'),
+        notitie: z.string().optional().describe('Wat er is gedaan, of waarom niet'),
+        regel: z.string().optional().describe('De algemene regel die hieruit volgt, bijvoorbeeld "schrijf nooit dat wij iets hebben gemeten; wij lezen wat er in het document staat"'),
+        voorbeeldVoor: z.string().optional().describe('De oude formulering, als voorbeeld bij de regel'),
+        voorbeeldNa: z.string().optional().describe('De gewenste formulering'),
+        geldtVoor: z.enum(['alles', 'rapport', 'blokken']).optional().describe('alles = elke tekst. rapport = alleen de gegenereerde rapporttekst. blokken = alleen de vaste zinnen in de blokken.'),
+        door: z.string().min(1).describe('Je naam')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const bij = await coaStore.verwerkTekstoordeel(a.id, { status: a.status, notitie: a.notitie });
+      let regel = null;
+      if (a.regel) {
+        regel = await coaStore.saveSchrijfregel({
+          regel: a.regel, voorbeeldVoor: a.voorbeeldVoor, voorbeeldNa: a.voorbeeldNa,
+          uitTekstoordeel: a.id, geldtVoor: a.geldtVoor, door: a.door
+        });
+      }
+      return {
+        content: [{ type: 'text', text: (bij ? 'Afgesloten als ' + (a.status || 'verwerkt') + '.' : 'Niet gevonden.') +
+          (regel ? ' Schrijfregel vastgelegd; hij gaat mee in elke volgende rapporttekst.' : '') }],
+        structuredContent: { afgesloten: !!bij, regelVastgelegd: !!regel }
+      };
+    }
+  );
+
+  server.registerTool(
+    'schrijfregels',
+    {
+      title: 'De regels die uit eerdere correcties zijn afgeleid',
+      description: 'Geeft de actieve schrijfregels terug. Lees dit VOORDAT je nieuwe tekst voor PepProof schrijft - vaste zinnen in de code net zo goed als prompts. Dat is de enige manier waarop een eerdere correctie ook op andere teksten doorwerkt; anders wordt dezelfde opmerking over een half jaar opnieuw gemaakt.',
+      inputSchema: z.object({
+        geldtVoor: z.enum(['alles', 'rapport', 'blokken']).optional()
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async (a) => {
+      const lijst = await coaStore.schrijfregels({ geldtVoor: a.geldtVoor });
+      const tekst = lijst.length
+        ? lijst.map((r, i) => (i + 1) + '. ' + r.regel +
+            (r.voorbeeldVoor ? '\n   niet: ' + r.voorbeeldVoor : '') +
+            (r.voorbeeldNa ? '\n   wel:  ' + r.voorbeeldNa : '')).join('\n')
+        : 'Nog geen schrijfregels vastgelegd.';
+      return { content: [{ type: 'text', text: tekst }], structuredContent: { aantal: lijst.length, regels: lijst } };
+    }
+  );
+
   // Zevende en achtste tool, 21 september. Aanleiding: de pijplijn legde alles
   // vast en wees niemand ergens op. Iemand voert een onbekende shop in, de
   // FREE loopt door, het lab erachter kent niemand - en dat blijft stil tot
@@ -465,7 +585,8 @@ async function buildServer() {
 const TOOL_NAMEN = [
   'zoek_leverancier_coas', 'upload_coa', 'verifieer_coa',
   'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium',
-  'nieuwe_signalen', 'markeer_gesignaleerd', 'beoordeel_naamkoppeling'
+  'nieuwe_signalen', 'markeer_gesignaleerd', 'beoordeel_naamkoppeling',
+  'geef_tekstfeedback', 'open_tekstoordelen', 'verwerk_tekstoordeel', 'schrijfregels'
 ];
 function toolNamen() { return TOOL_NAMEN; }
 

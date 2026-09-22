@@ -486,6 +486,38 @@ app.post('/api/admin/laboratoria/beoordeling', rl.caseAction, auth.requireOwnerT
   }
 });
 
+// De redactielus, ook over HTTP - zodat een stafpagina de openstaande
+// tekstcorrecties kan tonen zonder een MCP-verbinding. Lezen mag een lezer;
+// vastleggen ook, want dit IS het werk van de redactie en het raakt geen
+// bewijs.
+app.get('/api/admin/tekstoordelen', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const status = String(req.query.status || 'open');
+    const oordelen = await coaStore.tekstoordelen({ status, max: Number(req.query.max) || 50 });
+    const regels = await coaStore.schrijfregels({});
+    res.json({ status, aantal: oordelen.length, oordelen, schrijfregels: regels });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+app.post('/api/admin/tekstoordelen', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!String(b.origineel || '').trim() || !String(b.gewenst || '').trim()) {
+      return res.status(400).json({ error: 'onvolledig', message: 'Geef origineel en gewenst mee.' });
+    }
+    if (!String(b.door || '').trim()) {
+      return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie dit heeft aangeleverd.' });
+    }
+    const opgeslagen = await coaStore.saveTekstoordeel(b);
+    if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt' });
+    res.json({ ok: true, id: opgeslagen.id, herkomst: opgeslagen.herkomst });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // A16 - de handmatige naambeoordeling. Een productnaam die afwijkt van de
 // stof waartegen het lab de identiteit toetste is een controletrigger, geen
 // afkeuring: twee uitkomsten, en alleen bij "handmatig bevestigd als

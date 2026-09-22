@@ -20,6 +20,7 @@ const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('./db');
 const janoshik = require('./janoshik');
+const teksten = require('./teksten');
 
 const HEAD_TIMEOUT_MS = Number(process.env.COA_HEAD_TIMEOUT_MS) || 10000;
 
@@ -272,6 +273,46 @@ async function initCoaSchema() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS naam_oordelen_supplier_idx ON naam_oordelen (supplier_key);`);
+  // De redactielus. Annemarie beoordeelt niet alleen shops en labs maar ook
+  // de teksten die eruit komen: zij plakt wat er staat en schrijft eronder
+  // wat het moet zijn.
+  //
+  // Twee tabellen, want het zijn twee dingen. Het PAAR is wat zij aanlevert en
+  // dat blijft staan zoals zij het schreef. De REGEL is wat ik eruit afleid,
+  // en die is het eigenlijke doel: een correctie op een zin die alleen die
+  // ene zin verbetert, leert niets. Zonder die tweede tabel heb je over drie
+  // maanden een stapel opmerkingen die niemand toepast.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tekstoordelen (
+      id TEXT PRIMARY KEY,
+      origineel TEXT NOT NULL,
+      gewenst TEXT NOT NULL,
+      toelichting TEXT,
+      herkomst JSONB,
+      soort TEXT,
+      leverancier TEXT,
+      case_id TEXT,
+      door TEXT NOT NULL,
+      gemeld_op BIGINT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      verwerkt_op BIGINT,
+      verwerkt_notitie TEXT
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS tekstoordelen_status_idx ON tekstoordelen (status, gemeld_op DESC);`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schrijfregels (
+      id TEXT PRIMARY KEY,
+      regel TEXT NOT NULL,
+      voorbeeld_voor TEXT,
+      voorbeeld_na TEXT,
+      uit_tekstoordeel TEXT,
+      geldt_voor TEXT NOT NULL DEFAULT 'alles',
+      actief BOOLEAN NOT NULL DEFAULT TRUE,
+      door TEXT NOT NULL,
+      gemaakt_op BIGINT NOT NULL
+    );
+  `);
   await herstelOpdrachtgeverAliassen();
   await herclassificeerNaA15b();
 }
@@ -2568,6 +2609,118 @@ async function herclassificeerNaA15b() {
   }
 }
 
+// --- de redactielus --------------------------------------------------------
+//
+// Werkwijze, afgesproken 22 september: Annemarie kopieert de tekst zoals die
+// er staat en geeft terug wat ze daar wil hebben. Ik verwerk dat en leid er
+// een regel uit af die ook op andere teksten werkt.
+//
+// Daarom slaat geefTekstoordeel meteen de HERKOMST op. Een vaste zin en een
+// door het model geschreven zin vragen een heel andere correctie, en achteraf
+// is dat verschil niet meer te zien.
+async function saveTekstoordeel(o) {
+  const origineel = String((o && o.origineel) || '').trim();
+  const gewenst = String((o && o.gewenst) || '').trim();
+  const door = String((o && o.door) || '').trim();
+  if (!origineel || !gewenst || !door) return null;
+  try {
+    const herkomst = teksten.zoekHerkomst(origineel);
+    const { rows } = await pool.query(
+      `INSERT INTO tekstoordelen (id, origineel, gewenst, toelichting, herkomst, soort, leverancier, case_id, door, gemeld_op, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'open') RETURNING *`,
+      [crypto.randomUUID(), origineel.slice(0, 4000), gewenst.slice(0, 4000),
+       (o.toelichting || null), JSON.stringify(herkomst), herkomst.soort,
+       o.leverancier || null, o.caseId || null, door, Date.now()]
+    );
+    return Object.assign({}, rows[0] || null, { herkomst });
+  } catch (e) {
+    console.error('coaStore.saveTekstoordeel:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function tekstoordelen(opties) {
+  const o = opties || {};
+  const max = Math.min(Number(o.max) || 50, 200);
+  try {
+    const { rows } = o.status
+      ? await pool.query('SELECT * FROM tekstoordelen WHERE status = $1 ORDER BY gemeld_op DESC LIMIT $2', [o.status, max])
+      : await pool.query('SELECT * FROM tekstoordelen ORDER BY gemeld_op DESC LIMIT $1', [max]);
+    return rows.map((r) => ({
+      id: r.id, origineel: r.origineel, gewenst: r.gewenst, toelichting: r.toelichting,
+      soort: r.soort, herkomst: r.herkomst, leverancier: r.leverancier, caseId: r.case_id,
+      door: r.door, gemeldOp: Number(r.gemeld_op), status: r.status,
+      verwerktOp: r.verwerkt_op ? Number(r.verwerkt_op) : null, verwerktNotitie: r.verwerkt_notitie
+    }));
+  } catch (e) {
+    console.error('coaStore.tekstoordelen:', (e && e.message) || e);
+    return [];
+  }
+}
+
+async function verwerkTekstoordeel(id, o) {
+  const opts = o || {};
+  const status = opts.status === 'afgewezen' ? 'afgewezen' : 'verwerkt';
+  if (!id) return null;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE tekstoordelen SET status = $2, verwerkt_op = $3, verwerkt_notitie = $4 WHERE id = $1 RETURNING *`,
+      [id, status, Date.now(), opts.notitie || null]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    console.error('coaStore.verwerkTekstoordeel:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// De regel die uit een of meer oordelen is afgeleid. Dit is het deel dat
+// doorwerkt: een regel geldt voor alle toekomstige tekst, niet voor de ene
+// zin waar hij uit voortkwam.
+//
+// LET OP de grens. Deze regels gaan over FORMULERING - woordkeus, lengte,
+// toon, wat je wel en niet mag beweren. Ze gaan nooit over de uitkomst: geen
+// regel mag een leverancier gunstiger of ongunstiger laten klinken dan het
+// bewijs toestaat. Dat staat ook in de prompt waar ze terechtkomen, want een
+// regel die die grens overschrijdt zou anders stilletjes de methodiek
+// veranderen via de tekst.
+async function saveSchrijfregel(r) {
+  const regel = String((r && r.regel) || '').trim();
+  const door = String((r && r.door) || '').trim();
+  if (!regel || !door) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO schrijfregels (id, regel, voorbeeld_voor, voorbeeld_na, uit_tekstoordeel, geldt_voor, actief, door, gemaakt_op)
+       VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8) RETURNING *`,
+      [crypto.randomUUID(), regel.slice(0, 1000), r.voorbeeldVoor || null, r.voorbeeldNa || null,
+       r.uitTekstoordeel || null, r.geldtVoor || 'alles', door, Date.now()]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    console.error('coaStore.saveSchrijfregel:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function schrijfregels(opties) {
+  const o = opties || {};
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM schrijfregels WHERE actief IS TRUE ORDER BY gemaakt_op ASC LIMIT $1',
+      [Math.min(Number(o.max) || 40, 100)]
+    );
+    return rows
+      .filter((r) => !o.geldtVoor || r.geldt_voor === 'alles' || r.geldt_voor === o.geldtVoor)
+      .map((r) => ({
+        id: r.id, regel: r.regel, voorbeeldVoor: r.voorbeeld_voor, voorbeeldNa: r.voorbeeld_na,
+        geldtVoor: r.geldt_voor, door: r.door, gemaaktOp: Number(r.gemaakt_op)
+      }));
+  } catch (e) {
+    console.error('coaStore.schrijfregels:', (e && e.message) || e);
+    return [];
+  }
+}
+
 // --- A16: de afwijkende productnaam ----------------------------------------
 //
 // "naamKomtOvereen = false wordt een controletrigger, geen afkeuring. Twee
@@ -2688,6 +2841,7 @@ module.exports = {
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,
   herclassificeerNaA15b,
+  saveTekstoordeel, tekstoordelen, verwerkTekstoordeel, saveSchrijfregel, schrijfregels,
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
