@@ -273,6 +273,7 @@ async function initCoaSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS naam_oordelen_supplier_idx ON naam_oordelen (supplier_key);`);
   await herstelOpdrachtgeverAliassen();
+  await herclassificeerNaA15b();
 }
 
 // Leverancierssleutel = genormaliseerde hostname. Bewust niet het case-id:
@@ -2496,6 +2497,77 @@ async function crossSupplierOverview() {
 // Bij welke andere leveranciers staat dit document nog meer? Bewust een losse
 // functie: getDocumentsBySupplier draait ook in de pipeline en mag geen extra
 // query per audit krijgen.
+// --- A15b met terugwerkende kracht -----------------------------------------
+//
+// Annemarie, 22 september, tot slot van haar besluit:
+//
+//   "Voor het bestaande klasseveld: ik zou de oude betekenis van B dus niet
+//   proberen te behouden. Als Janoshik rechtstreeks oplost, is het rapport op
+//   as 1 A. De oude B-situaties moeten opnieuw worden verdeeld op basis van
+//   het soort afwijking. Daarmee kan de classificatie wat mij betreft met
+//   terugwerkende kracht over het archief rollen."
+//
+// Dat is dit. Elke controle die op B staat terwijl de referentie WEL oploste,
+// draagt de oude betekenis: "het rapport is echt, maar de kopie van de shop
+// wijkt af". Onder het tweeassenmodel is dat rapport gewoon A, en de afwijking
+// hoort ergens anders.
+//
+// Alleen rijen met resolvet = true. Een B op een referentie die niet oploste
+// is iets anders - dat is een mens die de letter om een andere reden heeft
+// gezet, en die raken we niet aan.
+//
+// Idempotent: na afloop staat er geen B meer bij een opgeloste referentie, dus
+// een tweede run vindt niets. De oude letter blijft bewaard in het veld a15b,
+// want een herclassificatie die niet terug te lezen is, is een herschrijving.
+async function herclassificeerNaA15b() {
+  try {
+    await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS a15b JSONB;`);
+    const { rows } = await pool.query(
+      `SELECT id, lab, referentie, veldvergelijking FROM coa_reference_checks
+       WHERE klasse = 'B' AND resolvet IS TRUE`
+    );
+    if (!rows.length) return { herzien: 0 };
+
+    let herzien = 0;
+    const telling = { presentatie: 0, labwaarde: 0, koppeling: 0, zonderVergelijking: 0 };
+    for (const r of rows) {
+      const vv = r.veldvergelijking || null;
+      const velden = (vv && Array.isArray(vv.velden)) ? vv.velden : [];
+      const verschillen = velden.filter((v) => v && v.gelijk === false);
+      const a = janoshik.beoordeelAfwijkingen({ verschillen });
+      if (!velden.length) telling.zonderVergelijking++;
+      telling.presentatie += a.telling.presentatie;
+      telling.labwaarde += a.telling.labwaarde;
+      telling.koppeling += a.telling.koppeling;
+
+      const uitslag = {
+        vanKlasse: 'B', naarKlasse: 'A', herzienOp: Date.now(),
+        besluit: 'A15b, Annemarie 22 september',
+        telling: a.telling,
+        shopkopieWijktAf: a.shopkopieWijktAf,
+        koppelingsstand: a.koppelingsstand,
+        // Zonder opgeslagen veldvergelijking valt niet meer na te gaan WAT er
+        // afweek. Het rapport is nog steeds A - dat hangt aan resolvet, niet
+        // aan de velden - maar de afwijking is niet opnieuw in te delen.
+        onvolledig: !velden.length
+      };
+      await pool.query(
+        `UPDATE coa_reference_checks SET klasse = 'A', a15b = $2 WHERE id = $1`,
+        [r.id, JSON.stringify(uitslag)]
+      );
+      herzien++;
+    }
+    console.log('[coaStore] A15b: ' + herzien + ' controle(s) van B naar A herzien (' +
+      telling.labwaarde + ' afwijkende labwaarde, ' + telling.koppeling + ' koppeling, ' +
+      telling.presentatie + ' alleen schrijfwijze, ' + telling.zonderVergelijking +
+      ' zonder opgeslagen veldvergelijking).');
+    return { herzien, telling };
+  } catch (e) {
+    console.error('coaStore.herclassificeerNaA15b:', (e && e.message) || e);
+    return { herzien: 0, fout: (e && e.message) || String(e) };
+  }
+}
+
 // --- A16: de afwijkende productnaam ----------------------------------------
 //
 // "naamKomtOvereen = false wordt een controletrigger, geen afkeuring. Twee
@@ -2615,6 +2687,7 @@ module.exports = {
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,
+  herclassificeerNaA15b,
   ruimDubbeleReferentiesOp,
   leveranciersOverzicht,
   legOpdrachtgeverVast, lijktOpDomein,
