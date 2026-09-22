@@ -111,6 +111,28 @@ async function sampleJson(prompt, opts) {
 // opts.label (optioneel): welke stap/call dit is (bv. 'identiteit',
 // 'categorize', 'reportA') — wordt vóór de foutmelding gezet zodat een
 // mislukte case meteen zegt WAAR het misging, niet alleen wat.
+// Een API-fout komt binnen als een ruwe JSON-dump: 400 gevolgd door het hele
+// foutobject. De aanroeper kapt die melding af, en dan blijft er precies het
+// nutteloze deel over: 400 {"type":"error","error":{"type":"inval
+//
+// Dat is echt gebeurd. Eenentwintig COA's van nextgenpeptides faalden een
+// week lang op "media_type moet application/pdf zijn", maar die zin stond
+// voorbij het afkappunt. Daarom halen we hier de boodschap van de API zelf
+// naar voren, zodat het eerste dat je leest ook het probleem is.
+function kernVanFout(e) {
+  const ruw = (e && e.message) || 'onbekend';
+  const berichten = [];
+  const re = /"message"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+  let m;
+  while ((m = re.exec(ruw)) !== null) {
+    const tekst = m[1].replace(/\\"/g, '"');
+    if (tekst && berichten.indexOf(tekst) === -1) berichten.push(tekst);
+  }
+  if (!berichten.length) return ruw;
+  const status = (ruw.match(/\b([45]\d\d)\b/) || [])[1];
+  return (status ? status + ' ' : '') + berichten.join(' / ');
+}
+
 async function sampleJsonSafe(prompt, opts) {
   opts = opts || {};
   try {
@@ -123,10 +145,10 @@ async function sampleJsonSafe(prompt, opts) {
       return await sampleJson(retryPrompt, opts);
     } catch (e2) {
       const label = opts.label ? '[' + opts.label + '] ' : '';
-      const err = new Error(label + 'eerste poging: ' + e.message + ' || herkansing: ' + e2.message);
+      const err = new Error(label + 'eerste poging: ' + kernVanFout(e) + ' || herkansing: ' + kernVanFout(e2));
       throw err;
     }
   }
 }
 
-module.exports = { sampleJson, sampleJsonSafe, MODEL };
+module.exports = { sampleJson, sampleJsonSafe, kernVanFout, MODEL };

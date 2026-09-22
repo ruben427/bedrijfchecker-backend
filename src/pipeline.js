@@ -3,7 +3,7 @@
 // Alle rekenwerk (gate, cap, scores) blijft in scoringEngine.js — hier alleen
 // research-stappen, categorisatie-prompt en narratieve synthese.
 
-const { sampleJsonSafe } = require('./anthropicClient');
+const { sampleJsonSafe, kernVanFout } = require('./anthropicClient');
 const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient');
 const { fetchRemoteDocument } = require('./docFetcher');
 const coaStore = require('./coaStore');
@@ -1234,7 +1234,7 @@ async function runResearchStep(caseId, ctx, key) {
           noteer(url, 'gelezen, geen record en geen crawl-placeholder');
         }
       } catch (e) {
-        noteer(url, 'fout tijdens lezen: ' + ((e && e.message) || 'onbekend').slice(0, 80));
+        noteer(url, 'fout tijdens lezen: ' + kernVanFout(e).slice(0, 300));
         if (records[idx] && records[idx].uit === 'crawl' && records[idx].accessStatus === 'pending') {
           records[idx] = Object.assign({}, records[idx], { accessStatus: 'error' });
         }
