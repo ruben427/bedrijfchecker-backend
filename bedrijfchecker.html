@@ -1271,8 +1271,19 @@
       v = { soort:'bewaar', icoon:'envelop', titel:'Bewaar dit rapport',
         tekst:'Wij kijken regelmatig opnieuw. Komt er een rapport bij, verdwijnt er een, of verandert er iets aan de uitkomst, dan is dat hier te zien.' };
     }
-    // De tweede actie is in het ontwerp een tekstlink, geen tweede knop.
+    // In het ontwerp staat bovenaan een primaire knop en daaronder een
+    // tekstlink. De knop hoort per variant bij een actie: "Rapport insturen",
+    // "Orgineel insturen", "Hou me op de hoogte", "Mail mij dit rapport".
+    //
+    // LET OP: geen van die vier heeft een eindpunt. Zolang dat zo is zetten we
+    // hem er NIET neer - liever geen knop dan een knop die niets doet. De
+    // stijl staat wel klaar in bedrijfchecker.css (.vervolg-knop), en
+    // hieronder hoeft alleen v.knop gevuld te worden zodra het eindpunt er is.
     var acties = [];
+    if (v.knop && v.knopActie){
+      acties.push('<button type="button" class="vervolg-knop" data-actie="' +
+        escapeHtml(v.knopActie) + '">' + escapeHtml(v.knop) + '</button>');
+    }
     if (labUrl){
       acties.push('<a class="vervolg-link" href="' + escapeHtml(labUrl) + '" target="_blank" rel="noopener">Toon de labpagina</a>');
     }

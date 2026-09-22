@@ -831,19 +831,8 @@ body.sheet-open{ overflow:hidden; }
   font-size:.72rem; color:var(--text-faint);
 }
 
-/* Het vervolgvak: eerst de uitslag, dan pas de vraag. */
-.vervolg-vak{
-  margin-top:20px; border:1px solid var(--border); background:var(--surface-2);
-  border-radius:var(--radius-md); padding:18px;
-  display:flex; flex-wrap:wrap; align-items:center; gap:14px 18px;
-}
-.vervolg-vak.vraag{ background:var(--accent-soft); border-color:var(--accent); }
-.vervolg-vak.bewaar{ background:var(--purple-50); border-color:var(--purple-300); }
-.vervolg-vak.waarschuwing{ background:var(--danger-soft); border-color:var(--danger); }
-.vervolg-tekst{ flex:1 1 280px; display:flex; flex-direction:column; gap:3px; }
-.vervolg-titel{ font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.05rem; color:var(--heading-2); }
-.vervolg-vak.waarschuwing .vervolg-titel{ color:var(--danger); }
-.vervolg-sub{ font-size:.9rem; color:var(--text); line-height:1.5; }
+/* Het vervolgvak staat verderop, bij de Figma-varianten. Stond hier ook,
+   en op nog een derde plek - zie daar. */
 .btn-stil{
   font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1rem; text-decoration:none;
   padding:0 22px; height:46px; border-radius:var(--radius-pill);
@@ -992,48 +981,111 @@ body.sheet-open{ overflow:hidden; }
 .accordion.smal{ max-width:none; width:100%; }
 .accordion.smal .acc-item{ width:100%; }
 
-/* Het vervolgvak is in het ontwerp een witte kaart met een rand, geen grijs
-   vlak. De variant bepaalt alleen de randkleur. */
-.vervolg-vak{
-  background:var(--ds-wit); border:1px solid var(--ds-lijn);
-  border-radius:var(--ds-radius); padding:24px; gap:16px 24px;
-}
-.vervolg-vak.vraag{ background:var(--ds-wit); border-color:var(--accent); }
-.vervolg-vak.bewaar{ background:var(--ds-wit); border-color:var(--purple-300); }
-.vervolg-vak.waarschuwing{ background:var(--ds-wit); border-color:var(--danger); }
-.vervolg-titel{ font-family:"Baloo 2", system-ui, sans-serif; font-size:21px; }
-.vervolg-sub{ font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--ds-inkt); }
+/* ---------- Het vervolgvak, vijf varianten (Figma 1338:3398) ----------
 
-/* ---------- Vervolgvak, varianten uit Figma (node 1338:3398) ----------
+   LET OP - dit stond op DRIE plekken in dit bestand: hier, rond r834 en rond
+   r995, elk met eigen kleuren en maten. De laatste won. Zelfde ziekte als de
+   dubbele .site-logo img. Dit is nu de enige plek.
+
+   De kleuren komen letterlijk uit het ontwerp, per variant fill / stroke /
+   tekst. De body is overal dezelfde: 16px Open Sans, neutrals/975, regelhoogte
+   1,5, letterspatie -0,32px.
+
+     variant            fill       stroke     titel + icoon
+     1 geen rapporten   #fff8ef    #f63d00    #a63406      (vraag)
+     2 code weggehaald  #fff8ef    #f63d00    #a63406      (vraag)
+     3 in de wachtrij   #f9f9f8    #ccc9c6    #0f0f0e      (wacht)
+     4 deels geverif.   #fcf3ff    #9a05cc    #4d0266      (bewaar)
+     5 tegengesproken   #fae9ec    #cf2443    #cf2443      (waarschuwing)
+
    Breekpunt 700px. Erboven: tekst links, acties rechts onder elkaar, icoon
-   inline voor de titel. Eronder: alles onder elkaar, geen icoon, acties over
-   de volle breedte. */
-.vervolg-vak{
-  display:flex; align-items:flex-start; gap:24px; padding:24px;
+   inline voor de titel, titel 32px. Eronder: alles onder elkaar, geen icoon,
+   acties over de volle breedte, titel 21px. */
+:root{
+  /* Twee kleuren die nog niet in solike.css staan. De rest bestond al:
+     --accent #f63d00, --accent-strong #a63406, --bg #f9f9f8, --border #ccc9c6,
+     --text #0f0f0e, --purple-50 #fcf3ff, --purple-600 #9a05cc,
+     --heading-2 #4d0266. */
+  --ds-oranje-50:#fff8ef;
+  --ds-rood:#cf2443;      /* LET OP: in Figma heet deze messeging/succes, maar
+                             hij is rood en wordt voor 'tegengesproken'
+                             gebruikt. Bewust NIET --danger (#ac2b21). */
+  --ds-rood-50:#fae9ec;
 }
-.vervolg-tekst{ flex:1 1 auto; gap:8px; }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    /* Het ontwerp geeft alleen lichte waarden. Voor de donkere modus mengen we
+       dezelfde accentkleur in het oppervlak, zodat de vlakken meelopen in
+       plaats van fel op te lichten. */
+    --ds-oranje-50:color-mix(in srgb, var(--accent) 14%, var(--surface));
+    --ds-rood-50:color-mix(in srgb, var(--ds-rood) 16%, var(--surface));
+  }
+}
+
+.vervolg-vak{
+  margin-top:20px;
+  display:flex; align-items:flex-start; gap:24px; padding:24px;
+  border:1px solid var(--border); border-radius:12px;
+  background:var(--bg);
+}
+.vervolg-vak.vraag{ background:var(--ds-oranje-50); border-color:var(--accent); }
+.vervolg-vak.wacht{ background:var(--bg); border-color:var(--border); }
+.vervolg-vak.bewaar{ background:var(--purple-50); border-color:var(--purple-600); }
+.vervolg-vak.waarschuwing{ background:var(--ds-rood-50); border-color:var(--ds-rood); }
+
+.vervolg-tekst{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:8px; }
 .vervolg-titel{
   display:flex; align-items:center; gap:12px;
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:21px; line-height:1.5;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600;
+  font-size:32px; line-height:1.15; letter-spacing:-.05em;
+  color:var(--text);
 }
+.vervolg-vak.vraag .vervolg-titel{ color:var(--accent-strong); }
+.vervolg-vak.bewaar .vervolg-titel{ color:var(--heading-2); }
+.vervolg-vak.waarschuwing .vervolg-titel{ color:var(--ds-rood); }
 .vervolg-icoon{ flex:none; width:24px; height:24px; display:inline-flex; color:currentColor; }
 .vervolg-icoon svg{ width:24px; height:24px; }
+.vervolg-sub{
+  font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--text);
+}
+
 .vervolg-acties{ flex:0 0 auto; display:flex; flex-direction:column; align-items:stretch; }
-.vervolg-acties .knop, .vervolg-acties .btn-cta{ height:56px; }
+
+/* De primaire knop uit het ontwerp. Hij staat er nu nooit: insturen, mailen en
+   "hou me op de hoogte" hebben geen eindpunt, en liever geen knop dan een knop
+   die niets doet. De stijl staat wel klaar, zodat hij op zijn plek staat zodra
+   het eindpunt er is. */
+.vervolg-knop{
+  display:inline-flex; align-items:center; justify-content:center; gap:12px;
+  height:56px; padding:0 24px; border-radius:48px; cursor:pointer;
+  border:1px solid var(--accent-strong);
+  background:linear-gradient(57deg, var(--accent) 50%, var(--accent-light) 100%);
+  color:#fff9f5; text-decoration:none;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
+  letter-spacing:-.02em; white-space:nowrap;
+}
+.vervolg-vak.waarschuwing .vervolg-knop{
+  background:var(--ds-rood); border-color:var(--ds-rood);
+}
+
 /* De tweede actie is een tekstlink, geen tweede knop. */
 .vervolg-link{
   display:inline-flex; align-items:center; justify-content:center; height:56px;
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:16px;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
+  letter-spacing:-.02em;
   color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent);
   align-self:center; padding:0 4px;
 }
 .vervolg-link:hover{ color:var(--accent-strong); border-color:var(--accent-strong); }
+.vervolg-vak.waarschuwing .vervolg-link{ color:var(--ds-rood); border-color:var(--ds-rood); }
+.vervolg-vak.waarschuwing .vervolg-link:hover{ opacity:.8; }
 
 @media (max-width:699px){
   .vervolg-vak{ flex-direction:column; align-items:stretch; gap:24px; }
   .vervolg-icoon{ display:none; }
+  .vervolg-titel{ font-size:21px; letter-spacing:-.03em; }
   .vervolg-acties{ width:100%; }
-  .vervolg-acties .knop, .vervolg-acties .btn-cta, .vervolg-link{ width:100%; }
+  .vervolg-acties .vervolg-knop, .vervolg-link{ width:100%; }
   /* Alleen met twee acties: onderaan 12 in plaats van 24. */
   .vervolg-vak.twee-acties{ padding-bottom:12px; }
 }
