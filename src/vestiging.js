@@ -162,6 +162,7 @@ function stand(afgeleid, vastgesteld) {
       landcode: vastgesteld.landcode || null,
       eu: vastgesteld.eu,
       herkomst: 'vastgesteld',
+      signaal: null,
       door: vastgesteld.vastgelegdDoor || null,
       reden: vastgesteld.onderbouwing || null,
       bronnen: vastgesteld.bronnen || null
@@ -173,6 +174,7 @@ function stand(afgeleid, vastgesteld) {
     landcode: a.landcode || null,
     eu: a.eu,
     herkomst: a.eu == null && !a.land ? 'onbekend' : 'afgeleid',
+    signaal: a.signaal || null,
     door: null,
     reden: a.reden || null,
     bronnen: null
@@ -373,7 +375,28 @@ const VESTIGING_TEKST = {
   }
 };
 
+// Hoe hard staat dit? In gewone taal, want dit leest een bezoeker.
+// Besluit Ruben 23 september: niet "afgeleid" maar "nog niet gecontroleerd",
+// en de uitleg erbij hoort in de uitklap te staan - een tekst die alleen bij
+// hover verschijnt, leest niemand op een telefoon.
+const HERKOMST_LABEL = 'nog niet gecontroleerd';
+
+const HERKOMST_UITLEG = {
+  briefhoofd: 'Waar dit bedrijf zit, lezen we af van het adres op een labrapport van deze leverancier. Wij hebben dat niet nagetrokken bij een register.',
+  domein: 'Waar dit bedrijf zit, leiden we af uit de landcode van het webadres. Zo\'n domein is aan iedereen te koop, ook aan een bedrijf in een ander land, dus zeker is het niet. Wij hebben het niet nagetrokken bij een register.',
+  onbekend: 'Waar dit bedrijf zit, hebben we zelf afgeleid en niet nagetrokken bij een register.'
+};
+
 function tekstVoor(s) {
+  const basis = kiesTekst(s);
+  if (!s || s.herkomst !== 'afgeleid') return basis;
+  return Object.assign({}, basis, {
+    herkomstLabel: HERKOMST_LABEL,
+    herkomstUitleg: HERKOMST_UITLEG[s.signaal] || HERKOMST_UITLEG.onbekend
+  });
+}
+
+function kiesTekst(s) {
   if (!s || s.herkomst === 'onbekend') return Object.assign({ sleutel: 'onbekend' }, VESTIGING_TEKST.onbekend);
   if (s.landcode === 'nl') return Object.assign({ sleutel: 'nl' }, VESTIGING_TEKST.nl);
   if (s.eu === true) return Object.assign({ sleutel: 'eu' }, VESTIGING_TEKST.eu);
@@ -384,5 +407,6 @@ function tekstVoor(s) {
 module.exports = {
   EU_LANDEN, EER_EN_BUUR, OVERIG, MERKDOMEINEN, GENERIEK,
   hostVan, tldVan, leidAfUitDomein, leidAfUitBriefhoofd, leidAf,
-  normaliseerLand, stand, etiket, deepDive, tekstVoor, VESTIGING_TEKST
+  normaliseerLand, stand, etiket, deepDive, tekstVoor, VESTIGING_TEKST,
+  HERKOMST_LABEL, HERKOMST_UITLEG
 };

@@ -846,6 +846,31 @@
     Array.prototype.forEach.call(app.querySelectorAll('.js-deepdive-info'), function(btn){
       btn.addEventListener('click', function(){ meet('deepdive-uitleg-geopend'); openSheet('Wat is een Deepdive', deepdiveInfoBody()); });
     });
+    // Vestiging: de regel is de knop, de uitleg is een overlay.
+    Array.prototype.forEach.call(app.querySelectorAll('.js-vest-regel'), function(knop){
+      knop.addEventListener('click', function(e){
+        e.stopPropagation();
+        var sec = knop.closest('.vestiging');
+        if (sec && !sec.classList.contains('open')) meet('vestiging-uitleg-geopend');
+        wisselVestiging(sec);
+      });
+    });
+    // Ernaast klikken of Escape sluit hem ook. Een keer registreren, niet bij
+    // elke render opnieuw - anders stapelen de luisteraars zich op.
+    if (!window.__vestSluiters){
+      window.__vestSluiters = true;
+      document.addEventListener('click', function(e){
+        Array.prototype.forEach.call(document.querySelectorAll('.vestiging.open'), function(sec){
+          if (!sec.contains(e.target)) sluitVestiging(sec);
+        });
+      });
+      document.addEventListener('keydown', function(e){
+        if (e.key !== 'Escape') return;
+        Array.prototype.forEach.call(document.querySelectorAll('.vestiging.open'), function(sec){
+          sluitVestiging(sec);
+        });
+      });
+    }
     // De Deep Dive is vanaf twee plekken te starten: de kaart en de knop
     // onder de stappenlijst. Beide lopen via dezelfde klasse.
     Array.prototype.forEach.call(app.querySelectorAll('.js-continue-deep'), function(btn){
@@ -1647,6 +1672,33 @@
     return (c.engineResult && c.engineResult.vestiging) || c.vestiging || null;
   }
 
+  // Naar Anne's ontwerp (Figma "EU NL uitklap", 23 september): de regel zelf is
+  // de knop. Klikken opent een overlay met de uitleg; nog eens klikken, ernaast
+  // klikken of Escape sluit hem. De overlay legt zich over de inhoud eronder en
+  // duwt de pagina dus niet omlaag.
+  var vestTeller = 0;
+
+  function sluitVestiging(sec){
+    if (!sec || !sec.classList) return;
+    sec.classList.remove('open');
+    var knop = sec.querySelector('.vest-regel');
+    if (knop) knop.setAttribute('aria-expanded', 'false');
+    var paneel = sec.querySelector('.vest-paneel');
+    if (paneel) paneel.hidden = true;
+  }
+
+  function wisselVestiging(sec){
+    if (!sec) return;
+    if (sec.classList.contains('open')) { sluitVestiging(sec); return; }
+    // Er staat er nooit meer dan een open.
+    Array.prototype.forEach.call(document.querySelectorAll('.vestiging.open'), sluitVestiging);
+    sec.classList.add('open');
+    var knop = sec.querySelector('.vest-regel');
+    if (knop) knop.setAttribute('aria-expanded', 'true');
+    var paneel = sec.querySelector('.vest-paneel');
+    if (paneel) paneel.hidden = false;
+  }
+
   function vestigingHtml(c){
     var v = vestigingVan(c);
     if (!v || !v.weergave) return '';
@@ -1654,22 +1706,29 @@
     // Afgeleid is een voorstel, geen vaststelling. Dat verschil hoort
     // zichtbaar te blijven, ook voor een bezoeker.
     var afgeleid = v.herkomst === 'afgeleid';
-    var merk = soort === 'nl'
-      ? '<span class="vest-merk nl" aria-hidden="true">NL</span>'
-      : (soort === 'eu' ? '<span class="vest-merk eu" aria-hidden="true">EU</span>' : '');
+    var merk = (soort === 'nl' || soort === 'eu')
+      ? '<span class="vest-merk ' + soort + '" aria-hidden="true">' + soort.toUpperCase() + '</span>'
+      : '';
     var dd = v.deepDive || null;
     var ddRegel = dd
       ? '<p class="vest-deepdive' + (dd.mogelijk ? ' kan' : '') + '">' +
           (dd.mogelijk ? 'Verdieping mogelijk' : 'Verdieping niet mogelijk') +
           (dd.reden ? ' &middot; ' + escapeHtml(dd.reden) : '') + '</p>'
       : '';
+    var id = 'vest-uitleg-' + (++vestTeller);
     return '<section class="vestiging" data-soort="' + escapeHtml(soort) + '">' +
-      '<div class="vest-kop">' + merk +
-        '<h3>' + escapeHtml(v.weergave.kop) + '</h3>' +
-        (afgeleid ? '<span class="vest-afgeleid" title="Afgeleid uit het webadres of het briefhoofd van een rapport; niet door een mens vastgesteld.">afgeleid</span>' : '') +
+      '<button type="button" class="vest-regel js-vest-regel" aria-expanded="false" aria-controls="' + id + '">' +
+        merk +
+        '<span class="vest-naam">' + escapeHtml(v.weergave.kop) + '</span>' +
+        (afgeleid ? '<span class="vest-afgeleid">' + escapeHtml(v.weergave.herkomstLabel || 'nog niet gecontroleerd') + '</span>' : '') +
+        '<span class="vest-chev" aria-hidden="true">' + ICON_CHEVRON + '</span>' +
+      '</button>' +
+      '<div class="vest-paneel" id="' + id + '" hidden>' +
+        '<p class="vest-tekst">' + escapeHtml(v.weergave.tekst) + '</p>' +
+        (afgeleid && v.weergave.herkomstUitleg
+          ? '<p class="vest-herkomst">' + escapeHtml(v.weergave.herkomstUitleg) + '</p>' : '') +
+        ddRegel +
       '</div>' +
-      '<p class="vest-tekst">' + escapeHtml(v.weergave.tekst) + '</p>' +
-      ddRegel +
     '</section>';
   }
 
