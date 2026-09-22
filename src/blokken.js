@@ -28,9 +28,21 @@ function publiekeUrl(u) {
 // meer dan de helft van de gevonden rapporten staat. Een enkel rapport met
 // een labnaam maakt een shop niet open.
 function opMeerderheid(records, fn) {
-  if (!records.length) return false;
+  if (!records.length) return null;
   const n = records.filter((r) => r && fn(r)).length;
   return n * 2 > records.length;
+}
+// Is dit rapport door ons daadwerkelijk gelezen? Een crawl-treffer die nog
+// niet is opgehaald staat als 'pending' in de lijst: een lege huls zonder
+// labnaam of batchnummer. Die mag niet meetellen als "de shop noemt geen
+// laboratorium" - dat zou onze eigen onafgemaakte leesronde als verwijt aan
+// de leverancier presenteren. Zelfde regel als bij rood: iets wat wij niet
+// hebben vastgesteld is geen bevinding.
+function isGelezen(r) {
+  if (!r) return false;
+  const st = r.accessStatus;
+  if (!st) return true;  // ouder record zonder veld: wel uitgelezen
+  return st === 'readable';
 }
 
 // --- per rapport: wat is de verificatiestand? ------------------------------
@@ -168,6 +180,7 @@ function verificatieBlok(recordsIn) {
 // stap niet mee (de gratis check doet vandaag alleen coaDataset en
 // laboratorium), dan blijven ze null: niet beoordeeld, en ze tellen niet als
 // "niet gevonden". Het blok meldt dat dan zelf via volledig:false.
+// versie 1.3: ongelezen rapporten tellen niet mee in de meerderheidsregel
 const OPENHEID_PUNTEN = [
   { id: 'O01', groep: 'bedrijf', label: 'Juridische bedrijfsnaam vermeld' },
   { id: 'O02', groep: 'bedrijf', label: 'Vestigingsadres vermeld' },
@@ -184,6 +197,8 @@ const OPENHEID_PUNTEN = [
 function openheidBlok(recordsIn, bedrijfIn) {
   const records = (recordsIn || []).filter(Boolean);
   const bedrijf = bedrijfIn || {};
+  const gelezen = records.filter(isGelezen);
+  const ongelezen = records.length - gelezen.length;
   const verificatie = verificatieBlok(records);
   const weggehaald = verificatie.telling.codeWeggehaald > 0;
 
@@ -193,14 +208,20 @@ function openheidBlok(recordsIn, bedrijfIn) {
     O03: bedrijf.registratienummer,
     O04: bedrijf.directContact,
     O05: bedrijf.voorwaarden,
+    // O06 kijkt naar ALLE treffers: een gevonden document staat publiek op de
+    // site, ook als wij het nog niet openden.
     O06: records.some((r) => publiekeUrl(r.bronUrl)),
-    O07: opMeerderheid(records, (r) => heeftWaarde(r.laboratorium)),
-    O08: opMeerderheid(records, (r) => heeftWaarde(r.batchnummer)),
+    // De rest kijkt alleen naar wat we echt gelezen hebben. Zonder gelezen
+    // rapporten is er niets te beoordelen, en geeft opMeerderheid null.
+    O07: opMeerderheid(gelezen, (r) => heeftWaarde(r.laboratorium)),
+    O08: opMeerderheid(gelezen, (r) => heeftWaarde(r.batchnummer)),
     // Intact betekent: er is een code, en nergens is er een weggehaald.
-    O09: !weggehaald && records.some((r) => heeftWaarde(r.verificationKey) ||
-      heeftWaarde(r.reportId) || heeftWaarde(r.verificationUrl)),
-    O10: records.some((r) => r && (('client' in r) || ('opdrachtgever' in r)))
-      ? opMeerderheid(records, (r) => heeftWaarde(r.client) || heeftWaarde(r.opdrachtgever))
+    O09: gelezen.length
+      ? (!weggehaald && gelezen.some((r) => heeftWaarde(r.verificationKey) ||
+          heeftWaarde(r.reportId) || heeftWaarde(r.verificationUrl)))
+      : null,
+    O10: gelezen.some((r) => r && (('client' in r) || ('opdrachtgever' in r)))
+      ? opMeerderheid(gelezen, (r) => heeftWaarde(r.client) || heeftWaarde(r.opdrachtgever))
       : null
   };
 
@@ -232,9 +253,17 @@ function openheidBlok(recordsIn, bedrijfIn) {
     kleur, aanwezig, noemer, maximum: OPENHEID_PUNTEN.length, volledig,
     drempel: DREMPEL,
     codeWeggehaald: weggehaald,
+    // Hoeveel van de gevonden rapporten zijn ook echt gelezen? Blijft dit
+    // achter, dan is de uitkomst op minder bewijs gebaseerd dan het aantal
+    // gevonden documenten suggereert.
+    gevonden: records.length, gelezen: gelezen.length, ongelezen,
     // Zonder de bedrijfswaarneming is "4 van 10" misleidend: dan is het
     // 4 van 5 beoordeelde punten. De frontend leest dit veld, niet de noemer.
-    toelichting: volledig ? null : 'Alleen de rapportpunten zijn beoordeeld; de bedrijfsgegevens draaien in deze check niet mee.',
+    toelichting: (ongelezen > 0
+      ? ('Van de ' + records.length + ' gevonden rapporten zijn er ' + gelezen.length
+         + ' gelezen; de rest telt niet mee. ')
+      : '') + (volledig ? '' : 'Alleen de rapportpunten zijn beoordeeld; de bedrijfsgegevens draaien in deze check niet mee.')
+      || null,
     punten
   };
 }
@@ -391,7 +420,7 @@ function waardenBlok(recordsIn) {
 // Alles bij elkaar, in leesvolgorde.
 function bouwBlokken(engineResult, records, bedrijf, shopHost) {
   return {
-    versie: '1.2',
+    versie: '1.3',
     openheid: openheidBlok(records, bedrijf),
     verificatie: verificatieBlok(records),
     productbewijs: productbewijsBlok(engineResult, records, shopHost),
