@@ -854,7 +854,20 @@ const LAB_STATUSSEN = [
   // het tweede niet.
   //
   // En anders dan 'bestaat niet' is dit omkeerbaar: een lab kan zijn werk
-  // verbeteren. Of daar een herstelcriterium bij hoort ligt bij Annemarie.
+  // verbeteren. Annemarie, 22 september: "Ik zou de status ook omkeerbaar
+  // maken. Voor de testversie hoeven we daar wat mij betreft nog geen
+  // uitgebreid herstelcriterium voor te bouwen. Als er later relevant nieuw
+  // bewijs komt, beoordelen we het lab opnieuw en kan de status worden
+  // aangepast."
+  //
+  // LET OP haar voorwaarde bij het GEBRUIK, en die is scherper dan hij lijkt:
+  // "100,00% zuiverheid op zichzelf is geen reden voor deze status. Het gaat
+  // om het geheel van de concrete QC-bevindingen."
+  //
+  // Bij ILS was het ook niet dat ene getal: een hondenfoto als samplefoto op
+  // een definitief rapport, en een rapport waarbij de identiteitstest niet
+  // slaagde maar toch 100,00% vermeldde. Een rond percentage alleen is een
+  // aanleiding om te kijken, geen vaststelling.
   'afgekeurd - kwaliteitsborging'
 ];
 
