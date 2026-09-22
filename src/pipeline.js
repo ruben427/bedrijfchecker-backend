@@ -31,6 +31,12 @@ const db = require('./db');
 // Claude-call, dus bewust begrensd zodat één leverancier met veel
 // COA-vermeldingen de stap niet onnodig lang maakt.
 const COA_AUTOFETCH_MAX = Number(process.env.COA_AUTOFETCH_MAX) || 30;
+
+// Het veldschema dat we van een COA willen lezen. Stond drie keer letterlijk
+// in dit bestand; een vierde kopie erbij zetten voor het eigen certificaat van
+// de koper zou betekenen dat een veld toevoegen op vier plekken moet gebeuren
+// en er ergens een wordt vergeten.
+const COA_RECORD_SCHEMA = 'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,"client":string,"manufacturer":string,"laboratorium":string,"purityPercent":number|null,"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string}]}]}';
 // Tijdsbudget voor de documentlus. Een aantal alleen is geen begrenzing: 30
 // documenten die elk een vision-call nodig hebben kunnen bij tegenslag (een
 // herkansing van 120s per stuk) een uur duren. Gemeten op 20 september: de
@@ -997,6 +1003,75 @@ async function runResearchStep(caseId, ctx, key) {
       const uploadedRecords = ((docData && docData.coaRecords) || []).map((r) => Object.assign({}, r, { accessStatus: 'readable', bronUrl: null, uit: 'upload' }));
       records = records.concat(uploadedRecords);
     }
+    // ---- Het eigen certificaat van de koper ----
+    //
+    // Nieuw op 22 september, voor de testvariant. Veel kopers hebben een COA
+    // bij hun bestelling gekregen, met hun eigen batchnummer erop. Dat is
+    // bewijs dat wij nooit vanaf de site kunnen halen.
+    //
+    // LET OP - dit is een ANDER soort bewijs dan wat de shop publiceert, en
+    // het mag nooit met de openheid van de aanbieder op een hoop:
+    //
+    //   - het gaat over de batch van deze koper, niet over de winkel
+    //   - de herkomst is "de gebruiker zegt dat dit bij zijn bestelling zat";
+    //     wij hebben niet gezien dat het uit die doos kwam
+    //   - de shop krijgt er geen punt voor dat wij het hebben gezien
+    //
+    // Daarom de vlag eigenCoa op elk record. blokken.js telt die apart, buiten
+    // de herkomsttelling van de aanbieder om.
+    //
+    // Alle andere regels gelden onverkort: het lab moet nog steeds beoordeeld
+    // zijn, de referentie moet nog steeds bij het lab oplossen, en de twee
+    // assen doen gewoon hun werk. Een eigen upload is geen sluiproute naar
+    // geverifieerd.
+    const eigenBestanden = (ctx.eigenCoaBestanden || []).filter((b) => b && b.data && b.mediaType);
+    if (eigenBestanden.length) {
+      const eigenAfbeeldingen = eigenBestanden.filter((b) => String(b.mediaType).startsWith('image/'));
+      const eigenDocumenten = eigenBestanden.filter((b) => !String(b.mediaType).startsWith('image/'));
+      await meldStap(caseId, 'Het certificaat dat je zelf hebt meegestuurd uitlezen (' +
+        eigenBestanden.length + ' bestand(en))');
+
+      const eigenPrompt = EVIDENCE_RULES + '\n\nBekijk het bijgevoegde certificaat. Dit is GEEN document van de website van de leverancier: de gebruiker zegt dat hij het zelf bij zijn bestelling heeft gekregen. Lees uitsluitend letterlijk wat erin staat; gebruik null waar een veld niet vermeld of onleesbaar is. Blijkt het geen COA te zijn, geef dan een lege coaRecords-array terug.\n\n' + COA_RECORD_SCHEMA;
+
+      const uit = [];
+      if (eigenAfbeeldingen.length) {
+        const d = await sampleJsonSafe(eigenPrompt, {
+          images: eigenAfbeeldingen.map((b) => ({ data: b.data, mediaType: b.mediaType })),
+          label: 'coaDataset-eigen-coa-afbeelding'
+        });
+        ((d && d.coaRecords) || []).forEach((r) => uit.push(r));
+      }
+      for (const b of eigenDocumenten) {
+        const d = await sampleJsonSafe(eigenPrompt, {
+          documents: [{ buffer: Buffer.from(b.data, 'base64'), mediaType: b.mediaType }],
+          label: 'coaDataset-eigen-coa-document'
+        }).catch(() => null);
+        ((d && d.coaRecords) || []).forEach((r) => uit.push(r));
+      }
+
+      const eigenRecords = uit.map((r) => Object.assign({}, r, {
+        accessStatus: 'readable', bronUrl: null, uit: 'eigen-coa-upload', eigenCoa: true
+      }));
+      records = records.concat(eigenRecords);
+      await meldStap(caseId, eigenRecords.length
+        ? (eigenRecords.length + ' certificaat/certificaten uit je eigen upload gelezen')
+        : 'LET OP: in de meegestuurde bestanden stond geen leesbaar certificaat');
+    }
+
+    // Een LINK naar het eigen certificaat hoeft hier niets te doen: we zetten
+    // er een record met bronUrl neer en de autofetch-lus hieronder haalt hem
+    // op en leest hem uit, net als elk ander gevonden document. Zo loopt hij
+    // door dezelfde controle als de rest in plaats van langs een eigen pad.
+    if (ctx.eigenCoaUrl) {
+      records = records.concat([{
+        product: null, batchnummer: null, purityPercent: null, laboratorium: null,
+        reportId: null, verificationKey: null, authenticiteitsklasse: null,
+        bronUrl: ctx.eigenCoaUrl, accessStatus: 'pending',
+        uit: 'eigen-coa-link', eigenCoa: true
+      }]);
+      await meldStap(caseId, 'De link naar je eigen certificaat wordt straks opgehaald en uitgelezen');
+    }
+
     // Automatisch ophalen: voor COA's die de AI zelf al aanwees met een
     // bronUrl maar (nog) niet als 'readable' kon classificeren — vaak omdat
     // Tavily alleen een tekst-snippet van de pagina teruggaf, niet de
@@ -1012,7 +1087,12 @@ async function runResearchStep(caseId, ctx, key) {
       if (!r || !r.bronUrl || r.accessStatus === 'readable') return;
       if (seenAutofetchUrls.has(r.bronUrl)) return;
       seenAutofetchUrls.add(r.bronUrl);
-      autofetchCandidates.push({ url: r.bronUrl, idx, prioriteit: r.uit === 'crawl' ? 0 : 1 });
+      // LET OP: het eigen certificaat van de koper gaat VOOROP. De lijst wordt
+      // afgekapt op COA_AUTOFETCH_MAX; bij een shop met dertig documenten zou
+      // juist het ene document dat de gebruiker zelf aandroeg eruit vallen, en
+      // dat is precies het document waarvoor hij hier is.
+      const prioriteit = r.uit === 'eigen-coa-link' ? -1 : (r.uit === 'crawl' ? 0 : 1);
+      autofetchCandidates.push({ url: r.bronUrl, idx, prioriteit });
     });
     const supplierKey = coaStore.supplierKeyFromUrl(ctx.website || ctx.naam);
     const archiveNotes = [];
@@ -1189,7 +1269,7 @@ async function runResearchStep(caseId, ctx, key) {
           let labData = obs ? await coaStore.getExtraction(obs.sha256, COA_EXTRACTOR_VERSION) : null;
           if (!labData) {
             const labPrompt = EVIDENCE_RULES + '\n\nDit is het originele testrapport zoals het laboratorium het zelf teruggeeft op zijn verificatiepagina (' + res.url + '). Lees uitsluitend letterlijk wat er staat; gebruik null waar een veld niet vermeld of onleesbaar is. Neem het veld Client over zoals het er staat, ook als dat een andere partij is dan de onderzochte leverancier.\n\n' +
-              'Antwoord met JSON: {"coaRecords":[{"product":string,"batchnummer":string,"reportId":string,"verificationKey":string,"client":string,"manufacturer":string,"laboratorium":string,"purityPercent":number|null,"claimedQuantity":number|null,"measuredQuantity":number|null,"orderDate":string,"receivedDate":string,"analysisDate":string,"resultaten":[{"parameter":string,"waarde":string}]}]}';
+              COA_RECORD_SCHEMA;
             labData = await sampleJsonSafe(labPrompt, { documents: [labDoc], label: 'labverificatie' });
             if (obs && labData) {
               const eerste = (labData.coaRecords || [])[0] || {};

@@ -87,6 +87,11 @@ function hostVan(url) {
 }
 function herkomstVanRapport(r, shopHost) {
   if (!r) return 'alleen_vermelding';
+  // Het certificaat dat de KOPER zelf meestuurde. Dat is geen openheid van de
+  // aanbieder: hij heeft het niet gepubliceerd, wij hebben het gekregen. Zou
+  // dit als 'eigen_kopie' tellen, dan zou een shop beter scoren doordat een
+  // bezoeker toevallig zijn eigen papier bij de hand had.
+  if (r.eigenCoa) return 'eigen_coa_gebruiker';
   const verifHost = hostVan(r.verificationUrl);
   if (verifHost && verifHost !== shopHost) return 'labverwijzing';
   if (publiekeUrl(r.bronUrl)) return 'eigen_kopie';
@@ -94,11 +99,12 @@ function herkomstVanRapport(r, shopHost) {
   return 'alleen_vermelding';
 }
 function telHerkomst(records, shopHost) {
-  const t = { eigenKopie: 0, labverwijzing: 0, alleenVermelding: 0 };
+  const t = { eigenKopie: 0, labverwijzing: 0, alleenVermelding: 0, eigenCoaGebruiker: 0 };
   records.forEach((r) => {
     const h = herkomstVanRapport(r, shopHost);
     if (h === 'labverwijzing') t.labverwijzing++;
     else if (h === 'eigen_kopie') t.eigenKopie++;
+    else if (h === 'eigen_coa_gebruiker') t.eigenCoaGebruiker++;
     else t.alleenVermelding++;
   });
   return t;
@@ -257,6 +263,11 @@ function productbewijsBlok(engineResult, recordsIn, shopHost) {
   if (herkomst.eigenKopie) delen.push(herkomst.eigenKopie + ' op de site zelf');
   if (herkomst.labverwijzing) delen.push(herkomst.labverwijzing + ' via een link naar het lab');
   if (herkomst.alleenVermelding) delen.push(herkomst.alleenVermelding + ' alleen vermeld');
+  // Apart benoemd en achteraan: het staat naast het bewijs van de aanbieder,
+  // niet ertussen.
+  if (herkomst.eigenCoaGebruiker) {
+    delen.push(herkomst.eigenCoaGebruiker + ' uit je eigen certificaat');
+  }
   const werkregel = delen.length ? delen.join(' · ') : null;
   const er = engineResult || {};
   const score = er.evidenceScore || {};

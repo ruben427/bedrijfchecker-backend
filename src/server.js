@@ -31,7 +31,15 @@ app.set('trust proxy', 1);
 // mimetype-filter meer op multer-niveau — een PDF komt nu ook door; voorheen
 // werd elk niet-image-bestand verderop in de route stilletjes weggegooid.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 11 } });
-const uploadFields = upload.fields([{ name: 'files', maxCount: 10 }, { name: 'kvkDocument', maxCount: 1 }]);
+// 'eigenCoa' is nieuw (22 september, testvariant): het certificaat dat de
+// KOPER zelf bij zijn bestelling kreeg. Dat is iets anders dan wat de shop
+// publiceert - het gaat over zijn eigen batch - en het wordt daarom apart
+// gehouden, niet op een hoop met 'files'.
+const uploadFields = upload.fields([
+  { name: 'files', maxCount: 10 },
+  { name: 'kvkDocument', maxCount: 1 },
+  { name: 'eigenCoa', maxCount: 3 }
+]);
 
 // CORS is hier geen autorisatiegrens (dat is het owner token), maar beperkt wel
 // welke pagina's namens een bezoeker mogen aanroepen. Zet ALLOWED_ORIGINS zodra
@@ -179,6 +187,23 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
     const genericFiles = (req.files && req.files.files) || [];
     const kvkFile = (req.files && req.files.kvkDocument && req.files.kvkDocument[0]) || null;
 
+    // Het eigen certificaat van de koper: bestand(en) en/of een link.
+    // Een link wordt hier alleen op vorm gecontroleerd; het echte ophalen
+    // gebeurt in de pijplijn via docFetcher, die zijn eigen SSRF-guard heeft.
+    const eigenCoaFiles = (req.files && req.files.eigenCoa) || [];
+    const eigenCoaUrlRuw = String((req.body && req.body.eigenCoaUrl) || '').trim();
+    let eigenCoaUrl = null;
+    if (eigenCoaUrlRuw) {
+      const genormaliseerd = normalizeUrl(eigenCoaUrlRuw);
+      if (!isValidWebUrl(genormaliseerd)) {
+        return res.status(400).json({
+          error: 'invalid_coa_url',
+          message: 'De link naar je eigen certificaat is geen geldige web-URL.'
+        });
+      }
+      eigenCoaUrl = genormaliseerd;
+    }
+
     const ctx = {
       naam,
       website,
@@ -188,7 +213,11 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
       images: genericFiles
         .filter((f) => f.mimetype && f.mimetype.startsWith('image/'))
         .map((f) => ({ data: f.buffer.toString('base64'), mediaType: f.mimetype })),
-      kvkDocument: kvkFile ? { data: kvkFile.buffer.toString('base64'), mediaType: kvkFile.mimetype } : null
+      kvkDocument: kvkFile ? { data: kvkFile.buffer.toString('base64'), mediaType: kvkFile.mimetype } : null,
+      eigenCoaUrl,
+      eigenCoaBestanden: eigenCoaFiles.map((f) => ({
+        data: f.buffer.toString('base64'), mediaType: f.mimetype, bestandsnaam: f.originalname || null
+      }))
     };
 
     const id = uuidv4();
@@ -199,7 +228,8 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
     // toekomstige KvK-koppeling, hetzelfde opslagpad hergebruikt kan worden.
     await Promise.all([
       ...genericFiles.map((f) => db.addDocument(uuidv4(), id, { kind: 'overig', filename: f.originalname, mimetype: f.mimetype, buffer: f.buffer })),
-      ...(kvkFile ? [db.addDocument(uuidv4(), id, { kind: 'kvk', filename: kvkFile.originalname, mimetype: kvkFile.mimetype, buffer: kvkFile.buffer })] : [])
+      ...(kvkFile ? [db.addDocument(uuidv4(), id, { kind: 'kvk', filename: kvkFile.originalname, mimetype: kvkFile.mimetype, buffer: kvkFile.buffer })] : []),
+      ...eigenCoaFiles.map((f) => db.addDocument(uuidv4(), id, { kind: 'eigen-coa', filename: f.originalname, mimetype: f.mimetype, buffer: f.buffer }))
     ]).catch(() => {});
 
     // Fire-and-forget: de audit draait op de achtergrond, de client volgt
