@@ -1426,7 +1426,77 @@
 
     return '<div class="blokken">' +
       '<p class="blokken-kop">Wat we konden controleren</p>' +
-      '<div class="blokken-rij">' + openheid + verificatie + bewijs + '</div></div>';
+      '<div class="blokken-rij">' + openheid + verificatie + bewijs + '</div>' +
+      waardenHtml(c) + '</div>';
+  }
+
+  // --- Blok 4: wat de rapporten over de waarden zeggen ---------------------
+  //
+  // De zichtbare kant van niveaus.js. Per uitspraak - hoeveelheid, zuiverheid,
+  // identiteit - staat hier hoeveel rapporten geverifieerd zijn, hoeveel
+  // gerapporteerd, en over hoeveel wij niets zeggen.
+  //
+  // LET OP - GEEN KLEUR EN GEEN BALK. Besluit A24: het blok toont bewijs-
+  // dekking, geen goed/slecht. Een balk zou een aandeel tonen, en een aandeel
+  // nodigt uit tot een oordeel over de verhouding dat niemand heeft gegeven.
+  // De drie standen verschillen alleen in inktsterkte.
+  //
+  // De getallen worden hier NIET bedacht: src/blokken.js telt ze en schrijft
+  // de zinnen. Deze functie zet ze neer.
+  var WAARDEN_NAAM = {
+    vulling: 'Hoeveelheid in de vial',
+    zuiverheid: 'Zuiverheid',
+    identiteit: 'Identiteit van de stof'
+  };
+  // De zinnen per uitspraak staan hierboven al als telling; die zou dubbel
+  // lezen. Deze standen zeggen iets wat de telling niet laat zien.
+  var WAARDEN_NOTITIES = ['methode_niet_verifieerbaar', 'gedeeld_labbewijs', 'promotie_geblokkeerd'];
+
+  function waardenHtml(c){
+    var b = blokkenVan(c);
+    var w = b && b.waarden;
+    if (!w || !w.beschikbaar) return '';
+    var telling = w.telling || {};
+    var regels = w.regels || [];
+
+    var rijen = '';
+    Object.keys(WAARDEN_NAAM).forEach(function(o){
+      var t = telling[o];
+      if (!t) return;
+      var standen = '';
+      if (t.geverifieerd) standen += '<span class="waarden-stand is-geverifieerd"><b>' + t.geverifieerd + '</b> onafhankelijk bevestigd</span>';
+      if (t.gerapporteerd) standen += '<span class="waarden-stand is-gerapporteerd"><b>' + t.gerapporteerd + '</b> gerapporteerd</span>';
+      if (t.niets) standen += '<span class="waarden-stand is-niets"><b>' + t.niets + '</b> niets over te zeggen</span>';
+      if (!standen) return;
+      rijen += '<div class="waarden-rij">' +
+        '<span class="waarden-naam">' + escapeHtml(WAARDEN_NAAM[o]) + '</span>' +
+        '<span class="waarden-standen">' + standen + '</span></div>';
+    });
+    if (!rijen) return '';
+
+    // De voorwaarde van Annemarie bij "gerapporteerd": voor de gebruiker moet
+    // heel duidelijk zijn dat dit een waarde uit het document van de
+    // aanbieder is. De zin komt uit de backend, niet uit deze pagina.
+    var uitleg = '';
+    for (var i = 0; i < regels.length; i++){
+      if (regels[i].stand === 'gerapporteerd' && regels[i].toelichting){
+        uitleg = '<p class="waarden-notitie">' + escapeHtml(regels[i].toelichting) + '</p>';
+        break;
+      }
+    }
+
+    var notities = '';
+    regels.forEach(function(r){
+      if (WAARDEN_NOTITIES.indexOf(r.stand) === -1) return;
+      notities += '<p class="waarden-notitie">' + escapeHtml(r.zin) +
+        (r.toelichting ? '<span class="klein">' + escapeHtml(r.toelichting) + '</span>' : '') + '</p>';
+    });
+
+    return '<div class="waarden">' +
+      '<p class="waarden-kop">Wat de rapporten over de waarden zeggen</p>' +
+      rijen + uitleg + notities +
+      (w.werkregel ? '<div class="waarden-werk mono">' + escapeHtml(w.werkregel) + '</div>' : '') +
+      '</div>';
   }
 
   // Het vervolgvak onder de blokken. Vijf varianten, altijd na de uitslag:

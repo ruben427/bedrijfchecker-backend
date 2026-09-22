@@ -831,6 +831,60 @@ body.sheet-open{ overflow:hidden; }
   font-size:.72rem; color:var(--text-faint);
 }
 
+/* --- Blok 4: wat de rapporten over de waarden zeggen ----------------------
+   BEWUST GEEN KLEUR. Besluit A24 van Annemarie: "blok 4 blijft neutraal.
+   Geen stoplicht - het blok toont bewijsdekking, geen goed/slecht.
+   Geverifieerd en gerapporteerd mogen visueel verschillen, de verhouding
+   krijgt geen kleur."
+
+   Daarom verschillen de drie standen alleen in inktsterkte en gewicht, en is
+   er geen balk: een balk is een aandeel, en een aandeel nodigt uit tot een
+   oordeel over de verhouding. Dat oordeel is er niet. */
+.waarden{
+  background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md);
+  padding:16px; display:flex; flex-direction:column; gap:12px;
+}
+.waarden-kop{
+  font-family:"Open Sans", sans-serif; font-weight:700; font-size:.72rem;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--text-subtle); margin:0;
+}
+/* Twee kolommen, geen flexrij: bij een flexrij begint de telling bij elke
+   uitspraak op een andere plek, omdat de naam even lang is als hij is. Dan
+   staat er drie keer iets wat op een tabel lijkt en het niet is. */
+.waarden-rij{
+  display:grid; grid-template-columns:minmax(150px,200px) 1fr; gap:4px 16px;
+  align-items:baseline; padding:9px 0; border-top:1px dotted var(--border);
+}
+.waarden-rij:first-of-type{ border-top:0; padding-top:0; }
+@media (max-width:700px){ .waarden-rij{ grid-template-columns:1fr; } }
+.waarden-naam{
+  font-family:"Baloo 2", sans-serif; font-weight:600;
+  font-size:1rem; color:var(--text);
+}
+.waarden-standen{ display:flex; flex-wrap:wrap; gap:4px 14px; font-size:.85rem; }
+.waarden-stand{ font-variant-numeric:tabular-nums; }
+.waarden-stand b{ font-weight:700; }
+.waarden-stand.is-geverifieerd{ color:var(--text); }
+.waarden-stand.is-gerapporteerd{ color:var(--text-muted); }
+.waarden-stand.is-niets{ color:var(--text-faint); }
+/* Het getal blijft leesbaar. --text-faint op lichte achtergrond haalt net
+   geen 3:1, en dit is wel een aantal dat iemand moet kunnen aflezen; de
+   stand zelf mag wegvallen, het getal niet. */
+.waarden-stand.is-niets b{ color:var(--text-muted); }
+.waarden-notitie{
+  font-size:.85rem; color:var(--text-muted); line-height:1.45;
+  padding-left:12px; border-left:2px solid var(--border); margin:0;
+}
+.waarden-notitie .klein{ display:block; margin-top:3px; color:var(--text-faint); font-size:.78rem; }
+.waarden-werk{
+  padding-top:10px; border-top:1px dotted var(--border);
+  font-size:.72rem; color:var(--text-faint);
+}
+@media (min-width:900px){
+  .waarden{ padding:20px 24px; }
+  .waarden-naam{ font-size:1.05rem; }
+}
+
 /* Het vervolgvak staat verderop, bij de Figma-varianten. Stond hier ook,
    en op nog een derde plek - zie daar. */
 .btn-stil{
