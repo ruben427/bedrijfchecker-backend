@@ -141,7 +141,14 @@ async function updateCase(id, patch) {
   Object.keys(patch).forEach((key) => {
     if (key === 'updatedAt') return;
     const col = FIELD_COLUMN[key];
-    if (!col) return;
+    // Een veld dat hier niet in staat werd stilzwijgend weggegooid. Dat heeft
+    // een keer echt schade gedaan: een opschoonactie op phaseData meldde
+    // succes terwijl er niets werd weggeschreven. Liever luid stuk dan stil
+    // verkeerd. phaseData hoort via mergePhaseData te gaan.
+    if (!col) {
+      throw new Error('updateCase kent het veld "' + key + '" niet'
+        + (key === 'phaseData' ? '; gebruik mergePhaseData(id, key, value)' : ''));
+    }
     const jsonCols = ['current_step', 'progress', 'category_assessments', 'adequacy', 'engine_result', 'report'];
     sets.push(`${col} = $${i}`);
     values.push(jsonCols.includes(col) ? JSON.stringify(patch[key]) : patch[key]);

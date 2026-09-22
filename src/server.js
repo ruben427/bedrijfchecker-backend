@@ -829,10 +829,10 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
           const schoon = pipeline.schoonKlasse(recs);
           klassenGewist = schoon.filter((r, i) => recs[i] && recs[i].authenticiteitsklasse && !r.authenticiteitsklasse).length;
           if (klassenGewist) {
-            const phaseData = Object.assign({}, c.phaseData);
-            phaseData.coaDataset = Object.assign({}, phaseData.coaDataset);
-            phaseData.coaDataset.data = Object.assign({}, phaseData.coaDataset.data, { coaRecords: schoon });
-            await db.updateCase(c.id, { phaseData });
+            // Via mergePhaseData: updateCase kent phaseData niet als kolom.
+            const coaDataset = Object.assign({}, c.phaseData.coaDataset);
+            coaDataset.data = Object.assign({}, coaDataset.data, { coaRecords: schoon });
+            await db.mergePhaseData(c.id, 'coaDataset', coaDataset);
           }
         }
         // De rode vlaggen uit de rapporttekst zijn door het model geschreven
