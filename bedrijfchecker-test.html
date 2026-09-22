@@ -109,7 +109,7 @@
      site hebt toegevoegd; laat het script staan, het doet niets zonder ID.
      Geen cookies, dus geen bannerplicht. -->
 <script defer
-        data-website-id="VUL-WEBSITE-ID-IN"
+        data-website-id="baaec495-0400-40d9-b599-5e120e12d742"
         src="https://stats.deannemethode.nl/script.js"></script>
 
 <script>
@@ -1633,6 +1633,46 @@
       korteUitleg(c) + '</header>';
   }
 
+
+  // --- vestiging: waar zit deze leverancier, en kan de verdieping ------------
+  //
+  // Besluit Ruben 22 september: EU gaat over de juridische vestiging, niet het
+  // verzendland. De Deep Dive draait alleen op Nederlandse leveranciers, omdat
+  // de verdieping op het KvK-handelsregister leunt.
+  //
+  // De teksten komen UIT DE BACKEND (vestiging.js), niet uit deze pagina. Zo
+  // zegt het rapport hetzelfde als de stafpagina en staat een wijziging op een
+  // plek. Hier alleen de vorm.
+  function vestigingVan(c){
+    return (c.engineResult && c.engineResult.vestiging) || c.vestiging || null;
+  }
+
+  function vestigingHtml(c){
+    var v = vestigingVan(c);
+    if (!v || !v.weergave) return '';
+    var soort = v.weergave.sleutel || 'onbekend';
+    // Afgeleid is een voorstel, geen vaststelling. Dat verschil hoort
+    // zichtbaar te blijven, ook voor een bezoeker.
+    var afgeleid = v.herkomst === 'afgeleid';
+    var merk = soort === 'nl'
+      ? '<span class="vest-merk nl" aria-hidden="true">NL</span>'
+      : (soort === 'eu' ? '<span class="vest-merk eu" aria-hidden="true">EU</span>' : '');
+    var dd = v.deepDive || null;
+    var ddRegel = dd
+      ? '<p class="vest-deepdive' + (dd.mogelijk ? ' kan' : '') + '">' +
+          (dd.mogelijk ? 'Verdieping mogelijk' : 'Verdieping niet mogelijk') +
+          (dd.reden ? ' &middot; ' + escapeHtml(dd.reden) : '') + '</p>'
+      : '';
+    return '<section class="vestiging" data-soort="' + escapeHtml(soort) + '">' +
+      '<div class="vest-kop">' + merk +
+        '<h3>' + escapeHtml(v.weergave.kop) + '</h3>' +
+        (afgeleid ? '<span class="vest-afgeleid" title="Afgeleid uit het webadres of het briefhoofd van een rapport; niet door een mens vastgesteld.">afgeleid</span>' : '') +
+      '</div>' +
+      '<p class="vest-tekst">' + escapeHtml(v.weergave.tekst) + '</p>' +
+      ddRegel +
+    '</section>';
+  }
+
   function groepHtml(titel, uitleg, itemsHtml, smal){
     if (!itemsHtml) return '';
     return '<section class="groep">' +
@@ -1769,6 +1809,7 @@
 
     var out = '<div class="rapport">';
     out += rapportKop(c);
+    out += vestigingHtml(c);
     out += blokkenHtml(c);
     out += vervolgHtml(c);
     out += bewijsGroep(c, engine, r, coaRecords, documents);

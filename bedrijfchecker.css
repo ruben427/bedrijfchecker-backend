@@ -1154,3 +1154,26 @@ body.sheet-open{ overflow:hidden; }
   /* Alleen met twee acties: onderaan 12 in plaats van 24. */
   .vervolg-vak.twee-acties{ padding-bottom:12px; }
 }
+
+/* --- Vestiging: EU / NL / buiten de EU / land onbekend --------------------
+   Besluit Ruben 22 september. Alleen vorm; de teksten komen uit vestiging.js
+   in de backend, zodat het rapport en de stafpagina hetzelfde zeggen. */
+.vestiging{background:var(--surface,#fff);border-radius:12px;padding:24px;margin:16px 0}
+.vest-kop{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 8px}
+.vest-kop h3{margin:0;font-size:20px;font-weight:700;color:var(--ink,#0f0f0e)}
+.vest-merk{display:inline-flex;align-items:center;justify-content:center;
+  min-width:44px;height:28px;padding:0 10px;border-radius:6px;
+  font-size:14px;font-weight:700;letter-spacing:.04em;color:#fff}
+.vest-merk.eu{background:#1f4fa3}
+.vest-merk.nl{background:#22693f}
+.vest-afgeleid{font-size:12px;color:var(--muted,#89827b);
+  border:1px solid var(--line,#e2e0de);border-radius:999px;padding:2px 10px}
+.vest-tekst{margin:0;font-size:16px;line-height:1.5;color:var(--ink,#0f0f0e)}
+.vest-deepdive{margin:12px 0 0;font-size:12px;color:var(--muted,#89827b)}
+.vest-deepdive.kan{color:#22693f;font-weight:600}
+.vestiging[data-soort="onbekend"] .vest-kop h3,
+.vestiging[data-soort="buiten"] .vest-kop h3{color:var(--muted,#89827b)}
+@media (max-width:700px){
+  .vestiging{padding:20px}
+  .vest-kop h3{font-size:18px}
+}
