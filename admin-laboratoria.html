@@ -161,6 +161,24 @@
       (n ? '<div class="n">' + esc(n) + '</div>' : '') + '</div>';
   }
 
+  // Vestigingschip. Bewust anders van vorm voor vastgesteld en afgeleid: een
+  // afgeleid land is een voorstel uit wat wij zagen (briefhoofd, rechtsvorm,
+  // landdomein), geen vaststelling, en dat hoort op het scherm te blijven
+  // verschillen. Besluit Ruben 22 september: EU gaat over de juridische
+  // vestiging, niet het verzendland.
+  function vestigingChip(v) {
+    if (!v || v.herkomst === 'onbekend') {
+      return '<span class="chip grey" title="Geen adres op het rapport, geen rechtsvorm in de naam, en het webadres zegt niets over een land.">land onbekend</span>';
+    }
+    var kleur = v.eu === true ? 'ok' : (v.eu === false ? 'warn' : 'grey');
+    var kern = v.eu === true ? 'EU' : (v.eu === false ? 'niet-EU' : 'land bekend');
+    var tekst = kern + (v.land ? ' \u00b7 ' + v.land : '');
+    if (v.herkomst === 'afgeleid') tekst += ' (afgeleid)';
+    var titel = v.reden || '';
+    if (v.herkomst === 'vastgesteld' && v.door) titel = 'Vastgesteld door ' + v.door + (v.reden ? ': ' + v.reden : '');
+    return '<span class="chip ' + kleur + '" title="' + esc(titel) + '">' + esc(tekst) + '</span>';
+  }
+
   function tekenLab(l) {
     var sl = l.lab.toLowerCase().replace(/[^a-z0-9]/g, '');
     var o = l.oordeel;
@@ -184,7 +202,7 @@
     return '<div class="lab" data-lab="' + esc(sl) + '" data-open="' + (open[sl] ? '1' : '0') + '">' +
       '<div class="lab-kop" data-toggle="' + esc(sl) + '">' +
         '<span class="lab-naam">' + esc(l.lab) + '</span>' +
-        statusChip + indelingChip(l.werkindeling, l.notitie) +
+        statusChip + vestigingChip(l.vestiging) + indelingChip(l.werkindeling, l.notitie) +
         (l.nogNietGezien
           ? '<span class="chip grey">nog niet in onze data</span>'
           : toegangChip(l.onzeToegang) +
@@ -244,8 +262,47 @@
           '<p style="margin-top:16px"><button type="submit">Vastleggen</button></p>' +
           '<p class="melding" data-melding="' + esc(sl) + '"></p>' +
         '</form>' +
+        vestigingBlok(l, sl) +
       '</div>' +
     '</div>';
+  }
+
+  // Waar zit dit lab? Apart van de labstand, want het zijn twee losse
+  // uitspraken: een lab kan erkend zijn en tegelijk buiten de EU zitten.
+  function vestigingBlok(l, sl) {
+    var v = l.vestiging || {};
+    var vast = v.herkomst === 'vastgesteld';
+    var regel = vast
+      ? '<div class="huidig"><strong>Vestiging vastgesteld door ' + esc(v.door || '?') + '</strong><br>' +
+          esc((v.land || '?') + (v.eu === true ? ' (EU)' : (v.eu === false ? ' (buiten de EU)' : ''))) +
+          (v.reden ? '<br>' + esc(v.reden) : '') +
+          ((v.bronnen && v.bronnen.length) ? '<br><em>Bronnen: ' + esc([].concat(v.bronnen).join(', ')) + '</em>' : '') +
+        '</div>'
+      : '<p class="uitleg">' + esc(v.herkomst === 'afgeleid'
+          ? 'Afgeleid, niet vastgesteld: ' + (v.reden || '')
+          : 'Niet af te leiden. ' + (v.reden || '')) + '</p>';
+
+    return '<form data-vestiging="' + esc(sl) + '">' +
+      '<h4 style="margin:24px 0 4px">Waar is dit laboratorium gevestigd?</h4>' +
+      '<p class="uitleg">Het gaat om de juridische vestiging: waar het bedrijf staat ingeschreven. Niet vanwaar er verzonden wordt.</p>' +
+      regel +
+      '<div class="rij2">' +
+        '<div>' +
+          '<label>Land</label>' +
+          '<input type="text" name="land" value="' + esc(vast ? (v.land || '') : '') + '" placeholder="Nederland, of nl">' +
+        '</div>' +
+        '<div>' +
+          '<label>Bronnen (één per regel)</label>' +
+          '<textarea name="bronnen" placeholder="Handelsregister, adres op de site, briefhoofd van het rapport…">' +
+            esc((vast && v.bronnen) ? [].concat(v.bronnen).join('\n') : '') + '</textarea>' +
+        '</div>' +
+      '</div>' +
+      '<label>Waar heb je dit vastgesteld?</label>' +
+      '<textarea name="onderbouwing" placeholder="Schrijf wat je hebt gezien, niet wat je vermoedt.">' +
+        esc(vast ? (v.reden || '') : '') + '</textarea>' +
+      '<p style="margin-top:16px"><button type="submit">Vestiging vastleggen</button></p>' +
+      '<p class="melding" data-vestigingmelding="' + esc(sl) + '"></p>' +
+    '</form>';
   }
 
   function teken(labs) {
@@ -291,7 +348,45 @@
     if (p) p.textContent = g[1];
   });
 
+  // Het vestigingsformulier. Eigen afhandeling, want het schrijft naar een
+  // ander endpoint dan de labstand en mag die niet meeslepen.
   elLabs.addEventListener('submit', function (ev) {
+    var form = ev.target;
+    var sl = form.getAttribute('data-vestiging');
+    if (!sl) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    var mel = elLabs.querySelector('[data-vestigingmelding="' + sl + '"]');
+    var labnaam = form.closest('.lab').querySelector('.lab-naam').textContent;
+    if (!naam()) { mel.className = 'melding fout'; mel.textContent = 'Vul bovenaan je naam in.'; return; }
+    var knop = form.querySelector('button[type=submit]');
+    knop.disabled = true;
+    mel.className = 'melding'; mel.textContent = 'Opslaan…';
+    haal('/api/admin/vestiging', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        soort: 'lab',
+        naam: labnaam,
+        land: form.land.value,
+        onderbouwing: form.onderbouwing.value,
+        bronnen: form.bronnen.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean),
+        vastgelegdDoor: naam()
+      })
+    }).then(function (j) {
+      var v = j.vestiging || {};
+      mel.className = 'melding goed';
+      mel.textContent = 'Vastgelegd: ' + (v.land || '?') +
+        (v.eu === true ? ' (EU)' : (v.eu === false ? ' (buiten de EU)' : ' — geen EU-uitspraak, land staat niet op onze lijst'));
+      open[sl] = true;
+      laden();
+    }).catch(function (e) {
+      mel.className = 'melding fout';
+      mel.textContent = 'Niet gelukt: ' + e.message;
+    }).then(function () { knop.disabled = false; });
+  });
+
+  elLabs.addEventListener('submit', function (ev) {
+    if (!ev.target.getAttribute('data-form')) return;
     ev.preventDefault();
     var form = ev.target;
     var sl = form.getAttribute('data-form');

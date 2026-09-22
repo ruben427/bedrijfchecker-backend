@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const db = require('./db');
 const coaStore = require('./coaStore');
+const vestiging = require('./vestiging');
 const coaCrawler = require('./coaCrawler');
 const siteShot = require('./siteShot');
 const pipeline = require('./pipeline');
@@ -513,6 +514,61 @@ app.post('/api/admin/tekstoordelen', rl.caseAction, auth.requireOwnerToken, requ
     const opgeslagen = await coaStore.saveTekstoordeel(b);
     if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt' });
     res.json({ ok: true, id: opgeslagen.id, herkomst: opgeslagen.herkomst });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Vestigingsland vastleggen, voor een lab of een leverancier. BESLUIT RUBEN
+// 22 september: "EU" gaat over de juridische vestiging, niet het verzendland.
+//
+// Zelfde opzet als de labstand: lezen mag een lezer, vastleggen vraagt een
+// beoordelaar, en zonder naam en onderbouwing gaat er niets in. Het systeem
+// leidt zelf een land af uit briefhoofd, rechtsvorm en landdomein, maar dat
+// blijft een voorstel - wat hier binnenkomt gaat daar altijd boven.
+app.post('/api/admin/vestiging', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const soort = String(b.soort || '').trim();
+    if (soort !== 'lab' && soort !== 'leverancier') {
+      return res.status(400).json({ error: 'ongeldige_soort', message: 'soort moet "lab" of "leverancier" zijn.' });
+    }
+    const naam = String(b.naam || '').trim();
+    if (!naam) return res.status(400).json({ error: 'geen_naam', message: 'Geef de naam van het lab of de leverancier mee.' });
+    const vastgelegdDoor = String(b.vastgelegdDoor || '').trim();
+    if (!vastgelegdDoor) return res.status(400).json({ error: 'geen_beoordelaar', message: 'Vul in wie dit heeft vastgesteld.' });
+
+    // Het land mag als code ("nl") of als naam ("Nederland") binnenkomen.
+    const herkend = vestiging.normaliseerLand(b.land);
+    if (!herkend.land) {
+      return res.status(400).json({ error: 'geen_land', message: 'Vul een land in, als landcode (nl) of als naam (Nederland).' });
+    }
+    // Een land zonder onderbouwing is over een half jaar niet na te gaan, en
+    // het bepaalt straks of iemand een betaalde verdieping krijgt aangeboden.
+    const onderbouwing = String(b.onderbouwing || '').trim();
+    if (onderbouwing.length < 10) {
+      return res.status(400).json({ error: 'geen_onderbouwing', message: 'Schrijf op waar je dit hebt vastgesteld.' });
+    }
+    const bronnen = Array.isArray(b.bronnen) ? b.bronnen.filter((x) => String(x || '').trim()) : [];
+
+    const sleutel = soort === 'lab'
+      ? coaStore.labSleutel(coaStore.normaliseerLab(naam).naam)
+      : coaStore.supplierKeyFromUrl(naam);
+    if (!sleutel) return res.status(400).json({ error: 'geen_sleutel', message: 'Kon geen sleutel maken van deze naam.' });
+
+    const opgeslagen = await coaStore.saveVestiging(soort, sleutel, {
+      naam,
+      land: herkend.land,
+      landcode: herkend.landcode,
+      // eu blijft null bij een land dat we niet op de lijst hebben. Dan staat
+      // er wel een land, maar doen we geen EU-uitspraak.
+      eu: herkend.eu,
+      onderbouwing,
+      bronnen: bronnen.length ? bronnen : null,
+      vastgelegdDoor
+    });
+    if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'De vestiging kon niet worden opgeslagen.' });
+    res.json({ ok: true, vestiging: opgeslagen });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }

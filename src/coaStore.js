@@ -17,6 +17,7 @@
 // lopende audit laten mislukken. Bij twijfel loggen en null teruggeven.
 
 const crypto = require('crypto');
+const vestiging = require('./vestiging');
 const { v4: uuidv4 } = require('uuid');
 const { pool } = require('./db');
 const janoshik = require('./janoshik');
@@ -233,6 +234,34 @@ async function initCoaSchema() {
   // waarop de verificatieketen ophoudt - en dat hoort vastgelegd.
   await pool.query(`ALTER TABLE lab_oordelen ADD COLUMN IF NOT EXISTS informatie_opgevraagd BOOLEAN;`);
   await pool.query(`ALTER TABLE lab_oordelen ADD COLUMN IF NOT EXISTS informatie_reactie TEXT;`);
+
+  // Vestigingsland, vastgesteld door een mens. BESLUIT RUBEN 22 september:
+  // "EU" gaat over de juridische vestiging, niet het verzendland.
+  //
+  // Bewust een EIGEN tabel en niet een kolom op lab_oordelen, om twee redenen.
+  // Ten eerste geldt hij voor labs EN leveranciers. Ten tweede zijn het twee
+  // losse uitspraken: een lab kan erkend zijn en tegelijk buiten de EU zitten,
+  // en die twee horen niet aan elkaar vast te zitten in een formulier.
+  //
+  // Het AFGELEIDE land staat hier niet in. Dat wordt bij het opvragen berekend
+  // uit wat we zien (briefhoofd, rechtsvorm, landdomein), zodat een betere
+  // afleidregel meteen overal doorwerkt in plaats van in een oude rij te
+  // blijven staan.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS vestiging (
+      soort TEXT NOT NULL,
+      sleutel TEXT NOT NULL,
+      naam TEXT,
+      land TEXT,
+      landcode TEXT,
+      eu BOOLEAN,
+      onderbouwing TEXT,
+      bronnen JSONB,
+      vastgelegd_door TEXT NOT NULL,
+      vastgelegd_op BIGINT NOT NULL,
+      PRIMARY KEY (soort, sleutel)
+    );
+  `);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -1006,6 +1035,84 @@ async function labOordelen() {
 //    mogelijk als de shop je beide waarden geeft - en kun je nooit zien wat
 //    dat lab verder heeft getest, of voor wie. Wij slaan zo'n verwijzing op
 //    als labref://, en dat is precies de vorm die niemand kan controleren.
+// Alle vastgestelde vestigingen van een soort ('lab' of 'leverancier'), met
+// de sleutel als ingang.
+async function vestigingen(soort) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT soort, sleutel, naam, land, landcode, eu, onderbouwing, bronnen,
+              vastgelegd_door, vastgelegd_op
+         FROM vestiging WHERE soort = $1`, [soort]
+    );
+    const uit = {};
+    rows.forEach((r) => {
+      uit[r.sleutel] = {
+        soort: r.soort, sleutel: r.sleutel, naam: r.naam,
+        land: r.land, landcode: r.landcode, eu: r.eu,
+        onderbouwing: r.onderbouwing, bronnen: r.bronnen || null,
+        vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op)
+      };
+    });
+    return uit;
+  } catch (e) {
+    console.error('coaStore.vestigingen:', (e && e.message) || e);
+    return {};
+  }
+}
+
+// Een vestiging vastleggen. Zelfde opzet als saveLabOordeel: zonder naam van
+// degene die het vaststelde gaat er niets in.
+async function saveVestiging(soort, sleutel, gegevens) {
+  const g = gegevens || {};
+  if (!soort || !sleutel || !g.vastgelegdDoor) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO vestiging (soort, sleutel, naam, land, landcode, eu, onderbouwing, bronnen, vastgelegd_door, vastgelegd_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (soort, sleutel) DO UPDATE SET
+         naam = EXCLUDED.naam, land = EXCLUDED.land, landcode = EXCLUDED.landcode,
+         eu = EXCLUDED.eu, onderbouwing = EXCLUDED.onderbouwing, bronnen = EXCLUDED.bronnen,
+         vastgelegd_door = EXCLUDED.vastgelegd_door, vastgelegd_op = EXCLUDED.vastgelegd_op
+       RETURNING *`,
+      [soort, sleutel, g.naam || null, g.land || null, g.landcode || null,
+       typeof g.eu === 'boolean' ? g.eu : null, g.onderbouwing || null,
+       g.bronnen ? JSON.stringify(g.bronnen) : null, g.vastgelegdDoor, Date.now()]
+    );
+    const r = rows[0];
+    return r ? {
+      soort: r.soort, sleutel: r.sleutel, naam: r.naam, land: r.land,
+      landcode: r.landcode, eu: r.eu, onderbouwing: r.onderbouwing,
+      bronnen: r.bronnen || null, vastgelegdDoor: r.vastgelegd_door,
+      vastgelegdOp: Number(r.vastgelegd_op)
+    } : null;
+  } catch (e) {
+    console.error('coaStore.saveVestiging:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// De briefhoofden waaronder een lab op onze documenten voorkomt, ruw en wel.
+// Dat is waar het adres in zit; korteLabnaam gooit dat weg voor de weergave.
+async function labBriefhoofden() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT DISTINCT lab FROM coa_documents WHERE lab IS NOT NULL AND lab <> ''`
+    );
+    const per = {};
+    rows.forEach((r) => {
+      const naam = normaliseerLab(r.lab).naam;
+      if (!per[naam]) per[naam] = [];
+      if (per[naam].indexOf(r.lab) === -1) per[naam].push(r.lab);
+    });
+    // Langste eerst: die draagt het adres, de korte vorm is alleen de naam.
+    Object.keys(per).forEach((k) => per[k].sort((a, b) => b.length - a.length));
+    return per;
+  } catch (e) {
+    console.error('coaStore.labBriefhoofden:', (e && e.message) || e);
+    return {};
+  }
+}
+
 async function labSignalen() {
   try {
     const { rows } = await pool.query(
@@ -1029,6 +1136,11 @@ async function labSignalen() {
        WHERE r.relatie = 'toont' GROUP BY r.lab`
     );
     const oordelen = await labOordelen();
+    // Vestiging: het vastgestelde land van een mens, en de briefhoofden waaruit
+    // we anders afleiden. Allebei per lab, zodat de pagina het verschil kan
+    // tonen tussen "vastgesteld" en "afgeleid".
+    const vastgesteldeVestiging = await vestigingen('lab');
+    const briefhoofden = await labBriefhoofden();
     const perLab = {};
     rows.forEach((r) => {
       const naam = normaliseerLab(r.lab).naam;
@@ -1086,7 +1198,16 @@ async function labSignalen() {
         werkindeling: bk ? bk.lijst : 'niet op de werklijst',
         url: bk ? (bk.url || null) : null,
         notitie: bk ? (bk.notitie || null) : null,
-        nogNietGezien: !!b.nogNietGezien
+        nogNietGezien: !!b.nogNietGezien,
+        // Waar zit dit lab? Het briefhoofd van het COA gaat voor op het
+        // domein: dat staat op een document dat het lab zelf uitgaf.
+        vestiging: vestiging.stand(
+          vestiging.leidAf({
+            briefhoofden: briefhoofden[b.lab] || [],
+            url: bk ? bk.url : null
+          }),
+          vastgesteldeVestiging[labSleutel(b.lab)] || null
+        )
       });
     }).sort((a, b) => (b.verwijzingen - a.verwijzingen) || a.lab.localeCompare(b.lab));
   } catch (e) {
@@ -2837,6 +2958,7 @@ async function andereLeveranciersVoor(shaList) {
 module.exports = {
   vialSpreidingUit,
   bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,
+  vestigingen, saveVestiging, labBriefhoofden,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,
