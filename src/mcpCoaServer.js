@@ -58,13 +58,42 @@ function rolVanToken(req) {
   return null;
 }
 
+// Wat stuurde de client mee? Zonder dit is een mislukte koppeling niet te
+// onderscheiden van een verkeerd getypt token: de connector zegt alleen
+// "couldn't reach", en dat is precies de melding die je ook krijgt bij een
+// 401. Daarom loggen we de VORM van de header, nooit de waarde: is hij er,
+// welk schema, en hoe lang is het token. Dat is genoeg om te zien of de
+// header helemaal ontbreekt, of "Bearer" dubbel staat, of er een spatie of
+// regeleinde is meegekopieerd.
+function headerVorm(req) {
+  const ruw = req.get('Authorization');
+  if (!ruw) return 'geen Authorization-header';
+  const delen = String(ruw).split(/\s+/);
+  const schema = delen[0] || '(leeg)';
+  const rest = String(ruw).slice(schema.length);
+  const waarde = rest.trim();
+  return 'schema=' + schema +
+    ' woorden=' + delen.length +
+    ' tokenlengte=' + waarde.length +
+    (rest !== (' ' + waarde) ? ' LET OP: extra witruimte of regeleinde' : '');
+}
+
 function requireStaffToken(req, res, next) {
   if (!process.env.COA_STAFF_TOKEN) {
+    console.warn('[mcp] ' + req.method + ' ' + req.path + ' geweigerd: COA_STAFF_TOKEN staat niet op de server');
     return res.status(503).json({ error: 'niet_geconfigureerd', message: 'COA_STAFF_TOKEN is niet gezet op de server.' });
   }
   const rol = rolVanToken(req);
   if (!rol) {
-    return res.status(401).json({ error: 'unauthorized', message: 'Ongeldig of ontbrekend token.' });
+    console.warn('[mcp] 401 op ' + req.method + ' ' + req.path + ' - ' + headerVorm(req) +
+      ' (verwachte lengte staf=' + String(process.env.COA_STAFF_TOKEN).length +
+      (process.env.COA_REDACTIE_TOKEN ? ', redactie=' + String(process.env.COA_REDACTIE_TOKEN).length : '') + ')');
+    // Zonder WWW-Authenticate moet een client zelf raden hoe hij zich moet
+    // melden, en die gok valt vaak op OAuth - precies wat de connector deed
+    // met "Sign in now, Detected". Dit zegt expliciet: gewoon een bearer-token,
+    // geen autorisatieserver, niets om op in te loggen.
+    res.set('WWW-Authenticate', 'Bearer realm="bedrijfchecker-mcp", error="invalid_token"');
+    return res.status(401).json({ error: 'unauthorized', message: 'Ongeldig of ontbrekend token. Stuur een header Authorization: Bearer <COA_STAFF_TOKEN>.' });
   }
   req.mcpRol = rol;
   next();
@@ -846,6 +875,25 @@ const MCP_PADEN = ['/mcp', '/mcp/v2', '/mcp/:versie'];
 const MCP_VOORBEELDPADEN = ['/mcp', '/mcp/v2', '/mcp/v3'];
 
 function mount(app) {
+  // Een MCP-client opent bij het koppelen vaak eerst een GET (de SSE-stroom)
+  // of sluit af met een DELETE. Die kende deze server niet, dus gaf Express
+  // zijn eigen HTML-foutpagina terug. Een client die JSON verwacht en een
+  // stuk HTML krijgt, concludeert "dit is geen MCP-server" en meldt dat als
+  // "couldn't reach" - terwijl de POST gewoon werkt.
+  //
+  // Daarom nu een expliciet, machineleesbaar antwoord: deze server praat
+  // alleen over POST, en hij zegt erbij hoe je je meldt.
+  app.get(MCP_PADEN, (req, res) => {
+    console.warn('[mcp] GET op ' + req.path + ' - ' + headerVorm(req) + '; deze server ondersteunt alleen POST');
+    res.set('Allow', 'POST');
+    res.status(405).json({
+      error: 'alleen_post',
+      message: 'Deze MCP-server werkt via POST (JSON-RPC). Er is geen GET-stroom en geen OAuth; meld je met een header Authorization: Bearer <token>.'
+    });
+  });
+
+  app.delete(MCP_PADEN, (req, res) => res.status(204).end());
+
   app.post(MCP_PADEN, requireStaffToken, express.json({ limit: '25mb' }), async (req, res) => {
     try {
       const [server, TransportClass] = await Promise.all([getServer(req.mcpRol), getTransportClass()]);
