@@ -470,7 +470,11 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
    dus het logo stond op 56 en de rand viel net onder de pill in plaats van er
    middendoor. Een van de twee moest weg; dit is wat er over is. */
 .site-header{
-  background:var(--surface); border-bottom:1px solid var(--border);
+  /* Geen border-bottom: de scheiding IS het kleurverschil tussen de balk
+     (neutrals/25) en de pagina (neutrals/50). Een lijn erbij tekent een rand
+     die in het ontwerp niet bestaat, en trekt bovendien een streep door de
+     pill heen. */
+  background:var(--surface);
   width:100%; height:41px; position:relative; z-index:2;
 }
 .site-header-inner{
