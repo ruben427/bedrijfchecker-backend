@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Inzichten — Bedrijfchecker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
+
+<style>
+  /* ONTWERPVOORBEELD. De cijfers hieronder zijn verzonnen, de vormen niet:
+     dit is bedoeld om in het ontwerp over te nemen. Elke grafiek hangt aan
+     gegevens die we al hebben.
+
+     Kleur is als LAATSTE gekozen, en per taak:
+       - geverifieerd / gerapporteerd is een GEORDEND paar, geen twee losse
+         categorieen. Daarom een ramp in een hue, donker naar licht, en geen
+         twee willekeurige kleuren. Dat sluit ook aan op besluit A24: geen
+         stoplicht over de verhouding.
+       - "niets" is afwezigheid, geen derde stand met een eigen hue. Grijs.
+       - de losse balken zijn een grootte, dus een hue.
+       - groen/oranje/rood blijven gereserveerd voor status en worden nooit
+         een reeks.
+
+     Het paar is nagerekend, niet op het oog gekozen:
+       licht #7a1f9e / #bf7ad6  - alle controles goed
+       donker #c15fea / #8a3aad - contrast van de tweede staat op 2,71:1, en
+         daarom staan de getallen bij elke balk EN is er een tabelweergave.
+         Zonder die twee zou dit paar niet mogen. */
+  .viz{
+    color-scheme: light;
+    --surface-1:#ffffff;
+    --reeks-1:#7a1f9e;     /* geverifieerd */
+    --reeks-2:#bf7ad6;     /* gerapporteerd */
+    --reeks-0:#9f9a94;     /* niets: afwezigheid */
+    --as:#ccc9c6;
+    --raster:#e8e5e2;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])) .viz{
+      color-scheme: dark;
+      --surface-1:#211911;
+      --reeks-1:#c15fea;
+      --reeks-2:#8a3aad;
+      --reeks-0:#8a7a6c;
+      --as:#3d2f22;
+      --raster:#2f2418;
+    }
+  }
+  :root[data-theme="dark"] .viz{
+    color-scheme: dark;
+    --surface-1:#211911;
+    --reeks-1:#c15fea;
+    --reeks-2:#8a3aad;
+    --reeks-0:#8a7a6c;
+    --as:#3d2f22;
+    --raster:#2f2418;
+  }
+
+  .staf{ max-width:1180px; margin:0 auto; padding:60px 16px 80px; }
+  .kop{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+  .kop h1{ font-family:"Baloo 2",system-ui,sans-serif; color:var(--heading); margin:0; font-size:1.6rem; }
+  .kop .terug{ color:var(--accent); font-size:.9rem; }
+  .voorbeeld{
+    margin:14px 0 28px; padding:10px 14px; border-radius:var(--radius-md,12px);
+    background:var(--accent-soft); border:1px solid var(--accent);
+    font-size:.86rem; line-height:1.45; color:var(--text);
+  }
+
+  .tegels{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px; margin-bottom:32px; }
+  .tegel{
+    background:var(--surface-2); border:1px solid var(--border);
+    border-radius:var(--radius-md,16px); padding:14px 16px;
+  }
+  .tegel .k{ font-family:"Open Sans",sans-serif; font-weight:700; font-size:.66rem; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--text-subtle); display:block; }
+  .tegel .v{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:2rem; line-height:1.05;
+    display:block; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
+  .tegel .n{ font-size:.78rem; color:var(--text-faint); line-height:1.35; display:block; }
+  .tegel.aandacht .v{ color:var(--accent-strong); }
+
+  .kaart{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg,24px);
+    padding:22px 24px 18px; margin-bottom:20px;
+  }
+  .kaart h2{ font-family:"Baloo 2",system-ui,sans-serif; font-size:1.15rem; margin:0 0 2px; color:var(--heading-2); }
+  .kaart .waarom{ font-size:.86rem; color:var(--text-muted); margin:0 0 18px; line-height:1.45; max-width:62ch; }
+  .duo{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:860px){ .duo{ grid-template-columns:1fr; } }
+
+  .legenda{ display:flex; gap:16px; flex-wrap:wrap; margin:0 0 14px; font-size:.8rem; color:var(--text-muted); }
+  .legenda span{ display:inline-flex; align-items:center; gap:7px; }
+  .legenda i{ width:12px; height:12px; border-radius:3px; display:inline-block; }
+
+  .balkrij{ display:grid; grid-template-columns:150px 1fr; gap:12px; align-items:center; margin-bottom:12px; }
+  @media (max-width:560px){ .balkrij{ grid-template-columns:1fr; gap:4px; } }
+  .balklabel{ font-size:.88rem; color:var(--text); font-weight:600; }
+  .stapel{ display:flex; height:30px; border-radius:6px; overflow:hidden; gap:2px; background:transparent; }
+  .stapel > span{
+    display:flex; align-items:center; justify-content:flex-end; padding:0 8px;
+    font-size:.76rem; font-weight:700; color:#fff; font-variant-numeric:tabular-nums;
+    min-width:0; cursor:default;
+  }
+  .stapel > span:first-child{ border-radius:6px 0 0 6px; }
+  .stapel > span:last-child{ border-radius:0 6px 6px 0; }
+
+  .tabelknop{
+    appearance:none; background:none; border:0; padding:4px 0; cursor:pointer; font:inherit;
+    font-size:.8rem; color:var(--accent); text-decoration:underline; text-underline-offset:4px;
+  }
+  table.data{ width:100%; border-collapse:collapse; font-size:.85rem; margin-top:10px; }
+  table.data th, table.data td{ text-align:left; padding:7px 10px; border-bottom:1px solid var(--border); }
+  table.data th{ font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-subtle); }
+  table.data td.n{ text-align:right; font-variant-numeric:tabular-nums; }
+  .verborgen{ display:none !important; }
+
+  svg .raster{ stroke:var(--raster); stroke-width:1; }
+  svg .as{ stroke:var(--as); stroke-width:1; }
+  svg text{ fill:var(--text-muted); font-family:"Open Sans",sans-serif; font-size:11px; }
+  svg text.waarde{ fill:var(--text); font-weight:700; font-variant-numeric:tabular-nums; }
+  .tip{
+    position:fixed; pointer-events:none; z-index:40; padding:8px 11px; border-radius:10px;
+    background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow);
+    font-size:.8rem; color:var(--text); opacity:0; transition:opacity .09s; max-width:250px; line-height:1.4;
+  }
+  .tip b{ display:block; font-family:"Baloo 2",system-ui,sans-serif; font-size:.92rem; }
+</style>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-logo" href="admin.html" aria-label="Naar de stafpagina">
+      <img src="PEPPROOF-LOGO.svg" width="259" height="83" alt="PepProof">
+    </a>
+    <span class="betavlag">BETA 1.0</span>
+  </div>
+</header>
+
+<main class="staf viz">
+  <div class="kop">
+    <h1>Inzichten</h1>
+    <a class="terug" href="admin.html">← terug naar de stafpagina</a>
+  </div>
+
+  <p class="voorbeeld"><strong>Ontwerpvoorbeeld.</strong> De cijfers zijn verzonnen, de vormen niet.
+    Elke grafiek hier hangt aan gegevens die al in het systeem zitten.</p>
+
+  <div class="tegels" id="tegels"></div>
+
+  <section class="kaart">
+    <h2>Wat wij over de waarden zeggen</h2>
+    <p class="waarom">Per uitspraak, over alle rapporten die wij hebben gelezen. Dit is de kern van de
+      methodiek: geverifieerd is onafhankelijk bevestigd, gerapporteerd staat wel in het document maar
+      is niet nagetrokken. Bewust geen stoplicht — de verhouding krijgt geen oordeel (A24).</p>
+    <div class="legenda">
+      <span><i style="background:var(--reeks-1)"></i>onafhankelijk bevestigd</span>
+      <span><i style="background:var(--reeks-2)"></i>gerapporteerd</span>
+      <span><i style="background:var(--reeks-0)"></i>wij zeggen niets</span>
+    </div>
+    <div id="standen"></div>
+    <button class="tabelknop" data-tabel="tabelStanden">Toon als tabel</button>
+    <div id="tabelStanden" class="verborgen"></div>
+  </section>
+
+  <div class="duo">
+    <section class="kaart">
+      <h2>De verificatieketen</h2>
+      <p class="waarom">Waar de rapporten onderweg afvallen. Elke stap is een deelverzameling van de vorige,
+        dus dit is een trechter en geen vergelijking.</p>
+      <div id="keten"></div>
+      <button class="tabelknop" data-tabel="tabelKeten">Toon als tabel</button>
+      <div id="tabelKeten" class="verborgen"></div>
+    </section>
+
+    <section class="kaart">
+      <h2>Waar het bewijs aan hangt</h2>
+      <p class="waarom">Labverwijzingen per laboratorium, met de stand erachter. Eén hue: dit is een
+        grootte, geen indeling. Zo is te zien of het bewijs bij één lab ligt.</p>
+      <div id="labs"></div>
+    </section>
+  </div>
+
+  <section class="kaart">
+    <h2>Rapporten per maand</h2>
+    <p class="waarom">Regelmaat over tijd. Ondersteunend bewijs voor batchtraceerbaarheid (A23), en
+      uitdrukkelijk nooit een argument over wie de test heeft besteld.</p>
+    <div id="tijd"></div>
+  </section>
+</main>
+
+<div class="tip" id="tip"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---- verzonnen cijfers, echte vormen ------------------------------------
+  var STANDEN = [
+    { uitspraak: 'Zuiverheid', geverifieerd: 84, gerapporteerd: 96, niets: 31 },
+    { uitspraak: 'Identiteit van de stof', geverifieerd: 41, gerapporteerd: 74, niets: 96 },
+    { uitspraak: 'Hoeveelheid in de vial', geverifieerd: 22, gerapporteerd: 38, niets: 151 }
+  ];
+  var KETEN = [
+    { stap: 'COA gevonden', n: 247 },
+    { stap: 'Document gelezen', n: 211 },
+    { stap: 'Verwijzing op het rapport', n: 168 },
+    { stap: 'Lost op bij het lab', n: 103 },
+    { stap: 'Velden vergeleken', n: 61 }
+  ];
+  var LABS = [
+    { lab: 'Janoshik', n: 152, stand: 'erkend' },
+    { lab: 'Bridge Analytical', n: 45, stand: 'onvoldoende verifieerbaar' },
+    { lab: 'ILS Laboratories', n: 29, stand: 'afgekeurd - kwaliteitsborging' },
+    { lab: 'Finnrick', n: 11, stand: 'geen lab - databron/testplatform' },
+    { lab: 'Kovera Labs', n: 7, stand: 'nog niet beoordeeld' },
+    { lab: 'RC Testing', n: 6, stand: 'geen stand' }
+  ];
+  var TIJD = [
+    { m: '2026-03', n: 12 }, { m: '2026-04', n: 19 }, { m: '2026-05', n: 31 },
+    { m: '2026-06', n: 24 }, { m: '2026-07', n: 44 }, { m: '2026-08', n: 38 },
+    { m: '2026-09', n: 27 }
+  ];
+  var TEGELS = [
+    { k: 'Leveranciers', v: 6, n: '247 labverwijzingen bekend' },
+    { k: 'Handmatig gecontroleerd', v: '37%', n: '91 van de 247 verwijzingen' },
+    { k: 'Batches volledig getest', v: '18 van 52', n: 'zuiverheid, zware metalen en endotoxinen' },
+    { k: 'Labs zonder stand', v: 3, n: 'werk dat op een beoordelaar wacht', aandacht: true },
+    { k: 'Shopkopie wijkt af', v: 2, n: 'ander meetresultaat dan het lab', aandacht: true }
+  ];
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // ---- tooltip ------------------------------------------------------------
+  var tip = el('tip');
+  function toonTip(e, html) {
+    tip.innerHTML = html;
+    tip.style.opacity = '1';
+    var b = tip.getBoundingClientRect();
+    var x = Math.min(e.clientX + 14, window.innerWidth - b.width - 10);
+    var y = Math.max(10, e.clientY - b.height - 12);
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function verbergTip() { tip.style.opacity = '0'; }
+
+  // ---- tegels -------------------------------------------------------------
+  el('tegels').innerHTML = TEGELS.map(function (t) {
+    return '<div class="tegel' + (t.aandacht ? ' aandacht' : '') + '">' +
+      '<span class="k">' + esc(t.k) + '</span>' +
+      '<span class="v">' + esc(String(t.v)) + '</span>' +
+      '<span class="n">' + esc(t.n) + '</span></div>';
+  }).join('');
+
+  // ---- gestapelde balken: de drie standen ---------------------------------
+  //
+  // Het getal staat IN elk segment. Dat is niet alleen netjes: in donkere modus
+  // haalt de tweede stap geen 3:1 tegen de ondergrond, en dan is een zichtbaar
+  // label geen keuze maar een voorwaarde.
+  function toonStanden() {
+    var kleur = { geverifieerd: 'var(--reeks-1)', gerapporteerd: 'var(--reeks-2)', niets: 'var(--reeks-0)' };
+    var woord = { geverifieerd: 'onafhankelijk bevestigd', gerapporteerd: 'gerapporteerd', niets: 'wij zeggen niets' };
+    el('standen').innerHTML = STANDEN.map(function (r) {
+      var tot = r.geverifieerd + r.gerapporteerd + r.niets;
+      var seg = ['geverifieerd', 'gerapporteerd', 'niets'].map(function (k) {
+        var pct = (100 * r[k]) / tot;
+        // Onder de 6% past er geen getal in; dan geen label in plaats van een
+        // afgekapt getal.
+        return '<span style="flex:' + r[k] + ';background:' + kleur[k] + '" data-tip="' +
+          esc(r.uitspraak + '|' + woord[k] + '|' + r[k] + ' van de ' + tot + ' rapporten (' + Math.round(pct) + '%)') + '">' +
+          (pct >= 6 ? r[k] : '') + '</span>';
+      }).join('');
+      return '<div class="balkrij"><span class="balklabel">' + esc(r.uitspraak) + '</span>' +
+        '<span class="stapel">' + seg + '</span></div>';
+    }).join('');
+
+    Array.prototype.forEach.call(el('standen').querySelectorAll('[data-tip]'), function (s) {
+      s.addEventListener('mousemove', function (e) {
+        var d = s.getAttribute('data-tip').split('|');
+        toonTip(e, '<b>' + esc(d[0]) + '</b>' + esc(d[1]) + '<br>' + esc(d[2]));
+      });
+      s.addEventListener('mouseleave', verbergTip);
+    });
+
+    el('tabelStanden').innerHTML = '<table class="data"><thead><tr><th>Uitspraak</th>' +
+      '<th class="n">Bevestigd</th><th class="n">Gerapporteerd</th><th class="n">Niets</th></tr></thead><tbody>' +
+      STANDEN.map(function (r) {
+        return '<tr><td>' + esc(r.uitspraak) + '</td><td class="n">' + r.geverifieerd +
+          '</td><td class="n">' + r.gerapporteerd + '</td><td class="n">' + r.niets + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // ---- trechter: de verificatieketen --------------------------------------
+  function toonKeten() {
+    var max = KETEN[0].n;
+    el('keten').innerHTML = KETEN.map(function (s, i) {
+      var pct = (100 * s.n) / max;
+      var verloren = i ? KETEN[i - 1].n - s.n : 0;
+      return '<div class="balkrij" style="grid-template-columns:1fr">' +
+        '<span class="balklabel" style="display:flex;justify-content:space-between;font-weight:500">' +
+          '<span>' + esc(s.stap) + '</span>' +
+          '<span style="font-variant-numeric:tabular-nums;font-weight:700">' + s.n + '</span></span>' +
+        '<span class="stapel" style="height:14px" data-tip="' +
+          esc(s.stap + '|' + s.n + ' van de ' + max + (i ? '|' + verloren + ' vielen af bij deze stap' : '|beginpunt')) + '">' +
+          '<span style="flex:' + pct + ';background:var(--reeks-1)"></span>' +
+          '<span style="flex:' + (100 - pct) + ';background:var(--raster)"></span></span></div>';
+    }).join('');
+    Array.prototype.forEach.call(el('keten').querySelectorAll('[data-tip]'), function (s) {
+      s.addEventListener('mousemove', function (e) {
+        var d = s.getAttribute('data-tip').split('|');
+        toonTip(e, '<b>' + esc(d[0]) + '</b>' + esc(d[1]) + '<br>' + esc(d[2]));
+      });
+      s.addEventListener('mouseleave', verbergTip);
+    });
+    el('tabelKeten').innerHTML = '<table class="data"><thead><tr><th>Stap</th><th class="n">Rapporten</th>' +
+      '<th class="n">Afgevallen</th></tr></thead><tbody>' + KETEN.map(function (s, i) {
+        return '<tr><td>' + esc(s.stap) + '</td><td class="n">' + s.n + '</td><td class="n">' +
+          (i ? KETEN[i - 1].n - s.n : '—') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  // ---- labs naar verwijzingen ---------------------------------------------
+  function toonLabs() {
+    var max = Math.max.apply(null, LABS.map(function (l) { return l.n; }));
+    el('labs').innerHTML = LABS.map(function (l) {
+      return '<div style="margin-bottom:11px">' +
+        '<span style="display:flex;justify-content:space-between;font-size:.86rem;margin-bottom:3px">' +
+          '<span style="font-weight:600">' + esc(l.lab) + '</span>' +
+          '<span style="font-variant-numeric:tabular-nums;font-weight:700">' + l.n + '</span></span>' +
+        '<span class="stapel" style="height:12px" data-tip="' + esc(l.lab + '|' + l.stand + '|' + l.n + ' verwijzingen') + '">' +
+          '<span style="flex:' + l.n + ';background:var(--reeks-1)"></span>' +
+          '<span style="flex:' + (max - l.n) + ';background:transparent"></span></span>' +
+        '<span style="font-size:.74rem;color:var(--text-faint)">' + esc(l.stand) + '</span></div>';
+    }).join('');
+    Array.prototype.forEach.call(el('labs').querySelectorAll('[data-tip]'), function (s) {
+      s.addEventListener('mousemove', function (e) {
+        var d = s.getAttribute('data-tip').split('|');
+        toonTip(e, '<b>' + esc(d[0]) + '</b>' + esc(d[2]) + '<br>stand: ' + esc(d[1]));
+      });
+      s.addEventListener('mouseleave', verbergTip);
+    });
+  }
+
+  // ---- lijn over tijd -----------------------------------------------------
+  //
+  // Een reeks, dus geen legenda: de titel zegt al wat het is.
+  function toonTijd() {
+    var B = 900, H = 200, L = 34, R = 12, T = 14, O = 28;
+    var max = Math.ceil(Math.max.apply(null, TIJD.map(function (p) { return p.n; })) / 10) * 10;
+    var bx = function (i) { return L + (i * (B - L - R)) / (TIJD.length - 1); };
+    var by = function (v) { return T + (H - T - O) * (1 - v / max); };
+    var pad = TIJD.map(function (p, i) { return (i ? 'L' : 'M') + bx(i).toFixed(1) + ' ' + by(p.n).toFixed(1); }).join(' ');
+
+    var raster = '', labels = '';
+    [0, max / 2, max].forEach(function (v) {
+      raster += '<line class="raster" x1="' + L + '" y1="' + by(v) + '" x2="' + (B - R) + '" y2="' + by(v) + '"></line>';
+      labels += '<text x="' + (L - 8) + '" y="' + (by(v) + 4) + '" text-anchor="end">' + v + '</text>';
+    });
+    var punten = TIJD.map(function (p, i) {
+      return '<circle cx="' + bx(i) + '" cy="' + by(p.n) + '" r="5" fill="var(--reeks-1)" ' +
+        'stroke="var(--surface)" stroke-width="2" data-tip="' + esc(p.m + '|' + p.n + ' rapporten') + '"></circle>';
+    }).join('');
+    var xlab = TIJD.map(function (p, i) {
+      return '<text x="' + bx(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + p.m.slice(5) + '</text>';
+    }).join('');
+
+    el('tijd').innerHTML = '<svg viewBox="0 0 ' + B + ' ' + H + '" width="100%" role="img" ' +
+      'aria-label="Rapporten per maand, maart tot september 2026">' + raster + labels +
+      '<path d="' + pad + '" fill="none" stroke="var(--reeks-1)" stroke-width="2" ' +
+      'stroke-linejoin="round" stroke-linecap="round"></path>' + punten + xlab + '</svg>';
+
+    Array.prototype.forEach.call(el('tijd').querySelectorAll('[data-tip]'), function (c) {
+      c.addEventListener('mousemove', function (e) {
+        var d = c.getAttribute('data-tip').split('|');
+        toonTip(e, '<b>' + esc(d[0]) + '</b>' + esc(d[1]));
+      });
+      c.addEventListener('mouseleave', verbergTip);
+    });
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tabel]'), function (b) {
+    b.addEventListener('click', function () {
+      var t = el(b.getAttribute('data-tabel'));
+      var open = t.classList.toggle('verborgen');
+      b.textContent = open ? 'Toon als tabel' : 'Verberg de tabel';
+    });
+  });
+
+  toonStanden(); toonKeten(); toonLabs(); toonTijd();
+})();
+</script>
