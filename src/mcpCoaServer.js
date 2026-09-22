@@ -21,6 +21,7 @@ const coaStore = require('./coaStore');
 const teksten = require('./teksten');
 const db = require('./db');
 const pipeline = require('./pipeline');
+const crypto = require('crypto');
 const { safeEqual } = require('./auth');
 
 // --- twee rollen, twee tokens ----------------------------------------------
@@ -46,9 +47,25 @@ const REDACTIE_TOOLS = [
   'geef_tekstfeedback', 'verklaar_tekst', 'open_tekstoordelen', 'schrijfregels'
 ];
 
+// Een korte, onomkeerbare vingerafdruk. Acht hex-tekens uit een sha256 van
+// een token met hoge entropie zegt niets over de waarde, maar is wel genoeg
+// om twee tokens naast elkaar te leggen: gelijke afdruk is hetzelfde token,
+// verschillende afdruk is aantoonbaar een ander token.
+//
+// Nodig omdat de vorm van de header goed kan zijn - juiste lengte, een keer
+// Bearer, geen witruimte - en hij tóch niet matcht. Dan blijft alleen "het is
+// een andere string" over, en dat is zonder afdruk niet te laten zien zonder
+// het token zelf in een logregel te zetten.
+function afdruk(waarde) {
+  if (!waarde) return '(leeg)';
+  return crypto.createHash('sha256').update(String(waarde)).digest('hex').slice(0, 8);
+}
+
 function rolVanToken(req) {
-  const staf = process.env.COA_STAFF_TOKEN;
-  const redactie = process.env.COA_REDACTIE_TOKEN;
+  // Defensief trimmen: een omgevingsvariabele met een regeleinde eraan is een
+  // klassieker, en dan mislukt de vergelijking zonder dat iets dat verraadt.
+  const staf = (process.env.COA_STAFF_TOKEN || '').trim();
+  const redactie = (process.env.COA_REDACTIE_TOKEN || '').trim();
   const header = req.get('Authorization') || '';
   const m = /^Bearer\s+(.+)$/i.exec(header);
   const token = m ? m[1].trim() : null;
@@ -85,9 +102,14 @@ function requireStaffToken(req, res, next) {
   }
   const rol = rolVanToken(req);
   if (!rol) {
+    const ruw = req.get('Authorization') || '';
+    const aangeboden = (/^Bearer\s+(.+)$/i.exec(ruw) || [])[1];
+    const staf = (process.env.COA_STAFF_TOKEN || '').trim();
+    const redactie = (process.env.COA_REDACTIE_TOKEN || '').trim();
     console.warn('[mcp] 401 op ' + req.method + ' ' + req.path + ' - ' + headerVorm(req) +
-      ' (verwachte lengte staf=' + String(process.env.COA_STAFF_TOKEN).length +
-      (process.env.COA_REDACTIE_TOKEN ? ', redactie=' + String(process.env.COA_REDACTIE_TOKEN).length : '') + ')');
+      ' | aangeboden=' + afdruk(aangeboden ? aangeboden.trim() : null) +
+      ' verwacht staf=' + afdruk(staf) + ' (lengte ' + staf.length + ')' +
+      (redactie ? ' redactie=' + afdruk(redactie) + ' (lengte ' + redactie.length + ')' : ' redactie=niet gezet'));
     // Zonder WWW-Authenticate moet een client zelf raden hoe hij zich moet
     // melden, en die gok valt vaak op OAuth - precies wat de connector deed
     // met "Sign in now, Detected". Dit zegt expliciet: gewoon een bearer-token,
