@@ -609,12 +609,43 @@ async function finishStep(caseId, key, startedAt) {
 // Bij meerdere drempels toetsen we tegen de SOEPELSTE. Wie zichzelf
 // tegenspreekt krijgt de voor hem gunstigste lezing; dat de drempels
 // onderling verschillen staat apart gemeld in meerdereDrempels.
+// LET OP - HERZIEN 22 SEPTEMBER, BESLUIT A18 VAN ANNEMARIE.
+//
+// Hier stond: bij meerdere beloofde drempels toetsen tegen de SOEPELSTE.
+// Belooft een shop op dezelfde pagina >=99% en >=98%, dan was 98% de lat -
+// "wie zichzelf tegenspreekt krijgt het voordeel van de twijfel".
+//
+// Annemarie: "Ik zou bij meerdere tegenstrijdige drempels niet automatisch de
+// soepelste kiezen. Als op dezelfde pagina zowel >=99% als >=98% als
+// kwaliteitsbelofte wordt gepresenteerd en niet duidelijk is welke norm op
+// welk product van toepassing is, is de claim zelf inconsistent. PepProof moet
+// daar niet zelf een norm uit kiezen."
+//
+// Dat is scherper dan wat ik bouwde, en om een reden die ik miste: door zelf
+// de soepelste te kiezen deden WIJ een uitspraak over welke belofte geldt.
+// Dat is de belofte van de aanbieder invullen, niet toetsen.
+//
+// Dus nu: alleen toetsen wanneer eenduidig vaststaat welke belofte geldt. Bij
+// meerdere drempels zonder productkoppeling valt de toets stil en blijft er
+// een waarneming staan die zegt dat de claim zelf niet klopt.
+//
+// De extractie kent vandaag geen productkoppeling bij een belofte - er staat
+// alleen de zin en het percentage. Daarom is "eenduidig" nu simpelweg: precies
+// een drempel. Zodra een belofte aan een product gekoppeld kan worden, kan
+// eenduidigheid per product worden bepaald; het veld productSpecifiek staat
+// daarvoor klaar.
 function toetsZuiverheidsbelofte(beloften, records) {
-  const ruw = (beloften || [])
-    .map((b) => Number(b && b.drempelPercent))
-    .filter((n) => Number.isFinite(n) && n > 0 && n <= 100);
-  const drempels = [...new Set(ruw)].sort((a, b) => a - b);
+  const lijst = (beloften || []).filter((b) => b && Number.isFinite(Number(b.drempelPercent)) &&
+    Number(b.drempelPercent) > 0 && Number(b.drempelPercent) <= 100);
+  const drempels = [...new Set(lijst.map((b) => Number(b.drempelPercent)))].sort((a, b) => a - b);
   if (!drempels.length) return null;
+
+  // Eenduidig = wij hoeven niet te kiezen welke belofte geldt.
+  const eenduidig = drempels.length === 1;
+  const claims = lijst.map((b) => ({
+    belofte: b.belofte || null, drempelPercent: Number(b.drempelPercent),
+    bronUrl: b.bronUrl || null, productSpecifiek: false
+  }));
 
   // LET OP: Number(null) is 0 en Number.isFinite(0) is true. Zonder de
   // null-check belandde elk record zonder zuiverheid als 0% in de lijst
@@ -623,13 +654,34 @@ function toetsZuiverheidsbelofte(beloften, records) {
   const gemeten = (records || []).filter((r) =>
     r && r.purityPercent !== null && r.purityPercent !== undefined &&
     r.purityPercent !== '' && Number.isFinite(Number(r.purityPercent)));
-  if (!gemeten.length) {
-    return { drempels, meerdereDrempels: drempels.length > 1, metZuiverheid: 0, onder: [], aantalOnder: 0 };
+  const basis = {
+    drempels, claims, eenduidig,
+    meerdereDrempels: drempels.length > 1,
+    strengsteDrempel: drempels[drempels.length - 1],
+    metZuiverheid: gemeten.length
+  };
+
+  // Tegenstrijdige beloften: de claim zelf is de bevinding. Geen toets, geen
+  // lat, en bewust GEEN lijst met producten eronder - want tegen welke norm
+  // zouden die dan afgezet zijn? Wel naar handmatige controle.
+  if (!eenduidig) {
+    return Object.assign(basis, {
+      stand: 'kwaliteitsbelofte inconsistent/onduidelijk',
+      reden: 'de aanbieder noemt ' + drempels.length + ' verschillende zuiverheidsdrempels (' +
+        drempels.map((d) => '>=' + d + '%').join(' en ') +
+        ') zonder dat duidelijk is welke op welk product slaat',
+      naarHandmatigeControle: true,
+      onder: [], aantalOnder: null, lat: null
+    });
   }
 
-  const soepelste = drempels[0];
+  if (!gemeten.length) {
+    return Object.assign(basis, { stand: 'geen zuiverheidswaarden gelezen', lat: drempels[0], onder: [], aantalOnder: 0 });
+  }
+
+  const lat = drempels[0];
   const onder = gemeten
-    .filter((r) => Number(r.purityPercent) < soepelste)
+    .filter((r) => Number(r.purityPercent) < lat)
     .map((r) => ({
       product: r.product || null,
       purityPercent: Number(r.purityPercent),
@@ -637,15 +689,12 @@ function toetsZuiverheidsbelofte(beloften, records) {
     }))
     .sort((a, b) => a.purityPercent - b.purityPercent);
 
-  return {
-    drempels,
-    meerdereDrempels: drempels.length > 1,
-    soepelsteDrempel: soepelste,
-    strengsteDrempel: drempels[drempels.length - 1],
-    metZuiverheid: gemeten.length,
+  return Object.assign(basis, {
+    stand: onder.length ? 'eigen kwaliteitsbelofte niet gehaald' : 'eigen kwaliteitsbelofte gehaald',
+    lat,
     onder,
     aantalOnder: onder.length
-  };
+  });
 }
 
 // Verhuisd naar niveaus.js, zodat de Evidence Gate en de niveaus dezelfde

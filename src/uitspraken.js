@@ -298,24 +298,48 @@ function opdrachtgeverRegels(beeld, shopnaam, dekkingszin) {
 }
 
 // --- A-3 -------------------------------------------------------------------
-// Bij meerdere beloofde drempels toetsen we tegen de SOEPELSTE. Belooft een
-// shop op dezelfde pagina >=99% en >=98%, dan is 98% de lat. Wie zichzelf
-// tegenspreekt krijgt het voordeel van de twijfel; hij faalt dan nog steeds
-// tegen zijn eigen soepelste woord.
-function beloftetoets(drempels, onderDrempel, laagste) {
-  const geldig = (drempels || []).map(Number).filter((n) => Number.isFinite(n) && n > 0);
-  if (!geldig.length || !onderDrempel || !onderDrempel.length) return null;
-  const lat = Math.min.apply(null, geldig);
+//
+// HERZIEN 22 SEPTEMBER DOOR ANNEMARIE. Hier stond: bij meerdere beloofde
+// drempels toetsen tegen de SOEPELSTE, want "wie zichzelf tegenspreekt krijgt
+// het voordeel van de twijfel". Haar besluit A18 keert dat om:
+//
+//   "Als op dezelfde pagina zowel >=99% als >=98% als kwaliteitsbelofte wordt
+//    gepresenteerd en niet duidelijk is welke norm op welk product van
+//    toepassing is, is de claim zelf inconsistent. PepProof moet daar niet
+//    zelf een norm uit kiezen."
+//
+// Twee uitkomsten die niets met elkaar te maken hebben, dus twee zinnen die
+// nooit in elkaar mogen schuiven: een aanbieder die zijn eigen lat niet haalt,
+// en een aanbieder van wie de lat zelf niet vaststaat.
+function beloftetoets(toets) {
+  if (!toets || !toets.drempels || !toets.drempels.length) return null;
+
+  if (toets.eenduidig === false) {
+    return {
+      definitief: true, vastgesteldOp: '22 september 2026', vastgesteldDoor: VASTGESTELD_DOOR,
+      stand: 'kwaliteitsbelofte inconsistent/onduidelijk', lat: null,
+      regels: [
+        'Deze aanbieder noemt meer dan een zuiverheidsdrempel (' +
+          toets.drempels.map((d) => '>=' + d + '%').join(' en ') +
+          ') zonder dat duidelijk is welke op welk product van toepassing is.',
+        'Wij kiezen er zelf geen. Zolang de belofte niet eenduidig is, valt er ook niet tegen te toetsen.'
+      ]
+    };
+  }
+
+  if (!toets.onder || !toets.onder.length) return null;
+
+  const laagste = toets.onder[0];
   const laagsteRegel = laagste && laagste.product
-    ? ' het laagste is ' + laagste.product + ' met ' + laagste.pct + '%.'
-    : '';
+    ? ' het laagste is ' + laagste.product + ' met ' + laagste.purityPercent + '%.'
+    : ' de cijfers komen van de aanbieder zelf.';
   return {
     definitief: true, vastgesteldOp: VASTGESTELD_OP, vastgesteldDoor: VASTGESTELD_DOOR,
-    lat, meerdereDrempels: geldig.length > 1,
+    stand: 'eigen kwaliteitsbelofte niet gehaald', lat: toets.lat, meerdereDrempels: false,
     regels: [
-      'Deze aanbieder stelt zelf een zuiverheidsdrempel van >=' + lat + '%. Op de eigen productpagina\'s staan ' +
-        onderDrempel.length + ' product' + (onderDrempel.length === 1 ? '' : 'en') + ' die daaronder liggen;' +
-        (laagsteRegel || ' de cijfers komen van de aanbieder zelf.')
+      'Deze aanbieder stelt zelf een zuiverheidsdrempel van >=' + toets.lat + '%. Op de eigen productpagina\'s staan ' +
+        toets.onder.length + ' product' + (toets.onder.length === 1 ? '' : 'en') + ' die daaronder liggen;' +
+        laagsteRegel
     ]
   };
 }

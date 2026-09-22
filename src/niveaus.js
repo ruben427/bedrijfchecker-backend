@@ -61,17 +61,34 @@ function heeftIets(v) {
 }
 
 // De ankers gaan over het document, niet over een enkele uitspraak: komen
-// batchnummer, analysedatum en meetmethode uit verschillende delen van het
-// rapport terug, dan is het document als geheel uitgelezen en niet half
-// geraden. Bewust geen "twee velden die elkaar bevestigen" - dat is vaak
-// dezelfde regel twee keer gelezen en bevestigt niets.
-function ankersVan(r) {
-  return [r.batchnummer, r.analysisDate || r.reportDate, r.purityMethod || r.identiteitsmethode]
-    .filter(heeftIets).length;
+// batchnummer en analysedatum uit verschillende delen van het rapport terug,
+// dan is het document als geheel uitgelezen en niet half geraden. Bewust geen
+// "twee velden die elkaar bevestigen" - dat is vaak dezelfde regel twee keer
+// gelezen en bevestigt niets.
+//
+// LET OP - HERZIEN 22 SEPTEMBER, BESLUIT A24. De meetmethode stond hier als
+// derde gedeeld anker. Annemarie: "Meetmethode zou ik niet puur als gedeeld
+// anker behandelen. Of die noodzakelijk is, hangt af van de uitspraak. Bij
+// identiteit is de methode bijvoorbeeld onderdeel van de vraag of we
+// uberhaupt van een geldige identiteitsbepaling mogen spreken."
+//
+// Dat is terecht en het was een echte fout: bij identiteit telde de methode
+// twee keer mee. Eerst als voorwaarde om de uitspraak te mogen doen
+// (heeftIdentiteitsbepaling), en dan nog eens als anker dat diezelfde
+// uitspraak omhoog tilde. Een uitspraak die zichzelf onderbouwt.
+//
+// Batchnummer en analysedatum blijven gedeeld. Bij zuiverheid telt de
+// meetmethode als extra anker: die staat los van de gemeten waarde en zegt
+// wel iets over hoe grondig het rapport is uitgelezen. Bij vulling en
+// identiteit telt hij niet mee.
+function ankersVan(r, onderdeel) {
+  const gedeeld = [r.batchnummer, r.analysisDate || r.reportDate].filter(heeftIets).length;
+  if (onderdeel === 'zuiverheid' && heeftIets(r.purityMethod)) return gedeeld + 1;
+  return gedeeld;
 }
 
-function metAnkers(r, reden) {
-  const ankers = ankersVan(r);
+function metAnkers(r, onderdeel, reden) {
+  const ankers = ankersVan(r, onderdeel);
   if (ankers >= 2) return { niveau: 'L2', ankers, reden: ankers + ' onafhankelijke ankers in het document' };
   return { niveau: 'L1', ankers, reden: reden };
 }
@@ -90,19 +107,19 @@ function leeszekerheidVoor(r, onderdeel) {
     const me = String(r.measuredUnit || '').toLowerCase().trim();
     if (!ce || !me) return { niveau: 'L0', reden: 'eenheid ontbreekt aan een van beide kanten' };
     if (ce !== me) return { niveau: 'L0', reden: 'eenheden verschillen (' + ce + ' tegen ' + me + ')' };
-    return metAnkers(r, 'hoeveelheden gelezen, weinig houvast in de rest van het document');
+    return metAnkers(r, 'vulling', 'hoeveelheden gelezen, weinig houvast in de rest van het document');
   }
 
   if (onderdeel === 'zuiverheid') {
     if (!heeftIets(r.product)) return { niveau: 'L0', reden: 'geen productnaam bij de zuiverheidswaarde' };
     if (typeof r.purityPercent !== 'number') return { niveau: 'L0', reden: 'geen zuiverheidspercentage gelezen' };
-    return metAnkers(r, 'zuiverheid gelezen, weinig houvast in de rest van het document');
+    return metAnkers(r, 'zuiverheid', 'zuiverheid gelezen, weinig houvast in de rest van het document');
   }
 
   if (onderdeel === 'identiteit') {
     if (!heeftIets(r.product)) return { niveau: 'L0', reden: 'geen productnaam bij de identiteitsbepaling' };
     if (!heeftIdentiteitsbepaling(r)) return { niveau: 'L0', reden: 'geen identiteitsbepaling in het document' };
-    return metAnkers(r, 'identiteitsbepaling gelezen, weinig houvast in de rest van het document');
+    return metAnkers(r, 'identiteit', 'identiteitsbepaling gelezen, weinig houvast in de rest van het document');
   }
 
   return { niveau: 'L0', reden: 'onbekend onderdeel: ' + onderdeel };
