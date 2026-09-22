@@ -1122,16 +1122,27 @@ body.sheet-open{ overflow:hidden; }
   background:var(--ds-rood); border-color:var(--ds-rood);
 }
 
-/* De tweede actie is een tekstlink, geen tweede knop. */
+/* De tweede actie is een tekstlink, geen tweede knop.
+
+   LET OP - de streep hoort onder de TEKST te staan, niet onder het vlak.
+   Hier stond border-bottom op de link zelf. Die link is 56px hoog, zodat hij
+   uitlijnt met de knop ernaast, dus de streep landde onderaan dat vlak: een
+   paar tientallen pixels onder de letters, en op mobiel over de volle
+   breedte omdat de link daar 100% wordt. Dat leest als de onderrand van een
+   knop, niet als een onderstreepte link.
+
+   Nu via text-decoration: die volgt de letters, hoe hoog of breed het vlak
+   ook is. De hoogte van 56px blijft, want die is voor de uitlijning. */
 .vervolg-link{
   display:inline-flex; align-items:center; justify-content:center; height:56px;
   font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
   letter-spacing:-.02em;
-  color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent);
+  color:var(--accent);
+  text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:6px;
   align-self:center; padding:0 4px;
 }
-.vervolg-link:hover{ color:var(--accent-strong); border-color:var(--accent-strong); }
-.vervolg-vak.waarschuwing .vervolg-link{ color:var(--ds-rood); border-color:var(--ds-rood); }
+.vervolg-link:hover{ color:var(--accent-strong); }
+.vervolg-vak.waarschuwing .vervolg-link{ color:var(--ds-rood); }
 .vervolg-vak.waarschuwing .vervolg-link:hover{ opacity:.8; }
 
 @media (max-width:699px){
@@ -1139,7 +1150,7 @@ body.sheet-open{ overflow:hidden; }
   .vervolg-icoon{ display:none; }
   .vervolg-titel{ font-size:21px; letter-spacing:-.03em; }
   .vervolg-acties{ width:100%; }
-  .vervolg-acties .vervolg-knop, .vervolg-link{ width:100%; }
+  .vervolg-acties .vervolg-knop, .vervolg-acties .vervolg-link{ width:100%; }
   /* Alleen met twee acties: onderaan 12 in plaats van 24. */
   .vervolg-vak.twee-acties{ padding-bottom:12px; }
 }
