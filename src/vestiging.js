@@ -307,8 +307,82 @@ function leidAf(opties) {
   return Object.assign(uitDomein, { signaal: 'domein' });
 }
 
+// ---- wat de vestiging betekent voor het product ---------------------------
+//
+// BESLUIT RUBEN, 22 september 2026: de Deep Dive draait alleen op Nederlandse
+// leveranciers, omdat de verdieping op het KvK-handelsregister leunt.
+//
+// LET OP: een .nl-domein bewijst geen Nederlandse inschrijving - dat domein is
+// aan iedereen te koop - en een Nederlands bedrijf op .com zou er dan buiten
+// vallen. De echte voorwaarde is dus niet "is dit .nl" maar "is er een
+// KvK-nummer". Het land is het signaal dat die route kansrijk is; het nummer
+// is het bewijs. Daarom telt een bekend KvK-nummer altijd, ook zonder land.
+function deepDive(s, kvkNummer) {
+  const heeftKvk = !!String(kvkNummer || '').trim();
+  if (heeftKvk) {
+    return {
+      mogelijk: true, grond: 'kvk',
+      reden: 'er is een KvK-nummer bekend, dus het handelsregister is te raadplegen'
+    };
+  }
+  if (s && s.landcode === 'nl') {
+    return {
+      mogelijk: true, grond: s.herkomst === 'vastgesteld' ? 'land-vastgesteld' : 'land-afgeleid',
+      reden: s.herkomst === 'vastgesteld'
+        ? 'vastgesteld als Nederlandse vestiging; het KvK-nummer wordt bij de verdieping opgezocht'
+        : 'waarschijnlijk Nederlands (' + (s.reden || 'afgeleid') + '); het KvK-nummer wordt bij de verdieping opgezocht'
+    };
+  }
+  if (s && s.eu === true) {
+    return {
+      mogelijk: false, grond: 'eu-niet-nl',
+      reden: 'deze leverancier zit in de EU maar niet in Nederland; de verdieping in het handelsregister kunnen we voorlopig alleen voor Nederlandse bedrijven doen'
+    };
+  }
+  if (s && s.eu === false) {
+    return {
+      mogelijk: false, grond: 'buiten-eu',
+      reden: 'deze leverancier is buiten de EU gevestigd; er is geen handelsregister dat wij kunnen raadplegen'
+    };
+  }
+  return {
+    mogelijk: false, grond: 'land-onbekend',
+    reden: 'we konden niet vaststellen waar deze leverancier gevestigd is, en zonder land is er geen register om in te kijken'
+  };
+}
+
+// De vier toestanden voor het rapport, met de tekst die erbij hoort. Staan
+// hier en niet in de frontend, zodat beide pagina's hetzelfde zeggen en een
+// wijziging op een plek gebeurt.
+const VESTIGING_TEKST = {
+  nl: {
+    kop: 'Nederlandse leverancier',
+    tekst: 'Deze leverancier is in Nederland gevestigd. Dat betekent dat we het bedrijf achter de webshop kunnen natrekken in het handelsregister: wie de eigenaren zijn, sinds wanneer het bestaat en of het adres klopt.'
+  },
+  eu: {
+    kop: 'EU-leverancier',
+    tekst: 'Deze leverancier is in de EU gevestigd. Je hebt daardoor Europese consumentenrechten en een partij die aanspreekbaar is binnen de EU. De verdieping in het handelsregister kunnen we voorlopig alleen voor Nederlandse bedrijven doen.'
+  },
+  buiten: {
+    kop: 'Buiten de EU',
+    tekst: 'Deze leverancier is buiten de EU gevestigd. Dat is niet verboden en zegt niets over de kwaliteit van het product, maar het verandert wel je positie als koper: Europese consumentenrechten gelden hier niet, een geschil valt onder buitenlands recht, en er kunnen invoerrechten bijkomen.'
+  },
+  onbekend: {
+    kop: 'Land onbekend',
+    tekst: 'We konden niet vaststellen waar deze leverancier gevestigd is. Er staat geen adres op de site en het webadres zegt niets over een land. Dat is zelf een waarneming: een winkel die niet laat zien wie erachter zit, is moeilijker aan te spreken als er iets misgaat.'
+  }
+};
+
+function tekstVoor(s) {
+  if (!s || s.herkomst === 'onbekend') return Object.assign({ sleutel: 'onbekend' }, VESTIGING_TEKST.onbekend);
+  if (s.landcode === 'nl') return Object.assign({ sleutel: 'nl' }, VESTIGING_TEKST.nl);
+  if (s.eu === true) return Object.assign({ sleutel: 'eu' }, VESTIGING_TEKST.eu);
+  if (s.eu === false) return Object.assign({ sleutel: 'buiten' }, VESTIGING_TEKST.buiten);
+  return Object.assign({ sleutel: 'onbekend' }, VESTIGING_TEKST.onbekend);
+}
+
 module.exports = {
   EU_LANDEN, EER_EN_BUUR, OVERIG, MERKDOMEINEN, GENERIEK,
   hostVan, tldVan, leidAfUitDomein, leidAfUitBriefhoofd, leidAf,
-  normaliseerLand, stand, etiket
+  normaliseerLand, stand, etiket, deepDive, tekstVoor, VESTIGING_TEKST
 };

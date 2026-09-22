@@ -87,6 +87,19 @@ function publicCase(c) {
     // De drie blokken: uitkomst plus het werk erachter, geen rekenweg. De
     // stippen zijn een telling van bestaande rapporten, geen nieuwe uitspraak.
     blokken: er.blokken || null,
+    // Vestigingsland van de leverancier, plus of de Deep Dive mogelijk is.
+    // Mag naar buiten: het is een uitkomst, geen methode. De onderbouwing van
+    // een vastgesteld land gaat bewust NIET mee - dat is werkmateriaal.
+    vestiging: er.vestiging ? {
+      land: er.vestiging.land || null,
+      landcode: er.vestiging.landcode || null,
+      eu: er.vestiging.eu,
+      herkomst: er.vestiging.herkomst || null,
+      weergave: er.vestiging.weergave || null,
+      deepDive: er.vestiging.deepDive
+        ? { mogelijk: !!er.vestiging.deepDive.mogelijk, reden: er.vestiging.deepDive.reden || null }
+        : null
+    } : null,
     assessments: Array.isArray(er.assessments)
       ? er.assessments.map((a) => ({
           id: a.id,

@@ -7,6 +7,7 @@ const { sampleJsonSafe, kernVanFout } = require('./anthropicClient');
 const { tavilySearch, tavilyExtract, tavilyResearch } = require('./tavilyClient');
 const { fetchRemoteDocument } = require('./docFetcher');
 const coaStore = require('./coaStore');
+const vestiging = require('./vestiging');
 const coaCrawler = require('./coaCrawler');
 const siteShot = require('./siteShot');
 const janoshik = require('./janoshik');
@@ -2045,6 +2046,23 @@ async function applyScoringEngine(caseId) {
   // authenticiteitsklassen die de resolver of een mens heeft vastgelegd.
   const coaRecordsVoorBlokken = (coaData && coaData.coaRecords) || [];
   engineResult.blokken = bouwBlokken(engineResult, coaRecordsVoorBlokken, c.bedrijfsgegevens || null, domainOf(c.website));
+
+  // Waar is deze leverancier gevestigd, en mag hij de Deep Dive zien?
+  // Besluit Ruben 22 september: alleen Nederlandse leveranciers, vanwege het
+  // KvK-handelsregister. Het land is het signaal, het KvK-nummer het bewijs -
+  // een Nederlands bedrijf op .com valt er dus niet buiten zodra we het nummer
+  // kennen. Hier berekend en niet in de frontend, zodat het rapport en de
+  // stafpagina hetzelfde zeggen.
+  const vastgesteldeVestiging = await coaStore.vestigingen('leverancier').catch(() => ({}));
+  const leverancierSleutel = coaStore.supplierKeyFromUrl(c.website || c.naam);
+  const vestigingStand = vestiging.stand(
+    vestiging.leidAf({ url: c.website }),
+    (leverancierSleutel && vastgesteldeVestiging[leverancierSleutel]) || null
+  );
+  engineResult.vestiging = Object.assign({}, vestigingStand, {
+    deepDive: vestiging.deepDive(vestigingStand, c.kvkNummer),
+    weergave: vestiging.tekstVoor(vestigingStand)
+  });
   await db.updateCase(caseId, { engineResult });
   return engineResult;
 }
