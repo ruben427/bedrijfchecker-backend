@@ -8,8 +8,11 @@
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
-<!-- Alleen voor deze testvariant. Bewust NIET in bedrijfchecker.css: die is
-     van de live checker, en dit hoort pas daarin als het blijft. -->
+<!-- Alleen voor deze testvariant, uitgewerkt naar het ontwerp
+     "URL check - desktop" (Figma 1352:3893). Bewust NIET in
+     bedrijfchecker.css: die is van de live checker, en dit hoort daar pas in
+     als het blijft. Alle kleuren via de tokens uit solike.css, zodat de
+     donkere modus meeloopt zonder aparte regels. -->
 <style>
   .testvlag{
     margin-left:12px; align-self:center;
@@ -19,49 +22,73 @@
     border-radius:999px; padding:3px 10px;
   }
 
-  .eigen-coa{
-    border:1px solid var(--border); border-radius:8px;
-    background:var(--surface); margin-top:4px;
+  /* Het ontwerp zet alles onder elkaar in een kolom van 744px, met de
+     startknop ONDER de velden in plaats van ernaast. Dat is anders dan de
+     live checker, waar knop en URL naast elkaar staan. */
+  .check-form{
+    display:flex; flex-direction:column; align-items:flex-start;
+    width:100%; max-width:744px; gap:0;
   }
-  .eigen-coa > summary{
-    cursor:pointer; list-style:none; padding:12px 14px;
-    font-weight:600; font-size:.95rem; color:var(--text);
+  .check-form > .btn-cta{ margin-top:24px; }
+
+  .veld{
+    display:flex; align-items:center; gap:12px;
+    height:56px; width:100%; padding:0 12px;
+    background:var(--surface); border:1px solid var(--border); border-radius:8px;
   }
-  .eigen-coa > summary::-webkit-details-marker{ display:none; }
-  .eigen-coa > summary::before{
-    content:"+"; display:inline-block; width:1em;
-    color:var(--text-muted); font-weight:400;
+  .veld:focus-within{ border-color:var(--accent); }
+  .veld.has-error{ border-color:var(--danger); }
+  .veld input[type=text]{
+    flex:1 1 0; min-width:0; height:100%;
+    border:0; background:none; padding:0; border-radius:0;
+    font-size:18px; color:var(--text);
   }
-  .eigen-coa[open] > summary::before{ content:"\2212"; }
-  .eigen-coa-opt{
-    color:var(--text-faint); font-weight:400; font-size:.85rem; margin-left:6px;
+  .veld input[type=text]:focus{ outline:none; }
+  .veld input[type=text]::placeholder{ color:var(--text-muted); opacity:1; }
+
+  /* De uitklapper is in het ontwerp een tekstlink met een onderlijn en een
+     chevron, niet een plus-teken. Hoogte 56px: dat geeft de ruimte tussen het
+     URL-veld en de uitleg eronder. */
+  .coa-toggle{
+    appearance:none; border:0; background:none; cursor:pointer;
+    display:inline-flex; align-items:center; gap:12px;
+    height:56px; padding:0; color:var(--accent);
+    font-family:"Baloo 2", sans-serif; font-weight:600; font-size:18px;
+    letter-spacing:-0.36px;
   }
-  .eigen-coa-body{ padding:0 14px 14px; display:flex; flex-direction:column; gap:10px; }
-  .eigen-coa-uitleg{ margin:0; font-size:.9rem; color:var(--text-muted); }
-  .eigen-coa-rij{ display:flex; gap:10px; }
-  .eigen-coa-rij input[type=text]{
-    flex:1; height:44px; border-radius:8px; padding:0 12px; font-size:.95rem;
-    border:1px solid var(--border); background:var(--bg); color:var(--text);
+  .coa-toggle > span:first-child{ border-bottom:1px solid var(--accent); }
+  .coa-toggle svg{ width:18px; height:18px; transition:transform .15s ease; }
+  .coa-toggle[aria-expanded="true"] svg{ transform:rotate(180deg); }
+
+  .coa-blok{ display:flex; flex-direction:column; gap:12px; width:100%; }
+  .coa-uitleg{
+    margin:0; font-size:18px; line-height:1.5;
+    color:var(--text); letter-spacing:-0.36px;
   }
-  .eigen-coa-knop{
-    display:inline-flex; align-items:center; height:44px; padding:0 16px;
-    border:1px solid var(--border); border-radius:8px; background:var(--surface-2);
-    font-size:.9rem; font-weight:600; color:var(--text); cursor:pointer; white-space:nowrap;
+  /* "Bestand kiezen" staat in het ontwerp BINNEN het veld, rechts. */
+  .coa-bestandsknop{
+    flex:0 0 auto; cursor:pointer; white-space:nowrap;
+    font-family:"Baloo 2", sans-serif; font-weight:600; font-size:18px;
+    letter-spacing:-0.36px; color:var(--accent);
   }
-  .eigen-coa-knop:hover{ border-color:var(--accent); color:var(--accent-strong); }
-  .eigen-coa-bestand{
-    font-family:"IBM Plex Mono", monospace; font-size:.82rem; color:var(--text-muted);
-    display:inline-flex; align-items:center; gap:8px; word-break:break-all;
+  .coa-bestandsknop:hover{ color:var(--accent-strong); }
+  .coa-bestand{
+    display:inline-flex; align-items:center; gap:8px;
+    font-family:"IBM Plex Mono", monospace; font-size:.82rem;
+    color:var(--text-muted); word-break:break-all;
   }
-  .eigen-coa-wis{
+  .coa-wis{
     appearance:none; border:0; background:none; cursor:pointer;
     color:var(--danger); font-size:1.1rem; line-height:1; padding:0 2px;
   }
-  .eigen-coa-klein{ margin:0; font-size:.82rem; color:var(--text-faint); }
+  .coa-klein{ margin:0; font-size:.85rem; color:var(--text-faint); }
 
   @media (max-width:640px){
-    .eigen-coa-rij{ flex-direction:column; }
-    .eigen-coa-knop{ justify-content:center; }
+    .veld{ height:auto; min-height:56px; flex-wrap:wrap; padding:10px 12px; }
+    .veld input[type=text]{ height:auto; flex-basis:100%; font-size:16px; }
+    .coa-bestandsknop{ margin-left:auto; }
+    .coa-uitleg{ font-size:16px; }
+    .check-form > .btn-cta{ width:100%; }
   }
 </style>
 
@@ -107,6 +134,7 @@
     startEigenCoaUrl: '',    // link naar het certificaat dat de koper zelf kreeg
     startEigenCoaFiles: [],  // idem, maar als bestand (PDF of foto)
     startEigenCoaError: null,
+    startEigenCoaOpen: false,
     startFiles: [],          // {file: File, kind: 'image'|'other'}
     startUploadOpen: false,  // documenten-uploadvak: standaard ingeklapt, caret naar links
     startKvkFile: null,      // apart, want gaat naar de identiteitsstap i.p.v. de COA-stap
@@ -464,15 +492,13 @@
       '</section>';
 
     var heroForm = '<div class="hero-form">' +
-      '<div class="audit-form">' +
-        '<div style="display:flex;flex-direction:column;gap:8px;width:100%;">' +
-          '<div class="audit-form-row">' +
-            '<input type="text" id="f-website" class="' + (state.startUrlError?'has-error':'') + '" value="' + escapeHtml(d.website) + '" placeholder="Website URL" autofocus>' +
-            '<button type="button" class="btn-cta" id="wiz-start" ' + (starting ? 'disabled' : '') + '>' + ICON_SEARCH + '<span>' + (starting ? 'Starten…' : 'Start gratis check') + '</span></button>' +
-          '</div>' +
-          (state.startUrlError ? '<div class="field-error">' + escapeHtml(state.startUrlError) + '</div>' : '') +
-          eigenCoaVak() +
+      '<div class="check-form">' +
+        '<div class="veld' + (state.startUrlError?' has-error':'') + '">' +
+          '<input type="text" id="f-website" value="' + escapeHtml(d.website) + '" placeholder="Website URL" autofocus>' +
         '</div>' +
+        (state.startUrlError ? '<div class="field-error" style="margin-top:6px;">' + escapeHtml(state.startUrlError) + '</div>' : '') +
+        eigenCoaVak() +
+        '<button type="button" class="btn-cta" id="wiz-start" ' + (starting ? 'disabled' : '') + '>' + ICON_SEARCH + '<span>' + (starting ? 'Starten…' : 'Start gratis check') + '</span></button>' +
       '</div>' +
       '<p class="hero-form-note">Werkt op elke peptide leveranciers-website en duurt enkele minuten om te draaien.</p>' +
       '</div>';
@@ -572,32 +598,36 @@
     wireDashboardEvents();
   }
 
-  // Het eigen certificaat van de koper. Bewust ONDER de URL en niet ernaast:
-  // de URL blijft de hoofdingang, dit is een aanvulling. En bewust twee
-  // manieren - een bestand of een link - want het ene deel van de kopers heeft
-  // een PDF in de mail, het andere een link van de verkoper.
+  // Het eigen certificaat van de koper, naar het ontwerp: een tekstlink die
+  // een blok openklapt met de uitleg en een veld waarin de link links staat en
+  // "Bestand kiezen" rechts, binnen dezelfde omlijning.
+  //
+  // Twee manieren om hem aan te leveren, en dat is geen luxe: het ene deel van
+  // de kopers heeft een PDF in de mail, het andere een link van de verkoper.
   function eigenCoaVak(){
-    var n = state.startEigenCoaFiles.length;
-    var bestandsregel = n
-      ? '<span class="eigen-coa-bestand">' + escapeHtml(state.startEigenCoaFiles.map(function(f){ return f.name; }).join(', ')) +
-        ' <button type="button" class="eigen-coa-wis" id="eigen-coa-wis" aria-label="Verwijderen">&times;</button></span>'
-      : '';
-    return '<details class="eigen-coa"' + (n || state.startEigenCoaUrl ? ' open' : '') + '>' +
-      '<summary>Heb je zelf een certificaat van je batch? <span class="eigen-coa-opt">optioneel</span></summary>' +
-      '<div class="eigen-coa-body">' +
-        '<p class="eigen-coa-uitleg">Veel bestellingen komen met een eigen COA, met jouw batchnummer erop. ' +
+    var open = state.startEigenCoaOpen || !!state.startEigenCoaUrl || state.startEigenCoaFiles.length > 0;
+    var namen = state.startEigenCoaFiles.map(function(f){ return f.name; }).join(', ');
+
+    var knop = '<button type="button" class="coa-toggle" id="coa-toggle" aria-expanded="' + (open?'true':'false') + '" aria-controls="coa-blok">' +
+      '<span>Heb je zelf een certificaat van je batch?</span>' + ICON_CARET + '</button>';
+
+    if (!open) return knop;
+
+    return knop +
+      '<div class="coa-blok" id="coa-blok">' +
+        '<p class="coa-uitleg">Veel bestellingen komen met een eigen COA, met jouw batchnummer erop. ' +
         'Dat kunnen wij nooit van de website halen. Stuur hem mee en we lezen hem mee in de controle.</p>' +
-        '<div class="eigen-coa-rij">' +
+        '<div class="veld">' +
           '<input type="text" id="f-eigen-coa-url" value="' + escapeHtml(state.startEigenCoaUrl) + '" placeholder="Link naar je certificaat">' +
-          '<label class="eigen-coa-knop" for="f-eigen-coa-file">Bestand kiezen</label>' +
+          '<label class="coa-bestandsknop" for="f-eigen-coa-file">Bestand kiezen</label>' +
           '<input type="file" id="f-eigen-coa-file" accept="image/*,application/pdf" multiple hidden>' +
         '</div>' +
-        bestandsregel +
+        (namen ? '<span class="coa-bestand">' + escapeHtml(namen) +
+          ' <button type="button" class="coa-wis" id="eigen-coa-wis" aria-label="Verwijderen">&times;</button></span>' : '') +
         (state.startEigenCoaError ? '<div class="field-error">' + escapeHtml(state.startEigenCoaError) + '</div>' : '') +
-        '<p class="eigen-coa-klein">Je certificaat telt apart van wat de winkel zelf publiceert. ' +
+        '<p class="coa-klein">Je certificaat telt apart van wat de winkel zelf publiceert. ' +
         'De winkel krijgt er geen betere score door dat jij iets meestuurt.</p>' +
-      '</div>' +
-    '</details>';
+      '</div>';
   }
 
   function wireDashboardEvents(){
@@ -619,6 +649,18 @@
     // renderDashboard(). apiCreateCase() krijgt hierdoor altijd een lege
     // files-lijst en geen kvkFile mee; dat is prima, want beide waren toch
     // al COA/Deep-Dive-scope.
+
+    var coaToggle = app.querySelector('#coa-toggle');
+    if (coaToggle){
+      coaToggle.addEventListener('click', function(){
+        state.startEigenCoaOpen = !(coaToggle.getAttribute('aria-expanded') === 'true');
+        renderDashboard();
+        if (state.startEigenCoaOpen){
+          var v = app.querySelector('#f-eigen-coa-url');
+          if (v) v.focus();
+        }
+      });
+    }
 
     var coaUrl = app.querySelector('#f-eigen-coa-url');
     if (coaUrl){
