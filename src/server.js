@@ -822,11 +822,22 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
       try {
         const engineResult = await pipeline.applyScoringEngine(c.id);
         const bl = engineResult && engineResult.blokken;
+        // Ook de al opgeslagen rapporttekst langs dezelfde rood-toets: die is
+        // door het model geschreven en ging niet door filterRood(). Geen
+        // modelaanroep, puur herlezen van wat er staat.
+        let vlaggenAf = 0;
+        if (c.report && Array.isArray(c.report.rodeVlaggen)) {
+          const voor = c.report.rodeVlaggen.length;
+          const report = pipeline.filterRodeVlaggen(Object.assign({}, c.report));
+          vlaggenAf = voor - report.rodeVlaggen.length;
+          if (vlaggenAf) await db.updateCase(c.id, { report });
+        }
         gedaan.push({
           id: c.id, website: c.website,
           blokkenVersie: bl ? bl.versie : null,
           openheid: bl ? (bl.openheid.aanwezig + '/' + bl.openheid.noemer) : null,
-          verificatie: bl ? bl.verificatie.woord : null
+          verificatie: bl ? bl.verificatie.woord : null,
+          rodeVlaggenAfgekeurd: vlaggenAf
         });
       } catch (e) {
         overgeslagen.push({ id: c.id, reden: 'herberekening mislukt' });
