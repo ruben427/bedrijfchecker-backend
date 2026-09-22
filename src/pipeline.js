@@ -46,6 +46,15 @@ const COA_RECORD_SCHEMA = 'Antwoord met JSON: {"coaRecords":[{"product":string,"
 const COA_LUS_BUDGET_MS = Number(process.env.COA_LUS_BUDGET_MS) || 6 * 60 * 1000;
 const LAB_VERIFY_MAX = Number(process.env.LAB_VERIFY_MAX) || 30;
 
+// Het model kent de dag van vandaag niet. Zonder die regel las het een
+// Trustpilot-review uit 2026 als "een datum in de toekomst, dat is verdacht"
+// terwijl het gewoon een recente review was. Elke onderzoeksprompt krijgt de
+// datum nu expliciet mee.
+function vandaagNL() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 const EVIDENCE_RULES = [
   'Je bent een kritische, neutrale onderzoeksassistent voor leveranciers-due-diligence van peptiden en research chemicals.',
   'Harde regels:',
@@ -58,7 +67,7 @@ const EVIDENCE_RULES = [
   '7. Schrijf beknopt, zakelijk Nederlands zonder em-dashes.',
   "8. Over de identiteitsvelden in een COA-schema, als die gevraagd worden. identiteitsmethode is de methode waarmee het rapport vaststelt WELKE stof is aangetroffen, bijvoorbeeld MS, LC-MS, MS/MS, moleculair gewicht, aminozuuranalyse of vergelijking met een referentiestandaard. Neem die letterlijk over of gebruik null. identiteitBevestigd is alleen true wanneer het rapport zelf de aangetroffen stof benoemt op grond van zo een methode; een productnaam op het etiket of een zuiverheidspercentage is GEEN identiteitsbepaling. blindTest is true wanneer het rapport vermeldt dat het lab vooraf niet wist welke stof het moest aantreffen. Bij twijfel null. vialen is voor een rapport dat HETZELFDE product in meerdere vialen meet. Zo een regel ziet eruit als '25.29 mg; 25.19 mg; 25.41 mg' met daarnaast '99.829%; 99.810%; 99.795%': drie vialen van een stof, niet drie stoffen. Zet elke viaal apart in vialen met zijn eigen gemeten milligrammen en zuiverheid. Verwar dit NIET met componenten - dat zijn verschillende stoffen in een vial. Middel de waarden niet zelf; de spreiding tussen vialen is zelf een waarneming. geclaimdMg per component is optioneel en meestal leeg: bij een blend als 'Glow 70mg' staat nergens wat die 70 per stof claimt. Laat het dan weg en vul alleen claimedQuantity op productniveau. componenten is voor blends: een vial met meer dan een stof erin, zoals GLOW of KLOW. Zo een rapport geeft per stof een eigen gemeten hoeveelheid. Neem elke regel over als eigen component met de stofnaam en de gemeten milligrammen. Is een van de componenten zelf een metaalcomplex, zet dan het metaalcomplex BIJ DIE COMPONENT. Voorbeeld: 'GHK-Cu (GHK content) [Copper Content] 68.27 mg (59.83 mg) [8.44 mg]' plus 'TB-500 (TB4) 13.20 mg' plus 'BPC-157 13.13 mg' geeft drie componenten, waarvan de eerste een kopercomplex is. Laat componenten leeg bij een vial met een enkele stof. Tel de componenten NIET bij elkaar op tot een totaal - dat doen wij verderop, en alleen als duidelijk is wat het etiket claimt. metaalcomplex is iets heel anders dan zwareMetalen: sommige peptiden WORDEN geleverd als complex met een metaal, en dan hoort dat metaal in het product. GHK-Cu is het bekendste voorbeeld. Zo een rapport toont drie getallen, bijvoorbeeld 'GHK-Cu (GHK content) [Copper Content]  61.77 mg (51.71 mg) [10.06 mg]': het totaal van het complex, het peptidegehalte, en het metaalgehalte. Neem alle drie over in metaalcomplex met de naam van het metaal. Zet ze NIET in zwareMetalen - dat veld is voor verontreiniging, en koper in GHK-Cu is geen verontreiniging maar het product. Laat metaalcomplex null als het rapport geen complex noemt. zwareMetalen hoort apart van overigeContaminanten: zet daar lood, cadmium, kwik, arseen, chroom en andere zware metalen in, met de gemeten waarde en de norm zoals ze op het rapport staan. tested is true zodra het rapport zware metalen rapporteert, ook als er geen norm bij staat. overigeContaminanten blijft voor de rest. Sommige leveranciers laten de zware metalen als APART certificaat per batch maken, los van het zuiverheidsrapport; dat is dan een eigen coaRecord waarin alleen zwareMetalen gevuld is en purityPercent null blijft. identiteitGetoetstTegen is de stof die het rapport bij de identiteitsbepaling noemt als de verwachte of aangetroffen stof, letterlijk overgenomen. Dat is NIET hetzelfde als de productnaam op het etiket: een rapport kan als product 'GLP-3' noemen terwijl de identiteit is getoetst tegen retatrutide. Neem beide velden over zoals ze er staan en maak ze niet gelijk aan elkaar. Null als het rapport geen stof bij de identiteitsbepaling noemt.",
   'Antwoord UITSLUITEND met geldige JSON volgens het gevraagde schema hieronder. Geen andere tekst, geen markdown-codeblok.'
-].join('\n');
+].join('\n') + '\n\nVandaag is ' + vandaagNL() + '. Een datum op of voor vandaag ligt in het VERLEDEN en is op zichzelf niets bijzonders. Noem een datum alleen opvallend als hij aantoonbaar NA vandaag ligt, en zeg er dan bij ten opzichte van welke datum.';
 
 const STEP_DEFS = [
   { key: 'identiteit', label: 'Juridische identiteit' },
@@ -1370,28 +1379,7 @@ async function runResearchStep(caseId, ctx, key) {
     // Vangnet: elke record krijgt een expliciete stand van zaken. Een leeg
     // veld is geen uitspraak, en een leeg veld dat als 'geen bezwaar' gelezen
     // kan worden is precies wat de methodiek verbiedt (M5, M12).
-    records = records.map((r) => {
-      if (!r) return r;
-      // Alleen een klasse van de resolver of van een mens telt. Alles anders
-      // komt uit een uitlezing van voor 20 september, toen het model zelf nog
-      // een klasse voorstelde. Die staan nog in het archief (de
-      // extractorversie is bewust niet opgehoogd) en zouden anders via de
-      // cache blijven meetellen in de categorisatie. Labelen is niet genoeg:
-      // een gok die meeweegt is een gok die meeweegt.
-      const geldigeBron = r.klasseBron === 'resolver' || r.klasseBron === 'mens';
-      const klasse = geldigeBron ? r.authenticiteitsklasse : null;
-      const verouderd = !!r.authenticiteitsklasse && !geldigeBron;
-      return Object.assign({}, r, {
-        authenticiteitsklasse: klasse || null,
-        klasseBron: klasse ? r.klasseBron : null,
-        klasseReden: klasse
-          ? (r.klasseReden || null)
-          : (verouderd
-              ? 'klasse uit een oudere uitlezing genegeerd: niet bij het lab vastgesteld'
-              : 'niet bij het laboratorium gecontroleerd'),
-        externalVerification: klasse ? (r.externalVerification || 'pending') : 'unavailable'
-      });
-    });
+    records = schoonKlasse(records);
 
     // Referenties die op de documenten zelf staan vastleggen. De gelinkte
     // verwijzingen gingen al eerder het archief in; dit zijn de gedrukte.
@@ -1780,6 +1768,33 @@ function filterRodeVlaggen(report) {
   return report;
 }
 
+// Alleen een klasse van de resolver of van een mens telt. Alles anders komt
+// uit een uitlezing van voor 20 september, toen het model zelf nog een klasse
+// voorstelde. Die staan nog in het archief (de extractorversie is bewust niet
+// opgehoogd) en zouden anders via de cache blijven meetellen. Labelen is niet
+// genoeg: een gok die meeweegt is een gok die meeweegt.
+//
+// Staat los van de onderzoeksstap, zodat herbereken dezelfde regel op al
+// opgeslagen records kan toepassen zonder opnieuw uit te lezen.
+function schoonKlasse(records) {
+  return (records || []).map((r) => {
+    if (!r) return r;
+    const geldigeBron = r.klasseBron === 'resolver' || r.klasseBron === 'mens';
+    const klasse = geldigeBron ? r.authenticiteitsklasse : null;
+    const verouderd = !!r.authenticiteitsklasse && !geldigeBron;
+    return Object.assign({}, r, {
+      authenticiteitsklasse: klasse || null,
+      klasseBron: klasse ? r.klasseBron : null,
+      klasseReden: klasse
+        ? (r.klasseReden || null)
+        : (verouderd
+            ? 'klasse uit een oudere uitlezing genegeerd: niet bij het lab vastgesteld'
+            : 'niet bij het laboratorium gecontroleerd'),
+      externalVerification: klasse ? (r.externalVerification || 'pending') : 'unavailable'
+    });
+  });
+}
+
 async function runSynthesis(caseId, ctx, tier) {
   const c = await db.getCase(caseId);
   const phaseData = c.phaseData || {};
@@ -1890,7 +1905,7 @@ async function runDeepTier(caseId, ctx) {
 
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
-  filterRodeVlaggen,
+  filterRodeVlaggen, schoonKlasse,
   ensureNotStopped, stopAudit, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
   extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,
   toetsZuiverheidsbelofte,

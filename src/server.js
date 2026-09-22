@@ -820,6 +820,23 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
         continue;
       }
       try {
+        // Eerst het archief opschonen: klassen die niet door de resolver of
+        // een mens zijn vastgesteld tellen niet mee. Die stonden nog in
+        // records van voor 20 september en kwamen zo alsnog als rode
+        // bevinding terug. Moet voor de engine, die deze records leest.
+        let klassenGewist = 0;
+        const recs = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data
+          && c.phaseData.coaDataset.data.coaRecords) || null;
+        if (recs && recs.length) {
+          const schoon = pipeline.schoonKlasse(recs);
+          klassenGewist = schoon.filter((r, i) => recs[i] && recs[i].authenticiteitsklasse && !r.authenticiteitsklasse).length;
+          if (klassenGewist) {
+            const phaseData = Object.assign({}, c.phaseData);
+            phaseData.coaDataset = Object.assign({}, phaseData.coaDataset);
+            phaseData.coaDataset.data = Object.assign({}, phaseData.coaDataset.data, { coaRecords: schoon });
+            await db.updateCase(c.id, { phaseData });
+          }
+        }
         const engineResult = await pipeline.applyScoringEngine(c.id);
         const bl = engineResult && engineResult.blokken;
         // Ook de al opgeslagen rapporttekst langs dezelfde rood-toets: die is
@@ -837,7 +854,8 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
           blokkenVersie: bl ? bl.versie : null,
           openheid: bl ? (bl.openheid.aanwezig + '/' + bl.openheid.noemer) : null,
           verificatie: bl ? bl.verificatie.woord : null,
-          rodeVlaggenAfgekeurd: vlaggenAf
+          rodeVlaggenAfgekeurd: vlaggenAf,
+          klassenGewist
         });
       } catch (e) {
         overgeslagen.push({ id: c.id, reden: 'herberekening mislukt' });
