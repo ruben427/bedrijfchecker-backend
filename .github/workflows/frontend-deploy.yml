@@ -1,0 +1,212 @@
+# Frontend naar de webserver, bij elke push.
+#
+# Waarom dit bestaat: de backend ging al vanzelf naar Railway bij een push,
+# maar de frontend werd met de hand via Transmit geupload. Daardoor liepen de
+# repo en wat er live staat uit elkaar - op 22 september drie keer opgemerkt:
+# een reparatie stond in git maar niet op de site, of andersom.
+#
+# Nu geldt: wat in main staat, staat live. Een push doet allebei.
+#
+# De SFTP-gegevens staan in GitHub Secrets, niet in dit bestand en niet in de
+# repo. Instellen bij Settings -> Secrets and variables -> Actions:
+#
+#   SFTP_HOST         de servernaam
+#   SFTP_USER         de gebruikersnaam
+#   SFTP_PORT         optioneel, standaard 22
+#   SFTP_REMOTE_DIR   de map op de server, bijvoorbeeld /httpdocs of /public_html
+#
+# En een van deze twee, niet allebei:
+#   SFTP_PASSWORD     het wachtwoord
+#   SFTP_KEY          de private sleutel, volledig geplakt inclusief de
+#                     BEGIN- en END-regels (veiliger dan een wachtwoord)
+#
+# Aanbevolen, zie de opmerking bij "Servervingerafdruk" hieronder:
+#   SFTP_KNOWN_HOSTS  de regel uit `ssh-keyscan -p 22 <host>`
+
+name: Frontend uitrollen
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'bedrijfchecker.html'
+      - 'bedrijfchecker-test.html'
+      - 'bedrijfchecker.css'
+      - 'solike.css'
+      - 'admin.html'
+      - 'admin-laboratoria.html'
+      - 'admin-analytics.html'
+      - 'PEPPROOF-LOGO.svg'
+      - 'frontend/index.html'
+      - 'frontend/admin-coa.html'
+      - 'frontend/admin-leveranciers.html'
+      - '.github/workflows/frontend-deploy.yml'
+  # Met de hand starten kan ook, bijvoorbeeld na een wijziging op de server
+  # zelf of om te controleren of alles er nog net zo op staat.
+  workflow_dispatch:
+
+# Twee pushes kort na elkaar mogen elkaar niet inhalen: dan kan de oudere
+# upload de nieuwere overschrijven. Deze groep laat de tweede wachten en
+# annuleert de eerste als die nog niet begonnen is.
+concurrency:
+  group: frontend-uitrollen
+  cancel-in-progress: false
+
+jobs:
+  uitrollen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code ophalen
+        uses: actions/checkout@v4
+
+      # De bestanden staan in de repo niet op dezelfde plek als op de server.
+      # frontend/index.html wordt /index.html, en de bestanden uit de hoofdmap
+      # gaan een op een mee. Dat is nagemeten tegen de live site op 22
+      # september, niet geraden: elk bestand hieronder is opgehaald van
+      # checker.deannemethode.nl en vergeleken met zijn tegenhanger in de repo.
+      #
+      # LET OP: admin-analytics.html bestaat wel in de repo maar stond op dat
+      # moment NIET op de server (404). Hij gaat nu mee. Wil je dat niet, haal
+      # dan deze regel en de bijbehorende regel in "paths" hierboven weg.
+      - name: Map klaarzetten zoals hij op de server hoort
+        run: |
+          set -euo pipefail
+          mkdir -p uitrol
+          cp bedrijfchecker.html        uitrol/bedrijfchecker.html
+          cp bedrijfchecker-test.html   uitrol/bedrijfchecker-test.html
+          cp bedrijfchecker.css         uitrol/bedrijfchecker.css
+          cp solike.css                 uitrol/solike.css
+          cp admin.html                 uitrol/admin.html
+          cp admin-laboratoria.html     uitrol/admin-laboratoria.html
+          cp admin-analytics.html       uitrol/admin-analytics.html
+          cp PEPPROOF-LOGO.svg          uitrol/PEPPROOF-LOGO.svg
+          cp frontend/index.html        uitrol/index.html
+          cp frontend/admin-coa.html    uitrol/admin-coa.html
+          cp frontend/admin-leveranciers.html uitrol/admin-leveranciers.html
+          echo "Klaar om te uploaden:"
+          ls -l uitrol
+
+      - name: Controleren of de geheimen er zijn
+        env:
+          HOST: ${{ secrets.SFTP_HOST }}
+          USER: ${{ secrets.SFTP_USER }}
+          DIR: ${{ secrets.SFTP_REMOTE_DIR }}
+          WACHTWOORD: ${{ secrets.SFTP_PASSWORD }}
+          SLEUTEL: ${{ secrets.SFTP_KEY }}
+        run: |
+          set -euo pipefail
+          ontbreekt=""
+          [ -n "$HOST" ] || ontbreekt="$ontbreekt SFTP_HOST"
+          [ -n "$USER" ] || ontbreekt="$ontbreekt SFTP_USER"
+          [ -n "$DIR" ]  || ontbreekt="$ontbreekt SFTP_REMOTE_DIR"
+          if [ -z "$WACHTWOORD" ] && [ -z "$SLEUTEL" ]; then
+            ontbreekt="$ontbreekt SFTP_PASSWORD-of-SFTP_KEY"
+          fi
+          if [ -n "$ontbreekt" ]; then
+            echo "Deze geheimen ontbreken:$ontbreekt"
+            echo "Instellen bij Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          if [ -n "$SLEUTEL" ]; then
+            echo "HEEFT_SLEUTEL=ja" >> "$GITHUB_ENV"
+            echo "Inloggen met een sleutel."
+          else
+            echo "HEEFT_SLEUTEL=nee" >> "$GITHUB_ENV"
+            echo "Inloggen met een wachtwoord. Een sleutel is veiliger; zie SFTP_KEY."
+          fi
+          echo "Alle benodigde geheimen staan ingesteld."
+
+      # Servervingerafdruk. Zonder deze stap moet de client de server op zijn
+      # woord geloven bij de eerste verbinding, en dan is een omgeleide
+      # verbinding niet te onderscheiden van de echte. Met SFTP_KNOWN_HOSTS
+      # wordt de server echt gecontroleerd.
+      #
+      # De waarde haal je op met:   ssh-keyscan -p 22 jouwserver.nl
+      # Neem de regel die begint met de hostnaam en een sleuteltype.
+      - name: Servervingerafdruk klaarzetten
+        env:
+          KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+            chmod 600 ~/.ssh/known_hosts
+            echo "Servervingerafdruk ingesteld; de server wordt gecontroleerd."
+            echo "CONTROLE=ja" >> "$GITHUB_ENV"
+          else
+            echo "LET OP: SFTP_KNOWN_HOSTS is niet gezet."
+            echo "De server wordt dan niet gecontroleerd, en een omgeleide"
+            echo "verbinding is niet te onderscheiden van de echte."
+            echo "Zet hem met: ssh-keyscan -p <poort> <host>"
+            echo "CONTROLE=nee" >> "$GITHUB_ENV"
+          fi
+
+      # LET OP: hier bewust env.HEEFT_SLEUTEL en niet secrets.SFTP_KEY. De
+      # secrets-context is in een if-voorwaarde niet betrouwbaar beschikbaar;
+      # die stap wordt dan stil overgeslagen en de upload valt pas veel later
+      # om, op een foutmelding die nergens naar wijst.
+      - name: Sleutel klaarzetten
+        if: env.HEEFT_SLEUTEL == 'ja'
+        env:
+          SLEUTEL: ${{ secrets.SFTP_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$SLEUTEL" > ~/.ssh/uitrol_sleutel
+          chmod 600 ~/.ssh/uitrol_sleutel
+          echo "Sleutel klaargezet."
+
+      - name: lftp installeren
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lftp
+
+      # mirror -R uploadt alleen wat verschilt, en verwijdert niets op de
+      # server. Bewust geen --delete: een bestand dat hier niet in de lijst
+      # staat maar wel op de server, is niet per se afval - het kan iets zijn
+      # dat buiten deze repo om is neergezet.
+      - name: Uploaden via SFTP
+        env:
+          HOST: ${{ secrets.SFTP_HOST }}
+          PORT: ${{ secrets.SFTP_PORT }}
+          USER: ${{ secrets.SFTP_USER }}
+          WACHTWOORD: ${{ secrets.SFTP_PASSWORD }}
+          SLEUTEL: ${{ secrets.SFTP_KEY }}
+          DIR: ${{ secrets.SFTP_REMOTE_DIR }}
+        run: |
+          set -euo pipefail
+          poort="${PORT:-22}"
+
+          if [ "${CONTROLE}" = "ja" ]; then
+            ssh_opties="-o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+          else
+            ssh_opties="-o StrictHostKeyChecking=accept-new"
+          fi
+
+          # Het script gaat naar een bestand met beperkte rechten in plaats van
+          # naar de opdrachtregel: wat op de opdrachtregel staat, is voor elk
+          # proces op de machine te lezen.
+          script=$(mktemp)
+          chmod 600 "$script"
+
+          {
+            echo "set net:max-retries 3"
+            echo "set net:timeout 20"
+            echo "set sftp:auto-confirm no"
+            if [ -n "$SLEUTEL" ]; then
+              echo "set sftp:connect-program \"ssh -a -x -i $HOME/.ssh/uitrol_sleutel $ssh_opties\""
+              echo "open -u \"$USER\", sftp://$HOST:$poort"
+            else
+              echo "set sftp:connect-program \"ssh -a -x $ssh_opties\""
+              echo "open -u \"$USER\",\"$WACHTWOORD\" sftp://$HOST:$poort"
+            fi
+            echo "cd \"$DIR\""
+            echo "mirror -R --verbose --no-perms --parallel=2 uitrol ."
+            echo "bye"
+          } > "$script"
+
+          lftp -f "$script"
+          rm -f "$script"
+          echo "Upload klaar."
+
+      - name: Opruimen
+        if: always()
+        run: rm -f ~/.ssh/uitrol_sleutel
