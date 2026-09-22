@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Stafpagina — Bedrijfchecker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
+
+<style>
+  /* De stafpagina. Een hub, geen vierde formulier: de lijsten staan hier,
+     het beoordelen gebeurt op de pagina's die daar al voor zijn. Dat scheelt
+     een tweede kopie van een formulier dat anders uit elkaar gaat lopen. */
+  /* LET OP de padding bovenaan: het logo is 80px hoog en steekt onder de
+     balk van 41px uit. .wrap doet dat met padding-top:60px; deze pagina
+     gebruikt .wrap niet, dus het moet hier apart. Zonder die ruimte schuift
+     de gebruikersbalk onder het logo door. */
+  .staf{ max-width:1180px; margin:0 auto; padding:60px 16px 80px; }
+
+  /* --- balk met wie je bent en wat er nieuw is --- */
+  .staf-balk{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:14px 0 18px; border-bottom:1px solid var(--border); margin-bottom:24px;
+  }
+  .ik{
+    display:flex; align-items:center; gap:10px; padding:6px 14px 6px 6px;
+    border:1px solid var(--border); border-radius:var(--radius-pill,48px); background:var(--surface);
+  }
+  .ik-bol{
+    width:32px; height:32px; border-radius:50%; flex:none;
+    display:grid; place-items:center; background:var(--purple-50,#fcf3ff); color:var(--heading-2,#4d0266);
+    font-family:"Baloo 2",system-ui,sans-serif; font-weight:700; font-size:.95rem;
+  }
+  .ik-naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1rem; line-height:1.15; min-width:0; }
+  .ik-rol{ display:block; font-size:.72rem; color:var(--text-faint); font-weight:400; letter-spacing:.04em; text-transform:uppercase; }
+  .ik-uit{
+    appearance:none; border:0; background:none; cursor:pointer; padding:4px 6px; margin-left:6px; flex:none;
+    color:var(--text-muted); font:inherit; font-size:.8rem; text-decoration:underline;
+    text-underline-offset:3px;
+  }
+  .ik-uit:hover{ color:var(--accent-strong); }
+
+  /* Het klokje met wat er nieuw is. Dicht is het een telling, open een lijst
+     waar je doorheen kunt klikken. */
+  .nieuw{ position:relative; margin-left:auto; }
+  .nieuw-knop{
+    appearance:none; cursor:pointer; display:inline-flex; align-items:center; gap:10px;
+    padding:8px 16px; border-radius:var(--radius-pill,48px);
+    border:1px solid var(--border); background:var(--surface); font:inherit;
+    font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:.95rem; color:var(--text);
+  }
+  .nieuw-knop:hover{ border-color:var(--accent); color:var(--accent-strong); }
+  .nieuw-knop[aria-expanded="true"]{ border-color:var(--accent); }
+  .nieuw-bol{
+    min-width:22px; height:22px; padding:0 7px; border-radius:11px; display:grid; place-items:center;
+    background:var(--accent); color:#fff9f5; font-size:.78rem; font-weight:700;
+    font-variant-numeric:tabular-nums;
+  }
+  .nieuw-bol.leeg{ background:var(--border); color:var(--text-faint); }
+  .nieuw-lade{
+    position:absolute; right:0; top:calc(100% + 8px); width:min(460px,88vw); z-index:20;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md,16px);
+    box-shadow:var(--shadow,0 12px 40px rgba(0,0,0,.14)); padding:8px; display:none;
+    max-height:min(62vh,540px); overflow:auto;
+  }
+  .nieuw-lade.open{ display:block; }
+  .nieuw-kop{
+    font-family:"Open Sans",sans-serif; font-weight:700; font-size:.68rem; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--text-subtle); padding:10px 12px 6px;
+  }
+  .nieuw-item{
+    display:flex; align-items:flex-start; gap:10px; width:100%; text-align:left;
+    padding:10px 12px; border-radius:10px; border:0; background:none; cursor:pointer;
+    font:inherit; color:var(--text); text-decoration:none;
+  }
+  .nieuw-item:hover{ background:var(--surface-2); }
+  .nieuw-item .t{ flex:1; min-width:0; }
+  .nieuw-item .naam{ font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nieuw-item .waarom{ display:block; font-size:.8rem; color:var(--text-muted); line-height:1.35; }
+  .vlag{
+    flex:none; font-size:.62rem; font-weight:700; letter-spacing:.08em; padding:3px 7px;
+    border-radius:6px; background:var(--accent); color:#fff9f5; margin-top:2px;
+  }
+  .nieuw-item.gezien .vlag{ background:transparent; color:var(--text-faint); border:1px solid var(--border); }
+  .nieuw-leeg{ padding:16px 12px; color:var(--text-muted); font-size:.9rem; }
+
+  /* --- snelle inzichten --- */
+  .inzichten{ display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; margin-bottom:28px; }
+  .inzicht{
+    background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md,16px);
+    padding:14px 16px; display:flex; flex-direction:column; gap:4px; text-decoration:none; color:inherit;
+  }
+  a.inzicht:hover{ border-color:var(--accent); }
+  .inzicht .k{
+    font-family:"Open Sans",sans-serif; font-weight:700; font-size:.68rem; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--text-subtle);
+  }
+  .inzicht .v{
+    font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.8rem; line-height:1.05;
+    color:var(--text); font-variant-numeric:tabular-nums;
+  }
+  .inzicht .n{ font-size:.78rem; color:var(--text-faint); line-height:1.35; }
+  .inzicht.aandacht .v{ color:var(--accent-strong); }
+
+  /* --- tabs --- */
+  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+  .tab{
+    appearance:none; border:0; background:none; cursor:pointer; font:inherit;
+    font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.05rem;
+    padding:10px 18px; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab:hover{ color:var(--text); }
+  .tab[aria-selected="true"]{ color:var(--accent-strong); border-bottom-color:var(--accent); }
+  .tab .mee{ font-size:.8rem; color:var(--text-faint); font-weight:400; margin-left:6px; }
+
+  /* --- de lijsten --- */
+  .rij{
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    padding:14px 4px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit;
+  }
+  .rij:hover{ background:var(--surface-2); }
+  .rij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.05rem; flex:1 1 220px; }
+  .rij .cijfers{ display:flex; gap:14px; flex-wrap:wrap; font-size:.82rem; color:var(--text-muted); font-variant-numeric:tabular-nums; }
+  .chip{
+    font-size:.72rem; padding:3px 9px; border-radius:20px; border:1px solid var(--border);
+    color:var(--text-muted); white-space:nowrap;
+  }
+  .chip.ok{ border-color:var(--ok,#2e7d4f); color:var(--ok,#2e7d4f); }
+  .chip.warn{ border-color:var(--warn,#b26a00); color:var(--warn,#b26a00); }
+  .chip.danger{ border-color:var(--danger,#cf2443); color:var(--danger,#cf2443); }
+  .chip.nieuw{ background:var(--accent); border-color:var(--accent); color:#fff9f5; font-weight:700; }
+  .zoek{
+    width:100%; box-sizing:border-box; padding:10px 14px; font:inherit; margin-bottom:12px;
+    border:1px solid var(--border); border-radius:var(--radius-md,12px); background:var(--surface);
+  }
+  .leeg{ padding:28px 4px; color:var(--text-muted); }
+
+  /* --- aanmelden --- */
+  .aanmelden{ max-width:460px; margin:48px auto; }
+  .aanmelden label{ display:block; font-weight:600; font-size:.85rem; margin:14px 0 4px; }
+  .aanmelden input{
+    width:100%; box-sizing:border-box; padding:11px 14px; font:inherit;
+    border:1px solid var(--border); border-radius:var(--radius-md,12px); background:var(--surface);
+  }
+  .aanmelden .uitleg{ font-size:.82rem; color:var(--text-muted); margin:6px 0 0; line-height:1.45; }
+  .fout{ color:var(--danger,#cf2443); font-size:.88rem; margin-top:12px; }
+  .verborgen{ display:none !important; }
+</style>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <a class="site-logo" href="index.html" aria-label="Naar de startpagina">
+      <img src="PEPPROOF-LOGO.svg" width="259" height="83" alt="PepProof">
+    </a>
+    <span class="betavlag">BETA 1.0</span>
+  </div>
+</header>
+
+<main class="staf">
+
+  <!-- Aanmelden. Geen accounts: het token bepaalt de rol, de naam typ je zelf
+       en die komt bij je oordelen te staan. -->
+  <section class="aanmelden panel" id="aanmelden">
+    <h1 style="font-family:'Baloo 2',system-ui,sans-serif;color:var(--heading);margin:0 0 4px;font-size:1.5rem">Stafpagina</h1>
+    <p class="uitleg" style="margin:0">Leveranciers, laboratoria en wat er nieuw is, op een plek.</p>
+    <label for="tk">Toegangssleutel</label>
+    <input id="tk" type="password" autocomplete="off" spellcheck="false">
+    <p class="uitleg">Dezelfde sleutel als voor de andere stafpagina's.</p>
+    <label for="nm">Je naam</label>
+    <input id="nm" type="text" autocomplete="off">
+    <p class="uitleg">Komt bij elk oordeel te staan, zodat later na te gaan is wie wat heeft vastgesteld.</p>
+    <p><button class="btn" id="aan" style="margin-top:16px">Aanmelden</button></p>
+    <p class="fout verborgen" id="aanfout"></p>
+  </section>
+
+  <div id="binnen" class="verborgen">
+
+    <div class="staf-balk">
+      <div class="ik">
+        <span class="ik-bol" id="ikBol">?</span>
+        <span class="ik-naam" id="ikNaam">—<span class="ik-rol" id="ikRol"></span></span>
+        <button type="button" class="ik-uit" id="uit">uitloggen</button>
+      </div>
+
+      <div class="nieuw">
+        <button type="button" class="nieuw-knop" id="nieuwKnop" aria-expanded="false">
+          Nieuw <span class="nieuw-bol leeg" id="nieuwBol">0</span>
+        </button>
+        <div class="nieuw-lade" id="nieuwLade"></div>
+      </div>
+    </div>
+
+    <div class="inzichten" id="inzichten"></div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tabLev" aria-selected="true" aria-controls="paneelLev">Leveranciers <span class="mee" id="telLev"></span></button>
+      <button class="tab" role="tab" id="tabLab" aria-selected="false" aria-controls="paneelLab">Laboratoria <span class="mee" id="telLab"></span></button>
+    </div>
+
+    <section id="paneelLev" role="tabpanel">
+      <input class="zoek" id="zoekLev" type="search" placeholder="Zoek een leverancier">
+      <div id="lijstLev"><p class="leeg">Laden…</p></div>
+    </section>
+
+    <section id="paneelLab" role="tabpanel" class="verborgen">
+      <input class="zoek" id="zoekLab" type="search" placeholder="Zoek een laboratorium">
+      <div id="lijstLab"><p class="leeg">Laden…</p></div>
+    </section>
+
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
+
+  // Dezelfde sleutel als de andere stafpagina's, zodat je niet op elke pagina
+  // opnieuw hoeft aan te melden.
+  var SLEUTEL_TOKEN = 'bedrijfchecker.ownerToken';
+  var SLEUTEL_NAAM = 'bedrijfchecker.naam';
+  // Wat je al hebt gezien blijft lokaal staan. Het staat ook op de server
+  // (markeer_gesignaleerd), maar dat is een melding voor het hele team; dit
+  // bolletje gaat over jouw scherm en mag meteen weg zonder te wachten op een
+  // antwoord van de server.
+  var SLEUTEL_GEZIEN = 'bedrijfchecker.gezien';
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function bewaar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lees(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function wis(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+  var token = '', naam = '', rol = '';
+  var data = { leveranciers: [], labs: [], signalen: null, naamkoppelingen: [], tekstoordelen: [] };
+
+  function haal(pad) {
+    return fetch(API_BASE + pad, { headers: { 'X-Owner-Token': token } }).then(function (r) {
+      if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) {
+        throw new Error((j && j.message) || ('HTTP ' + r.status));
+      });
+      return r.json();
+    });
+  }
+
+  // --- wat je al hebt gezien -----------------------------------------------
+  function gezienSet() {
+    try { return new Set(JSON.parse(lees(SLEUTEL_GEZIEN) || '[]')); } catch (e) { return new Set(); }
+  }
+  function markeerGezien(sleutel) {
+    var s = gezienSet();
+    s.add(sleutel);
+    bewaar(SLEUTEL_GEZIEN, JSON.stringify(Array.prototype.slice.call(s)));
+  }
+
+  // --- aanmelden -----------------------------------------------------------
+  function aanmelden(t, n) {
+    token = t; naam = n;
+    return haal('/api/admin/wie-ben-ik').then(function (j) {
+      rol = (j && j.rol) || 'beoordelaar';
+      bewaar(SLEUTEL_TOKEN, t);
+      bewaar(SLEUTEL_NAAM, n);
+      el('aanmelden').classList.add('verborgen');
+      el('binnen').classList.remove('verborgen');
+      el('ikNaam').firstChild.nodeValue = n || '—';
+      el('ikRol').textContent = rol;
+      el('ikBol').textContent = (n || '?').trim().charAt(0).toUpperCase() || '?';
+      return laden();
+    });
+  }
+
+  el('aan').addEventListener('click', function () {
+    var t = el('tk').value.trim(), n = el('nm').value.trim();
+    el('aanfout').classList.add('verborgen');
+    if (!t || !n) {
+      el('aanfout').textContent = 'Vul allebei de velden in.';
+      el('aanfout').classList.remove('verborgen');
+      return;
+    }
+    aanmelden(t, n).catch(function (e) {
+      el('aanfout').textContent = 'Aanmelden mislukt: ' + e.message;
+      el('aanfout').classList.remove('verborgen');
+    });
+  });
+
+  el('uit').addEventListener('click', function () {
+    // De sleutel weg, maar NIET wat je al hebt gezien: dat is geen geheim en
+    // het opnieuw moeten doorklikken van dertig signalen is alleen vervelend.
+    wis(SLEUTEL_TOKEN);
+    location.reload();
+  });
+
+  // --- laden ---------------------------------------------------------------
+  function laden() {
+    return Promise.all([
+      haal('/api/admin/leveranciers').catch(function () { return null; }),
+      haal('/api/admin/laboratoria').catch(function () { return null; }),
+      haal('/api/admin/signalen?max=50').catch(function () { return null; }),
+      haal('/api/admin/naamkoppelingen').catch(function () { return null; }),
+      haal('/api/admin/tekstoordelen?status=open').catch(function () { return null; })
+    ]).then(function (r) {
+      data.leveranciers = (r[0] && r[0].leveranciers) || (r[0] && r[0].rijen) || [];
+      data.labs = (r[1] && r[1].labs) || [];
+      data.signalen = r[2] || null;
+      data.naamkoppelingen = (r[3] && r[3].oordelen) || [];
+      data.tekstoordelen = (r[4] && r[4].oordelen) || [];
+      toonAlles();
+    });
+  }
+
+  // --- nieuwe items --------------------------------------------------------
+  //
+  // Vier soorten werk die om aandacht vragen, in een lijst. Bewust niet alleen
+  // "nieuw gezien": een lab zonder stand is ook werk, ook als het er al een
+  // week staat.
+  function nieuweItems() {
+    var uit = [];
+    var gezien = gezienSet();
+    var s = data.signalen || {};
+
+    (s.leveranciers || []).forEach(function (l) {
+      var sleutel = 'lev:' + (l.sleutel || l.supplierKey || l);
+      uit.push({
+        sleutel: sleutel, soort: 'leverancier',
+        naam: l.sleutel || l.supplierKey || String(l),
+        waarom: 'nieuwe leverancier, nog niet eerder gemeld',
+        href: 'admin-leveranciers.html', gezien: gezien.has(sleutel)
+      });
+    });
+    (s.labs || []).forEach(function (l) {
+      var sleutel = 'lab:' + (l.sleutel || l.naam || l);
+      uit.push({
+        sleutel: sleutel, soort: 'lab',
+        naam: l.naam || l.sleutel || String(l),
+        waarom: l.uitCasesZonderReferentie
+          ? 'nieuw lab, genoemd op een rapport zonder verificatiecode'
+          : 'nieuw lab, nog geen stand',
+        href: 'admin-laboratoria.html', gezien: gezien.has(sleutel)
+      });
+    });
+    data.labs.filter(function (l) { return !l.oordeel; }).forEach(function (l) {
+      var sleutel = 'labstand:' + (l.lab || '');
+      if (uit.some(function (x) { return x.naam === l.lab; })) return;
+      uit.push({
+        sleutel: sleutel, soort: 'lab',
+        naam: l.lab, waarom: 'wacht op een stand',
+        href: 'admin-laboratoria.html', gezien: gezien.has(sleutel)
+      });
+    });
+    data.naamkoppelingen.filter(function (o) { return o.status === 'wacht op beoordeling'; }).forEach(function (o) {
+      var sleutel = 'naam:' + o.sleutel;
+      uit.push({
+        sleutel: sleutel, soort: 'naamkoppeling',
+        naam: o.product + ' bij ' + o.supplierKey,
+        waarom: 'getoetst tegen ' + o.getoetsteStof + '; telt niet mee tot iemand het nakijkt',
+        href: 'admin-leveranciers.html', gezien: gezien.has(sleutel)
+      });
+    });
+    data.tekstoordelen.forEach(function (t) {
+      var sleutel = 'tekst:' + t.id;
+      uit.push({
+        sleutel: sleutel, soort: 'tekst',
+        naam: 'Tekstcorrectie van ' + (t.door || 'onbekend'),
+        waarom: String(t.origineel || '').slice(0, 90),
+        href: null, gezien: gezien.has(sleutel)
+      });
+    });
+    return uit;
+  }
+
+  function toonNieuw() {
+    var items = nieuweItems();
+    var ongezien = items.filter(function (i) { return !i.gezien; });
+    var bol = el('nieuwBol');
+    bol.textContent = ongezien.length;
+    bol.className = 'nieuw-bol' + (ongezien.length ? '' : ' leeg');
+
+    var lade = el('nieuwLade');
+    if (!items.length) {
+      lade.innerHTML = '<p class="nieuw-leeg">Niets nieuws. Alle labs hebben een stand en er wacht geen beoordeling.</p>';
+      return;
+    }
+    var perSoort = { lab: [], leverancier: [], naamkoppeling: [], tekst: [] };
+    items.forEach(function (i) { (perSoort[i.soort] || perSoort.lab).push(i); });
+    var koppen = {
+      lab: 'Laboratoria', leverancier: 'Leveranciers',
+      naamkoppeling: 'Naamkoppelingen', tekst: 'Tekstcorrecties'
+    };
+    var h = '';
+    Object.keys(perSoort).forEach(function (k) {
+      if (!perSoort[k].length) return;
+      h += '<p class="nieuw-kop">' + esc(koppen[k]) + '</p>';
+      perSoort[k].forEach(function (i) {
+        h += '<a class="nieuw-item' + (i.gezien ? ' gezien' : '') + '" data-sleutel="' + esc(i.sleutel) + '"' +
+          (i.href ? ' href="' + esc(i.href) + '"' : ' href="#"') + '>' +
+          '<span class="vlag">' + (i.gezien ? 'gezien' : 'NIEUW') + '</span>' +
+          '<span class="t"><span class="naam">' + esc(i.naam) + '</span>' +
+          '<span class="waarom">' + esc(i.waarom) + '</span></span></a>';
+      });
+    });
+    lade.innerHTML = h;
+
+    Array.prototype.forEach.call(lade.querySelectorAll('.nieuw-item'), function (a) {
+      a.addEventListener('click', function () {
+        markeerGezien(a.getAttribute('data-sleutel'));
+        a.classList.add('gezien');
+        a.querySelector('.vlag').textContent = 'gezien';
+        var n = el('nieuwBol');
+        var nu = Math.max(0, Number(n.textContent) - 1);
+        n.textContent = nu;
+        n.className = 'nieuw-bol' + (nu ? '' : ' leeg');
+      });
+    });
+  }
+
+  el('nieuwKnop').addEventListener('click', function () {
+    var lade = el('nieuwLade');
+    var open = lade.classList.toggle('open');
+    el('nieuwKnop').setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || e.target.closest('.nieuw')) return;
+    el('nieuwLade').classList.remove('open');
+    el('nieuwKnop').setAttribute('aria-expanded', 'false');
+  });
+
+  // --- snelle inzichten ----------------------------------------------------
+  //
+  // Vijf getallen die zeggen waar het werk zit. Bewust geen percentages of
+  // scores: dit is een werkoverzicht, geen beoordeling van de markt.
+  function toonInzichten() {
+    var labs = data.labs || [];
+    var zonderStand = labs.filter(function (l) { return !l.oordeel; }).length;
+    var erkend = labs.filter(function (l) { return l.oordeel && l.oordeel.status === 'erkend'; }).length;
+    var lev = data.leveranciers || [];
+    var refs = lev.reduce(function (n, r) { return n + (r.referenties || 0); }, 0);
+    var gecontroleerd = lev.reduce(function (n, r) { return n + (r.gecontroleerd || 0); }, 0);
+    var wachtNaam = (data.naamkoppelingen || []).filter(function (o) { return o.status === 'wacht op beoordeling'; }).length;
+
+    var vakken = [
+      { k: 'Leveranciers', v: lev.length, n: refs + ' labverwijzingen bekend' },
+      { k: 'Handmatig gecontroleerd', v: gecontroleerd,
+        n: refs ? Math.round((100 * gecontroleerd) / refs) + '% van de verwijzingen' : 'nog niets te controleren' },
+      { k: 'Laboratoria', v: labs.length, n: erkend + ' erkend' },
+      { k: 'Labs zonder stand', v: zonderStand, aandacht: zonderStand > 0,
+        n: zonderStand ? 'werk dat op een beoordelaar wacht' : 'alles beoordeeld', href: 'admin-laboratoria.html' },
+      { k: 'Koppelingen in afwachting', v: wachtNaam, aandacht: wachtNaam > 0,
+        n: wachtNaam ? 'dit bewijs telt nu niet mee' : 'geen open koppelingen' }
+    ];
+
+    el('inzichten').innerHTML = vakken.map(function (v) {
+      var binnen = '<span class="k">' + esc(v.k) + '</span>' +
+        '<span class="v">' + esc(String(v.v)) + '</span>' +
+        '<span class="n">' + esc(v.n) + '</span>';
+      var kl = 'inzicht' + (v.aandacht ? ' aandacht' : '');
+      return v.href
+        ? '<a class="' + kl + '" href="' + esc(v.href) + '">' + binnen + '</a>'
+        : '<div class="' + kl + '">' + binnen + '</div>';
+    }).join('');
+  }
+
+  // --- de twee lijsten -----------------------------------------------------
+  function toonLeveranciers() {
+    var q = el('zoekLev').value.trim().toLowerCase();
+    var rijen = (data.leveranciers || []).filter(function (r) {
+      return !q || String(r.supplierKey || '').toLowerCase().indexOf(q) !== -1;
+    });
+    el('telLev').textContent = rijen.length ? '(' + rijen.length + ')' : '';
+    if (!rijen.length) {
+      el('lijstLev').innerHTML = '<p class="leeg">Geen leveranciers gevonden.</p>';
+      return;
+    }
+    el('lijstLev').innerHTML = rijen.map(function (r) {
+      return '<a class="rij" href="admin-leveranciers.html">' +
+        '<span class="naam">' + esc(r.supplierKey || '?') + '</span>' +
+        '<span class="cijfers">' +
+          '<span>' + (r.referenties || 0) + ' verwijzingen</span>' +
+          '<span>' + (r.gecontroleerd || 0) + ' gecontroleerd</span>' +
+          (r.opNaamVanDerde ? '<span>' + r.opNaamVanDerde + ' op naam van een derde</span>' : '') +
+        '</span></a>';
+    }).join('');
+  }
+
+  function toonLabs() {
+    var q = el('zoekLab').value.trim().toLowerCase();
+    var rijen = (data.labs || []).filter(function (l) {
+      return !q || String(l.lab || '').toLowerCase().indexOf(q) !== -1;
+    });
+    el('telLab').textContent = rijen.length ? '(' + rijen.length + ')' : '';
+    if (!rijen.length) {
+      el('lijstLab').innerHTML = '<p class="leeg">Geen laboratoria gevonden.</p>';
+      return;
+    }
+    // Werk eerst: labs zonder stand bovenaan. Dat is de hele reden dat deze
+    // lijst er is.
+    rijen = rijen.slice().sort(function (a, b) {
+      var az = a.oordeel ? 1 : 0, bz = b.oordeel ? 1 : 0;
+      if (az !== bz) return az - bz;
+      return (b.verwijzingen || 0) - (a.verwijzingen || 0);
+    });
+    var kleur = {
+      'erkend': 'ok', 'nog niet beoordeeld': '', 'niet bereikbaar voor ons': 'warn',
+      'onvoldoende verifieerbaar': 'warn', 'niet onafhankelijk': 'danger', 'bestaat niet': 'danger',
+      'geen lab - databron/testplatform': 'warn', 'afgekeurd - kwaliteitsborging': 'danger'
+    };
+    el('lijstLab').innerHTML = rijen.map(function (l) {
+      var st = l.oordeel ? l.oordeel.status : null;
+      var chip = st
+        ? '<span class="chip ' + (kleur[st] || '') + '">' + esc(st) + '</span>'
+        : '<span class="chip nieuw">geen stand</span>';
+      return '<a class="rij" href="admin-laboratoria.html">' +
+        '<span class="naam">' + esc(l.lab) + '</span>' + chip +
+        '<span class="cijfers">' +
+          '<span>' + (l.verwijzingen || 0) + ' verwijzingen</span>' +
+          '<span>' + (l.leveranciers || 0) + ' shop' + (l.leveranciers === 1 ? '' : 's') + '</span>' +
+        '</span></a>';
+    }).join('');
+  }
+
+  function toonAlles() { toonNieuw(); toonInzichten(); toonLeveranciers(); toonLabs(); }
+
+  el('zoekLev').addEventListener('input', toonLeveranciers);
+  el('zoekLab').addEventListener('input', toonLabs);
+
+  function kiesTab(welke) {
+    var lev = welke === 'lev';
+    el('tabLev').setAttribute('aria-selected', lev ? 'true' : 'false');
+    el('tabLab').setAttribute('aria-selected', lev ? 'false' : 'true');
+    el('paneelLev').classList.toggle('verborgen', !lev);
+    el('paneelLab').classList.toggle('verborgen', lev);
+  }
+  el('tabLev').addEventListener('click', function () { kiesTab('lev'); });
+  el('tabLab').addEventListener('click', function () { kiesTab('lab'); });
+
+  // Al eerder aangemeld? Dan meteen door.
+  var bewaardT = lees(SLEUTEL_TOKEN), bewaardN = lees(SLEUTEL_NAAM);
+  if (bewaardT && bewaardN) {
+    aanmelden(bewaardT, bewaardN).catch(function () {
+      el('tk').value = '';
+      el('nm').value = bewaardN;
+    });
+  } else if (bewaardN) {
+    el('nm').value = bewaardN;
+  }
+})();
+</script>

@@ -487,6 +487,25 @@ app.post('/api/admin/laboratoria/beoordeling', rl.caseAction, auth.requireOwnerT
   }
 });
 
+// Wie ben ik? Er zijn geen accounts - dat was een ontwerpkeuze, zie auth.js -
+// maar er zijn wel twee tokens, en die zeggen genoeg: ADMIN_TOKEN is de
+// beheerder, VIEWER_TOKEN is de beoordelaar. De stafpagina kan daarmee tonen
+// wie er kijkt zonder dat er een inlogsysteem bij hoeft.
+//
+// LET OP wat dit NIET is: het token zegt welke ROL je hebt, niet wie je bent.
+// De naam die bij een oordeel komt te staan typt de beoordelaar zelf in. Twee
+// mensen die hetzelfde token gebruiken zijn voor de server dezelfde.
+app.get('/api/admin/wie-ben-ik', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  res.json({
+    rol: req.isAdmin ? 'beheerder' : 'beoordelaar',
+    magBeoordelen: true,
+    magUploaden: !!req.isAdmin,
+    // Zodat de pagina niet zelf hoeft te weten wat er bestaat.
+    labStatussen: coaStore.LAB_STATUSSEN,
+    naamStatussen: coaStore.NAAM_STATUSSEN
+  });
+});
+
 // De redactielus, ook over HTTP - zodat een stafpagina de openstaande
 // tekstcorrecties kan tonen zonder een MCP-verbinding. Lezen mag een lezer;
 // vastleggen ook, want dit IS het werk van de redactie en het raakt geen
