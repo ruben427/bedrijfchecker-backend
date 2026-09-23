@@ -730,6 +730,17 @@ body.geen-testrecht .portret-schrijf{ display:none }
           <div class="acties-groep">
             <button class="knop sec" id="bGeen">Ik zie geen rapport</button>
             <button class="knop sec" id="bKlopt">Klopt niet</button>
+            <!-- EEN knoptekst, ook als er geen kopie bij de shop ligt. Hij stond
+                 dan op "Lost op bij het lab" en las als een derde uitkomst,
+                 terwijl het dezelfde handeling is: dit rapport is gezien en
+                 goedgekeurd. Wat er wordt vastgelegd verschilt wel - met kopie
+                 komt er een klasse uit, zonder kopie alleen dat de referentie
+                 oplost - maar dat rekent de server uit.
+
+                 BESLUIT RUBEN 23 september: accepteren is wat Anne en de
+                 beheerder doen. Komt er later een rol die alleen invoert, dan
+                 krijgt die hier "Opslaan" en accordeert Anne het daarna. De
+                 scheiding staat al klaar in magTestenAccepteren. -->
             <button class="knop prim" id="bAccept">Accepteren</button>
           </div>
           <button class="volgende" id="bVolgende" title="Volgende, zonder iets vast te leggen" aria-label="Volgende, zonder iets vast te leggen">
@@ -1815,9 +1826,8 @@ body.geen-testrecht .portret-schrijf{ display:none }
 
     // Zonder kopie bij de shop valt er niets naast elkaar te leggen. "Klopt
     // niet" vraagt wat er bij het lab anders staat dan bij de shop - die vraag
-    // bestaat hier niet. Accepteren betekent dan alleen: hij lost op.
+    // bestaat hier niet, dus die knop gaat weg.
     el('bKlopt').classList.toggle('verborgen', !k.url);
-    el('bAccept').textContent = k.url ? 'Accepteren' : 'Lost op bij het lab';
 
     verberg();
   }
