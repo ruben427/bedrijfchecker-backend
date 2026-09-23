@@ -387,6 +387,48 @@ app.post('/api/audits/:id/stop', rl.caseAction, auth.requireOwnerToken, caseAcce
 // een betaalmoment vóór te zetten. Draait de resterende DEEP_STEP_KEYS boven
 // op dezelfde case (zelfde fasegegevens blijven staan) en herberekent daarna
 // categorize/engine/rapport in "deep"-stand.
+// Hervatten nadat er met de hand een testrapport is toegevoegd, 24 september.
+//
+// De gratis controle stopt met 'wacht_op_coa' als er geen enkel rapport is
+// gevonden. Dit is de weg terug. Bewust GEEN admin-route: dit is de gewone
+// gebruiker die zijn eigen check weer op gang brengt, dus caseAccess volstaat
+// - precies zoals bij continue-deep.
+app.post('/api/audits/:id/hervat', rl.caseAction, auth.requireOwnerToken, caseAccess, async (req, res) => {
+  try {
+    const c = req.case;
+    if (c.status !== 'wacht_op_coa') {
+      return res.status(409).json({
+        error: 'invalid_state',
+        message: 'Deze controle wacht niet op een rapport.'
+      });
+    }
+    // Een link naar een certificaat mag hier mee. Die loopt in de COA-stap
+    // door precies dezelfde ophaal- en uitleesroute als elk ander gevonden
+    // document - geen apart pad, dus ook geen apart vertrouwen.
+    const ruw = String((req.body && req.body.eigenCoaUrl) || '').trim();
+    let eigenCoaUrl = null;
+    if (ruw) {
+      const genormaliseerd = normalizeUrl(ruw);
+      if (!isValidWebUrl(genormaliseerd)) {
+        return res.status(400).json({
+          error: 'invalid_coa_url',
+          message: 'De link naar het certificaat is geen geldige web-URL.'
+        });
+      }
+      eigenCoaUrl = genormaliseerd;
+    }
+    const ctx = {
+      naam: c.naam, website: c.website, land: c.land,
+      kvkNummer: c.kvkNummer, notities: c.notities, images: [],
+      eigenCoaUrl
+    };
+    pipeline.hervatNaWachten(req.params.id, ctx).catch(() => {});
+    res.json({ case: ownerCase(await db.getCase(req.params.id)) });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 app.post('/api/audits/:id/continue-deep', rl.caseAction, auth.requireOwnerToken, caseAccess, async (req, res) => {
   try {
     const c = req.case;

@@ -2015,26 +2015,31 @@ async function runCategorize(caseId, ctx, tier) {
   // R01/R02 wel iets te zeggen zonder een enkel rapport.
   const vroegeGate = evidenceGate(coaFase.intake || []);
   if (tier !== 'deep' && vroegeGate.status === 'FAIL' && vroegeGate.code === 'NO_COA_FOUND') {
-    await meldStap(caseId, 'Er is geen enkel testrapport aangetroffen. Er valt dus niets te ' +
-      'beoordelen, en de categoriebeoordeling wordt overgeslagen.');
-    const leeg = {};
-    CATEGORY_DEFS.forEach(function (d) {
-      leeg[d.id] = {
-        color: 'white',
-        rationale: (d.pillar === 'COA' || d.pillar === 'LAB')
-          ? 'Er is geen testrapport van deze leverancier aangetroffen, dus hierover valt niets vast te stellen.'
-          : 'Deze categorie wordt in de gratis controle niet onderzocht.'
-      };
-    });
+    // 24 SEPTEMBER: DE CONTROLE STOPT HIER, HIJ LOOPT NIET DOOR.
+    //
+    // Hiervoor werd de categoriebeoordeling overgeslagen en liep de rest van
+    // de pijplijn gewoon af tot 'gratis_klaar'. Het scherm vroeg intussen om
+    // met de hand een rapport toe te voegen - maar tegen de tijd dat je dat
+    // deed was de controle al klaar en deed jouw rapport niet meer mee.
+    // Vragen om iets wat daarna niet meer meetelt is erger dan niet vragen.
+    //
+    // Nu: de run gaat in de wachtstand. Voeg je een rapport toe, dan hervat
+    // hij vanaf deze stap en telt het rapport gewoon mee. Voeg je niets toe,
+    // dan blijft hij wachten tot iemand hem afsluit.
+    //
+    // Het mechanisme is hetzelfde als bij handmatig stoppen (ensureNotStopped):
+    // een fout met .stopped, zodat de buitenste catch de status met rust laat.
+    await meldStap(caseId, 'Er is geen enkel testrapport aangetroffen. De controle wacht: ' +
+      'voeg een rapport toe, dan telt het mee en gaat hij verder.');
     await db.updateCase(caseId, {
-      categoryAssessments: leeg,
-      adequacy: {
-        coa: null, lab: null,
-        rationale: 'Niet beoordeeld: er is geen testrapport aangetroffen om tegen af te zetten.'
-      }
+      status: 'wacht_op_coa',
+      currentStep: null,
+      wachtSinds: Date.now(),
+      wachtReden: 'Geen enkel testrapport aangetroffen bij deze leverancier.'
     });
-    await finishStep(caseId, 'categorize', startedAt);
-    return;
+    const wacht = new Error('Wacht op een handmatig toegevoegd testrapport');
+    wacht.stopped = true;
+    throw wacht;
   }
 
   // L01 kreeg tot nu toe geen enkele instructie mee, terwijl het 40% van de
@@ -2281,6 +2286,38 @@ async function runFreeTier(caseId, ctx) {
   }
 }
 
+// Hervatten na de wachtstand, 24 september.
+//
+// De gratis run stopt met status 'wacht_op_coa' zodra er geen enkel
+// testrapport is aangetroffen. Wordt er daarna met de hand een rapport
+// toegevoegd, dan pakt dit de draad op: de COA-stap opnieuw (zodat het nieuwe
+// document wordt meegenomen), en daarna het gewone staartstuk.
+//
+// LET OP: de COA-stap overdoen is geen luxe. Het handmatig toegevoegde
+// document zit in coaStore, niet in de fasegegevens van deze case - zonder
+// die stap opnieuw te draaien telt het rapport nog steeds niet mee, en dan
+// heeft het hele wachten geen zin gehad.
+async function hervatNaWachten(caseId, ctx) {
+  try {
+    await db.updateCase(caseId, { status: 'bezig', error: null, wachtSinds: null, wachtReden: null });
+    await ensureNotStopped(caseId);
+    await runResearchStep(caseId, ctx, 'coaDataset');
+    await ensureNotStopped(caseId);
+    await runCategorize(caseId, ctx, 'gratis');
+    await ensureNotStopped(caseId);
+    await applyScoringEngine(caseId);
+    await ensureNotStopped(caseId);
+    await runSynthesis(caseId, ctx, 'gratis');
+    stapLog.delete(caseId);
+    await db.updateCase(caseId, { status: 'gratis_klaar', tier: 'gratis', currentStep: null });
+  } catch (e) {
+    if (!e || !e.stopped) {
+      stapLog.delete(caseId);
+      await db.updateCase(caseId, { status: 'fout', error: (e && e.message) || 'onbekende fout', currentStep: null });
+    }
+  }
+}
+
 // Betaalde vervolgstap (nog zonder betaalstraat, zie server.js
 // /continue-deep): draait de resterende DEEP_STEP_KEYS boven op de al
 // aanwezige gratis fasegegevens van dezelfde case, en herberekent daarna
@@ -2310,6 +2347,7 @@ async function runDeepTier(caseId, ctx) {
 
 module.exports = {
   runFreeTier, runDeepTier, runResearchStep, runCategorize, applyScoringEngine, runSynthesis,
+  hervatNaWachten,
   filterRodeVlaggen, schoonKlasse,
   ensureNotStopped, stopAudit, maakGestrandeRunsLos, STRANDING_MS, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
   extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,

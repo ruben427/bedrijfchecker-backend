@@ -351,6 +351,20 @@
     if (!res.ok) throw new Error(data.message || data.error || 'Opnieuw draaien is mislukt (' + res.status + ')');
     return data.case;
   }
+  // Hervatten na de wachtstand: dezelfde controle gaat verder, met het
+  // certificaat dat er net bij is gekomen. Bewust NIET een nieuwe check -
+  // dan zou het werk dat al gedaan is opnieuw moeten.
+  async function apiHervat(id, coaUrl){
+    var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/hervat', {
+      method:'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eigenCoaUrl: coaUrl || '' })
+    });
+    var data = await res.json().catch(function(){ return {}; });
+    if (!res.ok) throw new Error(data.message || data.error || 'Verdergaan is mislukt (' + res.status + ')');
+    return data.case;
+  }
+
   async function apiContinueDeep(id){
     var res = await apiFetch('/api/audits/' + encodeURIComponent(id) + '/continue-deep', { method:'POST' });
     var data = await res.json().catch(function(){ return {}; });
@@ -702,6 +716,7 @@
         if (c.status === 'bezig') chip = '<span class="chip warn"><span class="spinner"></span> Bezig</span>';
         else if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
         else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
+        else if (c.status === 'wacht_op_coa') chip = '<span class="chip warn">Wacht op een testrapport</span>';
         else if (c.status === 'klaar' || c.status === 'gratis_klaar'){
           var vlaggen = (c.report && c.report.rodeVlaggen && c.report.rodeVlaggen.length) || 0;
           var es = c.engineResult && c.engineResult.evidenceScore;
@@ -970,6 +985,7 @@
     var chip = '<span class="chip grey">Nieuw</span>';
     if (c.status === 'fout') chip = '<span class="chip danger">Fout</span>';
     else if (c.status === 'gestopt') chip = '<span class="chip grey">Gestopt</span>';
+    else if (c.status === 'wacht_op_coa') chip = '<span class="chip warn">Wacht op een testrapport</span>';
     else if (c.status === 'gratis_klaar') chip = '<span class="chip ok">Gratis check klaar</span>';
     else if (c.status === 'klaar') chip = '<span class="chip ok">' + (c.tier === 'deep' ? 'Deep Dive klaar' : 'Klaar') + '</span>';
 
@@ -989,6 +1005,16 @@
       html += '<div class="banner danger">Audit mislukt: ' + escapeHtml(c.error || 'onbekende fout') + '</div>' +
         '<button class="btn" id="retry-audit">Opnieuw proberen</button>';
       if (c.progress && c.progress.length) html += renderProgress(c);
+    }
+    // DE CONTROLE WACHT, 24 september. Hiervoor liep hij door tot 'klaar' en
+    // kreeg je de vraag om een certificaat pas te zien als alles al beslist
+    // was. Nu staat hij stil op precies het punt waar jouw papier nog verschil
+    // maakt.
+    if (c.status === 'wacht_op_coa'){
+      html += geenRapportGevonden(c);
+      if (c.progress && c.progress.length) {
+        html += '<section class="report-block"><h3>Wat er tot nu toe is gedaan</h3>' + renderProgress(c) + '</section>';
+      }
     }
     if (c.status === 'gestopt'){
       html += '<div class="banner">Deze audit is handmatig gestopt' + (c.currentStep ? ' tijdens de stap "' + escapeHtml(stepLabel(c.currentStep.key)) + '"' : '') + '.</div>' +
@@ -1136,6 +1162,28 @@
       if (state.runningCaseIds['__naderhand__']) return;
       state.runningCaseIds['__naderhand__'] = true;
       render();
+
+      // Wacht deze controle nog? Dan gaat hij verder in plaats van opnieuw.
+      // Een bestand kan hier nog niet mee - dat loopt via een nieuwe check,
+      // want de hervatroute neemt alleen een link aan.
+      if (c.status === 'wacht_op_coa' && link && !state.naderhandCoaFiles.length){
+        apiHervat(c.id, link).then(function(bij){
+          delete state.runningCaseIds['__naderhand__'];
+          state.naderhandCoaUrl = ''; state.naderhandCoaError = null;
+          state.currentCase = bij;
+          var i = state.cases.findIndex(function(x){ return x.id === bij.id; });
+          if (i !== -1) state.cases[i] = bij;
+          render();
+          // Hij draait weer, dus de voortgang moet weer binnenkomen.
+          if (bij.status === 'bezig') ensureCasePoller(bij.id);
+        }).catch(function(e){
+          delete state.runningCaseIds['__naderhand__'];
+          state.naderhandCoaError = e.message;
+          render();
+        });
+        return;
+      }
+
       apiCreateCase(
         { naam: domainOf(c.website), website: c.website },
         [], null,
