@@ -399,14 +399,46 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   .acties .knop, .acties .volgende{ width:100% }
   .veldregel{ grid-template-columns:auto 1fr; }
 }
-/* De schakelaar voor de publieke check. Groen = open voor de buitenwereld,
-   rood = alleen wij kunnen nog een check starten. */
-.stand{ display:flex; align-items:center; gap:10px; margin-right:16px }
+/* De schakelaar voor de publieke check, naar Figma 1651:7985 (1699:8937).
+   Een pil met een bol: bol links en gevuld = Live, bol rechts en grijs =
+   Offline. De pil is zelf de knop - in het ontwerp staat er geen losse knop
+   naast, en twee dingen die hetzelfde doen is er een te veel.
+
+   LET OP: alleen de Live-stand stond in het ontwerp. De Offline-stand is
+   hiervan afgeleid - zelfde maat, bol naar de andere kant, kleur eruit. */
+.stand{ display:flex; align-items:center; margin-right:12px }
 .stand.verborgen{ display:none }
-.stand-lamp{ width:10px; height:10px; border-radius:999px; background:var(--text-faint) }
-.stand-lamp.open{ background:var(--ok) }
-.stand-lamp.dicht{ background:var(--danger) }
-.stand-tekst{ font-size:.85rem; color:var(--text-muted); white-space:nowrap }
+
+.stand-knop{
+  display:inline-flex; align-items:center; gap:4px;
+  min-width:102px; height:36px; padding:0 11px 0 3px;
+  border:1px solid var(--accent); border-radius:72px;
+  background:#fff8ef; cursor:pointer;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
+  letter-spacing:-0.9px; line-height:1; color:#0f0f0e;
+}
+.stand-bol{
+  flex:0 0 auto; width:30px; height:30px; border-radius:999px;
+  border:1px solid var(--accent-strong);
+  background-image:linear-gradient(80deg, var(--accent) 50%, var(--accent-light) 100%);
+}
+.stand-woord{ flex:1 0 0; text-align:center; white-space:nowrap }
+
+/* Offline: de bol wisselt van kant en de kleur gaat eruit. row-reverse doet
+   het verschuiven, zodat er maar een maatvoering te onderhouden is. */
+.stand-knop.uit{
+  flex-direction:row-reverse; padding:0 3px 0 11px;
+  border-color:var(--border); background:var(--surface); color:var(--text-muted);
+}
+.stand-knop.uit .stand-bol{
+  background-image:none; background:var(--text-faint); border-color:transparent;
+}
+/* Stand onbekend: niets beweren, dus geen van beide standen tonen. */
+.stand-knop.onbekend{ border-style:dashed; cursor:default }
+.stand-knop.onbekend .stand-bol{ background:none; border-style:dashed; border-color:var(--border) }
+
+.stand-knop:hover:not(.onbekend){ border-color:var(--accent-strong) }
+.stand-knop:focus-visible{ outline:2px solid var(--accent); outline-offset:2px }
 </style>
 </head>
 <body>
@@ -429,9 +461,10 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
       <!-- De publieke check open of dicht. Alleen de beheerder ziet dit: een
            beoordelaar legt oordelen vast, die doet de deur niet dicht. -->
       <div class="stand verborgen" id="standVak">
-        <span class="stand-lamp" id="standLamp" aria-hidden="true"></span>
-        <span class="stand-tekst" id="standTekst">—</span>
-        <button type="button" class="knop sec klein" id="standKnop">…</button>
+        <button type="button" class="stand-knop onbekend" id="standKnop" aria-pressed="false" title="Stand van de publieke check">
+          <span class="stand-bol" aria-hidden="true"></span>
+          <span class="stand-woord" id="standWoord">…</span>
+        </button>
       </div>
       <div class="ik">
         <span class="ik-bol" id="ikBol">?</span>
@@ -688,17 +721,30 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
 
   function zetStandInBeeld(open) {
     standOpen = open;
-    el('standLamp').className = 'stand-lamp ' + (open ? 'open' : 'dicht');
-    el('standTekst').textContent = open ? 'Check staat open' : 'Onderhoud: check dicht';
-    el('standKnop').textContent = open ? 'Sluiten' : 'Openen';
+    var k = el('standKnop');
+    k.className = 'stand-knop' + (open ? '' : ' uit');
+    k.setAttribute('aria-pressed', open ? 'true' : 'false');
+    // De pil zegt wat de stand IS, niet wat de knop doet. Een knop met
+    // "Sluiten" erop naast een lampje dat "open" zegt laat je twee keer
+    // nadenken over hetzelfde.
+    k.title = open
+      ? 'De check staat open voor bezoekers. Klik om te sluiten.'
+      : 'Onderhoud: alleen wij kunnen nog een check starten. Klik om te openen.';
+    el('standWoord').textContent = open ? 'Live' : 'Offline';
   }
 
   function toonStand() {
     return haal('/api/stand').then(function (j) {
       zetStandInBeeld(!!(j && j.publiekeCheck));
     }).catch(function () {
-      el('standTekst').textContent = 'Stand onbekend';
-      el('standKnop').textContent = '—';
+      // Niet gissen: de server gaf geen antwoord, dus we weten het niet. Dat
+      // is iets anders dan dicht.
+      standOpen = null;
+      var k = el('standKnop');
+      k.className = 'stand-knop onbekend';
+      k.removeAttribute('aria-pressed');
+      k.title = 'De stand kon niet worden opgehaald.';
+      el('standWoord').textContent = 'onbekend';
     });
   }
 
