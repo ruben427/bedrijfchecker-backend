@@ -424,11 +424,18 @@ function waardenBlok(recordsIn) {
   if (methodeNietVerifieerbaar) {
     regels.push({
       onderdeel: 'identiteit', stand: 'methode_niet_verifieerbaar', aantal: methodeNietVerifieerbaar,
+      // Besluit Ruben 23 september: een zin, niet twee. De losse toelichting
+      // (niveaus.IDENTITEIT_TOELICHTING) zei in andere woorden hetzelfde. Wat
+      // zij extra bracht - de HPLC-nuance en waarom dit gerapporteerd heet -
+      // staat hier nu in dezelfde zin. De HPLC-nuance blijft er met opzet in:
+      // zonder haar leest dit als een verwijt aan een lab dat zijn werk deed.
       zin: (methodeNietVerifieerbaar === 1
         ? 'Bij een rapport staat de identiteit van de stof wel vermeld, '
         : 'Bij ' + methodeNietVerifieerbaar + ' rapporten staat de identiteit van de stof wel vermeld, ') +
-        'maar noemt het document geen methode waarmee die bepaling na te gaan is.',
-      toelichting: niveaus.IDENTITEIT_TOELICHTING
+        'maar noemt het document geen methode waarmee die bepaling na te gaan is - ' +
+        'een zuiverheids-HPLC alleen is daarvoor niet genoeg. Wij tonen ' +
+        (methodeNietVerifieerbaar === 1 ? 'dat rapport' : 'ze') +
+        ' daarom als gerapporteerd, niet als vastgesteld.'
     });
   }
 
@@ -479,17 +486,192 @@ function waardenBlok(recordsIn) {
   };
 }
 
+// --- blok 5: het laboratorium en wat de metingen laten zien ----------------
+//
+// Twee vragen die de gebruiker zelf stelt en die wij uit de rapporten kunnen
+// beantwoorden: van hoeveel verschillende labs komen deze rapporten, en wat
+// staat er gemiddeld in.
+//
+// Gemeten op 23 september: van de tien leveranciers met labverwijzingen
+// gebruiken er ACHT precies een lab. Een gemiddelde zegt hier dus meestal
+// iets over een enkele bron, niet over een verzameling onafhankelijke
+// metingen - vandaar dat het lab in dezelfde adem genoemd wordt.
+//
+// LET OP - GEEN KLEUR, GEEN BALK, GEEN OORDEEL. Net als blok 4.
+//   * B-1 van het regelblad (vanaf welke overvulling is het een bevinding?)
+//     staat nog open bij Annemarie.
+//   * B-2 (mag een te smalle spreiding zelf een bevinding zijn?) ook.
+// Zolang die open staan tonen wij het getal met de telling erbij en trekken
+// wij geen conclusie. Het woord "bevinding" valt hier niet.
+//
+// LET OP - een gemiddelde loopt over verschillende producten en batches. Het
+// zegt iets over de documenten die wij lazen, niet over het flesje dat iemand
+// koopt. Die zin staat daarom in de tekst zelf en niet alleen in dit commentaar.
+
+function getal(v) {
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Alleen rapporten waarover wij over deze uitspraak iets mogen zeggen. Dat
+// hergebruikt de leeszekerheid uit niveaus.js in plaats van hier een tweede
+// definitie te zetten: op L0 verschillen de eenheden of ontbreekt een veld,
+// en dan is elk percentage onzin.
+function zegtIetsOver(r, onderdeel) {
+  const vak = r && r.niveau && r.niveau.perOnderdeel && r.niveau.perOnderdeel[onderdeel];
+  return !!vak && vak.uitkomst.tonen !== 'niets';
+}
+
+function samenvatting(waarden) {
+  if (!waarden.length) return null;
+  const som = waarden.reduce((a, b) => a + b, 0);
+  return {
+    aantal: waarden.length,
+    gemiddelde: som / waarden.length,
+    laagste: Math.min.apply(null, waarden),
+    hoogste: Math.max.apply(null, waarden)
+  };
+}
+
+function pct(n, cijfers) {
+  const c = typeof cijfers === 'number' ? cijfers : 1;
+  return n.toFixed(c).replace('.', ',') + '%';
+}
+
+function metTeken(n) {
+  return (n > 0 ? '+' : '') + pct(n);
+}
+
+function labBlok(recordsIn) {
+  const records = (recordsIn || []).filter(Boolean);
+  if (!records.length) {
+    return { beschikbaar: false, kleur: null, kleurregelOpen: 'A24', labs: [], zuiverheid: null, vulling: null, regels: [], werkregel: 'Geen rapporten' };
+  }
+
+  // --- welke labs, en hoeveel rapporten per lab
+  const perLab = {};
+  let zonderLab = 0;
+  records.forEach((r) => {
+    const naam = r.laboratorium ? String(r.laboratorium).trim() : '';
+    if (!naam) { zonderLab++; return; }
+    perLab[naam] = (perLab[naam] || 0) + 1;
+  });
+  const labs = Object.keys(perLab)
+    .map((naam) => ({ naam, aantal: perLab[naam] }))
+    .sort((a, b) => b.aantal - a.aantal);
+
+  // --- zuiverheid zoals gerapporteerd
+  const zuiverWaarden = [];
+  records.forEach((r) => {
+    if (!zegtIetsOver(r, 'zuiverheid')) return;
+    const p = getal(r.purityPercent);
+    if (p !== null) zuiverWaarden.push(p);
+  });
+  const zuiverheid = samenvatting(zuiverWaarden);
+  // De getallen worden hier opgemaakt, niet in de frontend: dan staat de
+  // schrijfwijze op een plek en zegt de stafpagina hetzelfde als het rapport.
+  if (zuiverheid) {
+    zuiverheid.weergave = {
+      gemiddelde: pct(zuiverheid.gemiddelde, 2),
+      laagste: pct(zuiverheid.laagste, 2),
+      hoogste: pct(zuiverheid.hoogste, 2)
+    };
+  }
+
+  // --- hoeveelheid ten opzichte van het etiket
+  //
+  // Alleen als de vulling-uitspraak leesbaar is: dan staan beide getallen er
+  // en zijn de eenheden gelijk. Anders vergelijken we mg met IE.
+  const afwijkingen = [];
+  let boven = 0; let onder = 0; let gelijk = 0;
+  records.forEach((r) => {
+    if (!zegtIetsOver(r, 'vulling')) return;
+    const geclaimd = getal(r.claimedQuantity);
+    const gemeten = getal(r.measuredQuantity);
+    if (geclaimd === null || gemeten === null || geclaimd === 0) return;
+    const afw = ((gemeten - geclaimd) / geclaimd) * 100;
+    afwijkingen.push(afw);
+    if (afw > 0) boven++; else if (afw < 0) onder++; else gelijk++;
+  });
+  const vulling = samenvatting(afwijkingen);
+  if (vulling) {
+    vulling.boven = boven; vulling.onder = onder; vulling.gelijk = gelijk;
+    vulling.weergave = {
+      gemiddelde: metTeken(vulling.gemiddelde),
+      laagste: metTeken(vulling.laagste),
+      hoogste: metTeken(vulling.hoogste)
+    };
+  }
+
+  // --- de zinnen. Alles met de telling erbij; geen woord dat weegt.
+  const regels = [];
+  if (labs.length === 1) {
+    regels.push({
+      stand: 'labs', aantal: 1,
+      zin: 'Alle ' + labs[0].aantal + (labs[0].aantal === 1 ? ' rapport komt' : ' rapporten komen') +
+        ' van hetzelfde laboratorium: ' + labs[0].naam + '.'
+    });
+  } else if (labs.length > 1) {
+    regels.push({
+      stand: 'labs', aantal: labs.length,
+      zin: 'De rapporten komen van ' + labs.length + ' laboratoria: ' +
+        labs.map((l) => l.naam + ' (' + l.aantal + ')').join(', ') + '.'
+    });
+  }
+
+  if (zuiverheid) {
+    regels.push({
+      stand: 'zuiverheid', aantal: zuiverheid.aantal,
+      zin: 'Gemiddeld ' + pct(zuiverheid.gemiddelde, 2) + ' zuiverheid over ' + zuiverheid.aantal +
+        (zuiverheid.aantal === 1 ? ' rapport' : ' rapporten') +
+        (zuiverheid.aantal > 1
+          ? ', van ' + pct(zuiverheid.laagste, 2) + ' tot ' + pct(zuiverheid.hoogste, 2) + '.'
+          : '.'),
+      toelichting: 'Dit is het gemiddelde van wat in de rapporten staat, over verschillende ' +
+        'producten en batches. Het zegt iets over die documenten, niet over het flesje dat je koopt.'
+    });
+  }
+
+  if (vulling) {
+    const richting = [];
+    if (vulling.boven) richting.push(vulling.boven + (vulling.boven === 1 ? ' rapport meet meer' : ' rapporten meten meer') + ' dan het etiket');
+    if (vulling.onder) richting.push(vulling.onder + (vulling.onder === 1 ? ' rapport meet minder' : ' rapporten meten minder'));
+    if (vulling.gelijk) richting.push(vulling.gelijk + ' precies gelijk');
+    regels.push({
+      stand: 'vulling', aantal: vulling.aantal,
+      zin: 'Ten opzichte van het etiket: ' + richting.join(', ') + '. Gemiddeld ' +
+        metTeken(vulling.gemiddelde) + ', van ' + metTeken(vulling.laagste) + ' tot ' +
+        metTeken(vulling.hoogste) + ' over ' + vulling.aantal +
+        (vulling.aantal === 1 ? ' rapport.' : ' rapporten.')
+    });
+  }
+
+  return {
+    beschikbaar: regels.length > 0,
+    kleur: null,
+    kleurregelOpen: 'A24',
+    labs,
+    zonderLab,
+    zuiverheid,
+    vulling,
+    regels,
+    werkregel: records.length + ' rapport(en) bekeken' +
+      (zonderLab ? ', waarvan ' + zonderLab + ' zonder labnaam' : '')
+  };
+}
+
 // Alles bij elkaar, in leesvolgorde.
 function bouwBlokken(engineResult, records, bedrijf, shopHost) {
   return {
-    versie: '1.5',
+    versie: '1.6',
     openheid: openheidBlok(records, bedrijf),
     verificatie: verificatieBlok(records),
     productbewijs: productbewijsBlok(engineResult, records, shopHost),
-    waarden: waardenBlok(records)
+    waarden: waardenBlok(records),
+    lab: labBlok(records)
   };
 }
 
 module.exports = {
-  OPENHEID_PUNTEN, standVanRapport, herkomstVanRapport, telHerkomst, openheidBlok, verificatieBlok, productbewijsBlok, waardenBlok, bouwBlokken
+  OPENHEID_PUNTEN, standVanRapport, herkomstVanRapport, telHerkomst, openheidBlok, verificatieBlok, productbewijsBlok, waardenBlok, labBlok, bouwBlokken
 };

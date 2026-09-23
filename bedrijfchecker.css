@@ -605,17 +605,14 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 }
 
 .accordion{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
-.acc-item + .acc-item{ border-top:1px solid var(--border); }
 .acc-header{
   appearance:none; background:none; border:none; width:100%; display:flex; align-items:center; justify-content:space-between;
   gap:12px; padding:16px; font:inherit; color:var(--text); cursor:pointer; text-align:left;
 }
 .acc-header .acc-title{ display:flex; align-items:baseline; flex-wrap:wrap; gap:8px; text-transform:uppercase; letter-spacing:.02em; font-size:.92rem; font-weight:600; }
-.acc-header .acc-title.plain{ text-transform:none; letter-spacing:0; font-size:1rem; }
 .acc-header .acc-sub{ font-size:.78rem; text-transform:none; color:var(--text-muted); font-weight:400; letter-spacing:0; }
 .acc-chevron{ display:inline-flex; flex-shrink:0; width:18px; height:18px; color:var(--text); transition:transform .15s ease; }
 .acc-item[data-open="true"] .acc-chevron{ transform:rotate(180deg); }
-.acc-body{ padding:0 16px 20px; }
 .acc-item[data-open="false"] .acc-body{ display:none; }
 
 .acc-category{ padding-top:16px; border-top:1px solid var(--border); }
@@ -822,15 +819,7 @@ body.sheet-open{ overflow:hidden; }
   font-family:"Baloo 2", sans-serif; font-weight:600; font-size:1.9rem; line-height:1.1;
   color:var(--text); font-variant-numeric:tabular-nums;
 }
-.blok-waarde.woord{ font-size:1.2rem; line-height:1.25; }
-.blok-waarde .klein{ color:var(--text-faint); font-size:1.2rem; }
 .blok.grey .blok-waarde{ color:var(--text-faint); }
-.blok-uitleg{ font-size:.85rem; color:var(--text-muted); line-height:1.4; }
-.blok-werk{
-  margin-top:auto; padding-top:10px; border-top:1px dotted var(--border);
-  font-size:.72rem; color:var(--text-faint);
-}
-
 /* --- Blok 4: wat de rapporten over de waarden zeggen ----------------------
    BEWUST GEEN KLEUR. Besluit A24 van Annemarie: "blok 4 blijft neutraal.
    Geen stoplicht - het blok toont bewijsdekking, geen goed/slecht.
@@ -902,7 +891,6 @@ body.sheet-open{ overflow:hidden; }
    waarom je zou klikken. */
 .groep{ display:flex; flex-direction:column; gap:10px; margin-top:32px; }
 .groep-kop{ display:flex; flex-direction:column; gap:2px; }
-.groep-kop h3{ font-size:1.25rem; font-weight:600; color:var(--heading-2); }
 .groep-kop p{ font-size:.88rem; color:var(--text-muted); max-width:62ch; margin:0; }
 .acc-telling{
   margin-left:auto; font-family:"IBM Plex Mono", ui-monospace, monospace;
@@ -916,8 +904,6 @@ body.sheet-open{ overflow:hidden; }
 
 /* De balk in de drie blokken. Zelfde track en vulling als in het
    designsysteem; het meetellende getal staat in .js-telop erboven. */
-.blok .stat-bar{ margin:2px 0 4px; }
-.blok .stat-bar-track{ height:6px; margin:0; }
 .blok .js-telop{ font-variant-numeric:tabular-nums; }
 
 
@@ -1164,6 +1150,14 @@ body.sheet-open{ overflow:hidden; }
    stafpagina hetzelfde zeggen. Hier alleen de vorm. */
 .vestiging{position:relative;margin:6px 0 16px}
 
+/* Op desktop naast de titel (besluit Ruben 23 september). Onder 700px valt de
+   regel gewoon onder de titel; daar is geen ruimte naast. */
+.rk-titelrij{display:flex;align-items:center;justify-content:space-between;gap:16px 32px;flex-wrap:wrap}
+.rk-titelrij .rk-titel{flex:1 1 auto}
+.rk-titelrij .vestiging{margin:0;flex:0 0 auto}
+/* De uitklap hangt dan aan de rechterkant, anders loopt hij het scherm uit. */
+.rk-titelrij .vest-paneel{left:auto;right:0}
+
 .vest-regel{
   appearance:none;background:none;border:none;padding:0;margin:0;
   font:inherit;color:inherit;text-align:left;cursor:pointer;
@@ -1220,7 +1214,16 @@ body.sheet-open{ overflow:hidden; }
 }
 
 @media (max-width:700px){
+  .rk-titelrij{gap:8px}
+  .rk-titelrij .vest-paneel{left:0;right:auto}
   .vest-regel{gap:12px}
   .vest-naam{font-size:18px}
   .vest-paneel{width:calc(100vw - 40px);padding:20px}
 }
+
+/* Vier gelijke tegels, twee boven en twee onder (besluit Ruben 23 september).
+   De balken eronder hebben elk hun eigen schaal; die staat in de werkregel,
+   want een balk zonder schaal suggereert een verhouding die er niet is. */
+.blokken-rij.vier{ grid-template-columns:repeat(2,1fr); }
+.waarden .blokken-rij.vier{ margin:12px 0 4px; }
+@media (max-width:700px){ .blokken-rij.vier{ grid-template-columns:1fr; } }

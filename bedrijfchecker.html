@@ -191,10 +191,6 @@
     try { return new Date(ts).toLocaleDateString('nl-NL', {day:'numeric', month:'long', year:'numeric'}); }
     catch(e){ return ''; }
   }
-  function fmtDateTime(ts){
-    try { return new Date(ts).toLocaleString('nl-NL', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'}); }
-    catch(e){ return ''; }
-  }
   function fmtDuration(ms){
     if (ms == null || isNaN(ms)) return '';
     var s = Math.max(0, Math.round(ms/1000));
@@ -1210,7 +1206,8 @@
 
   function blokHtml(o){
     return '<div class="blok ' + o.kleur + '">' +
-      '<span class="blok-label">' + escapeHtml(o.label) + '<span class="blok-stap">' + o.stap + '</span></span>' +
+      '<span class="blok-label">' + escapeHtml(o.label) +
+        (o.stap ? '<span class="blok-stap">' + o.stap + '</span>' : '') + '</span>' +
       '<span class="blok-waarde' + (o.woord ? ' woord' : '') + '">' + o.waarde + '</span>' +
       (o.balk || '') +
       (o.uitleg ? '<span class="blok-uitleg">' + escapeHtml(o.uitleg) + '</span>' : '') +
@@ -1265,7 +1262,97 @@
     return '<div class="blokken">' +
       '<p class="blokken-kop">Wat we konden controleren</p>' +
       '<div class="blokken-rij">' + openheid + verificatie + bewijs + '</div>' +
-      waardenHtml(c) + '</div>';
+      waardenHtml(c) + labHtml(c) + '</div>';
+  }
+
+  // --- Blok 5: het laboratorium en wat de metingen laten zien --------------
+  //
+  // Zelfde vorm als blok 4, en met opzet: dit zijn tellingen en gemiddelden,
+  // geen oordeel. Geen kleur en geen balk - een balk toont een aandeel, en een
+  // aandeel nodigt uit tot een weging die niemand heeft vastgesteld. B-1 en
+  // B-2 van het regelblad staan nog open bij Annemarie.
+  //
+  // De getallen en hun schrijfwijze komen uit src/blokken.js. Hier alleen de
+  // vorm.
+  function labHtml(c){
+    var b = blokkenVan(c);
+    var l = b && b.lab;
+    if (!l || !l.beschikbaar) return '';
+
+    // De zin over de labs staat in de tekst, niet in een tegel: welk lab het
+    // is, is geen getal op een schaal.
+    var tekst = '';
+    (l.regels || []).forEach(function(r){
+      if (r.stand === 'labs') tekst += '<p class="waarden-notitie">' + escapeHtml(r.zin) + '</p>';
+    });
+
+    var z = l.zuiverheid, v = l.vulling;
+    if (!z && !v) return tekst ? '<div class="waarden">' + tekst + '</div>' : '';
+
+    // De balken. Een zuiverheidsbalk van 0 tot 100 staat altijd vol en laat
+    // geen verschil zien; daarom loopt hij van 90 tot 100 (besluit Ruben,
+    // 23 september). De schaal staat onder elke tegel, want een balk zonder
+    // schaal suggereert een verhouding die er niet is.
+    var Z_MIN = 90, Z_MAX = 100;
+    var V_MAX = 25;
+    function schaal(waarde, min, max){
+      if (waarde == null) return null;
+      return Math.max(0, Math.min(100, ((waarde - min) / (max - min)) * 100));
+    }
+
+    var tegels = '';
+    function tegel(label, waarde, pct, werk){
+      tegels += blokHtml({
+        label: label, stap: '', kleur: 'grey',
+        waarde: waarde,
+        balk: balkHtml(pct, pct == null ? '' : ' data-telop="' + Math.round(pct) + '"'),
+        werk: werk
+      });
+    }
+    function cijfer(tekstwaarde){
+      return '<span>' + escapeHtml(tekstwaarde) + '</span>';
+    }
+
+    // Boven: de twee gemiddelden. Onder: de uitersten van de zuiverheid.
+    if (z) tegel('Zuiverheid, gemiddeld', cijfer(z.weergave.gemiddelde),
+      schaal(z.gemiddelde, Z_MIN, Z_MAX),
+      'schaal ' + Z_MIN + '-' + Z_MAX + '% \u00b7 ' + z.aantal + ' rapport(en)');
+
+    if (v) {
+      var telling = [];
+      if (v.boven) telling.push(v.boven + ' boven');
+      if (v.onder) telling.push(v.onder + ' onder');
+      if (v.gelijk) telling.push(v.gelijk + ' gelijk');
+      tegel('Vulling t.o.v. etiket, gemiddeld', cijfer(v.weergave.gemiddelde),
+        schaal(v.gemiddelde, 0, V_MAX),
+        'schaal 0 tot +' + V_MAX + '% \u00b7 ' + telling.join(', '));
+    }
+
+    if (z) {
+      tegel('Laagste zuiverheid', cijfer(z.weergave.laagste),
+        schaal(z.laagste, Z_MIN, Z_MAX), 'schaal ' + Z_MIN + '-' + Z_MAX + '%');
+      tegel('Hoogste zuiverheid', cijfer(z.weergave.hoogste),
+        schaal(z.hoogste, Z_MIN, Z_MAX), 'schaal ' + Z_MIN + '-' + Z_MAX + '%');
+    }
+
+    // De waarschuwing hoort in beeld en niet in een hover: een gemiddelde over
+    // verschillende producten en batches zegt iets over de documenten, niet
+    // over het flesje dat iemand koopt. De zin komt uit de backend.
+    var notitie = '';
+    for (var i = 0; i < (l.regels || []).length; i++){
+      if (l.regels[i].toelichting){
+        notitie = '<p class="waarden-notitie">' + escapeHtml(l.regels[i].toelichting) + '</p>';
+        break;
+      }
+    }
+
+    return '<div class="waarden">' +
+      '<p class="waarden-kop">Wat de metingen laten zien</p>' +
+      tekst +
+      '<div class="blokken-rij vier">' + tegels + '</div>' +
+      notitie +
+      (l.werkregel ? '<div class="waarden-werk mono">' + escapeHtml(l.werkregel) + '</div>' : '') +
+      '</div>';
   }
 
   // --- Blok 4: wat de rapporten over de waarden zeggen ---------------------
@@ -1465,9 +1552,15 @@
     var meta = (naam ? '<span class="rk-domein">' + escapeHtml(domainOf(c.website)) + '</span>' : '') +
       '<span class="rk-datum">gecontroleerd ' + fmtDateLang(c.createdAt) + '</span>' +
       (c.momentopname ? '<span class="rk-datum">momentopname #' + escapeHtml(String(c.momentopname)) + '</span>' : '');
+    // Op desktop staat de vestigingsregel naast de titel (besluit Ruben,
+    // 23 september); onder 700px valt hij eronder. Daarom staat hij hier in
+    // de kop en niet als los blok eronder.
     return '<header class="rapport-kop">' +
       '<div class="rk-meta">' + meta + '</div>' +
-      '<h2 class="rk-titel">' + escapeHtml(naam || domainOf(c.website)) + '</h2>' +
+      '<div class="rk-titelrij">' +
+        '<h2 class="rk-titel">' + escapeHtml(naam || domainOf(c.website)) + '</h2>' +
+        vestigingHtml(c) +
+      '</div>' +
       korteUitleg(c) + '</header>';
   }
 
@@ -1681,7 +1774,6 @@
 
     var out = '<div class="rapport">';
     out += rapportKop(c);
-    out += vestigingHtml(c);
     out += blokkenHtml(c);
     out += vervolgHtml(c);
     out += bewijsGroep(c, engine, r, coaRecords, documents);
@@ -1701,11 +1793,6 @@
 
     out += '</div>';
     return out;
-  }
-
-  function accordionLos(titel, bodyHtml){
-    if (!bodyHtml) return '';
-    return '<div class="accordion">' + accItem(titel, bodyHtml, { plain:true }) + '</div>';
   }
 
   // De balken slaan om de beurt uit en het percentage telt mee omhoog.
