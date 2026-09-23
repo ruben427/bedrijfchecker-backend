@@ -266,11 +266,48 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 /* Weggooien is zeldzaam en onomkeerbaar: die knop staat alleen in beeld als
    je met de muis over het rapport gaat. Hij mag over het plaatje heen vallen.
    Geen uitzondering voor aanraakschermen: dit scherm is voor de desktop. */
+/* Wat een model van de scan heeft gelezen. Andere kleur dan de velden
+   erboven, want het is een LEZING en geen vaststelling: pas als je per veld
+   aanvinkt dat het klopt gaat het de administratie in (A14). */
+.gelezen[hidden]{ display:none }
+.gelezen{ margin-top:16px; padding:16px; border-radius:var(--radius-md,12px);
+  background:var(--warn-soft); border:1px solid var(--warn) }
+.gelezen-kop{ display:flex; align-items:baseline; justify-content:space-between;
+  gap:12px; flex-wrap:wrap; margin:0 0 12px }
+.gelezen-kop h3{ font-family:var(--font-kop); font-weight:600;
+  font-size:1.05rem; margin:0; color:var(--warn) }
+.gelezen-waarschuwing{ font-size:.8rem; color:var(--warn) }
+.gelezenrij{ display:grid; grid-template-columns:auto 150px 1fr; gap:10px;
+  align-items:baseline; padding:6px 0; border-top:1px solid var(--warn);
+  font-size:.9rem }
+.gelezenrij:first-child{ border-top:0 }
+.gelezenrij .wat{ font-weight:600 }
+.gelezenrij .nieuw{ overflow-wrap:anywhere }
+.gelezenrij .oud{ color:var(--text-muted); font-size:.82rem; display:block }
+.gelezenrij.gelijk{ color:var(--text-muted) }
+.gelezenrij .twijfel{ color:var(--danger); font-size:.78rem; display:block }
+
 .wisknop{ position:absolute; top:20px; right:20px; opacity:0; transition:opacity .12s }
 .papier:hover .wisknop, .wisknop:focus-visible{ opacity:1 }
 
-.ophalen{ width:100%; display:flex; flex-direction:column; gap:14px; padding:24px;
-  border:1px solid var(--border); border-radius:var(--radius-sm,8px); background:var(--surface) }
+/* Naar Anne's ontwerp (Figma "COA inladen", node 1616:7368, 23 september):
+   geen kaart eromheen, een blok van 500 breed, links uitgelijnd. */
+.ophalen{ width:100%; max-width:500px; display:flex; flex-direction:column; gap:14px; padding:24px }
+.ophalen-kop{ margin:0; font-family:var(--font-kop); font-weight:600; font-size:21px;
+  letter-spacing:-.05em; color:var(--text) }
+
+/* Is er helemaal niets te zien - geen rapport bij het lab en geen kopie bij de
+   shop - dan staat alleen de weg naar het rapport in beeld. De velden en de
+   knoppen komen pas als er iets ligt om naar te kijken; ze invullen zonder
+   document zou raden zijn. Besluit Ruben, 23 september. */
+.kaart-in.geen-rapport .links-onder{ display:none }
+.kaart-in.geen-rapport .vaktitel{ display:none }
+.kaart-in.geen-rapport{ flex-wrap:wrap }
+.kaart-in.geen-rapport .links,
+.kaart-in.geen-rapport .rechts{ flex:1 1 100%; max-width:none }
+/* De titel op zijn eigen regel, het blok daaronder in het midden. */
+.kaart-in.geen-rapport .links{ flex-basis:100% }
+.kaart-in.geen-rapport .rechts{ align-items:center; justify-content:center; min-height:320px }
 .ophalen[hidden]{ display:none }
 .ophalen-uitleg{ margin:0; font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--text) }
 .ophalen .stap{ font-weight:600 }
@@ -477,6 +514,20 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
         <div>
           <div class="veldenraster" id="mVelden"></div>
 
+          <!-- Wat een model van de scan heeft gelezen. Staat apart van de
+               velden hierboven en gaat pas mee als je het aanvinkt. -->
+          <div class="gelezen" id="mGelezen" hidden>
+            <div class="gelezen-kop">
+              <h3>Gelezen van het rapport</h3>
+              <span class="gelezen-waarschuwing">een lezing, nog geen vaststelling</span>
+            </div>
+            <div id="mGelezenRijen"></div>
+            <div class="keuzes">
+              <button class="knop sec klein" id="mOvernemen">Overnemen</button>
+              <button class="knop link" id="mGelezenWeg"><span>weggooien</span></button>
+            </div>
+          </div>
+
           <div class="vervolg" id="vGeen" hidden>
             <h3>Wat zag je op die pagina?</h3>
             <p class="waarom">Dit is het enige verschil dat telt: gaf het lab antwoord, of kwam je er niet langs?
@@ -513,6 +564,9 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
       <div class="rechts">
         <div class="vaktitel"><b id="mVakTitel">Rapport</b><span id="mVakBron"></span></div>
+        <!-- Uitlezen kan pas als het rapport er is: anders valt er niets te
+             lezen. Wat eruit komt is een lezing, geen vaststelling. -->
+        <button class="knop sec klein verborgen" id="mUitlezen">Rapport uitlezen</button>
 
         <!-- Stand 1: het rapport is er. Weggooien kan, en die knop komt pas
              tevoorschijn als je er met de muis overheen gaat. -->
@@ -527,12 +581,12 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
         <!-- Stand 2: het rapport is er niet. Dan alleen de weg ernaartoe. -->
         <div class="ophalen" id="mPlak" hidden tabindex="0">
-          <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
+          <h3 class="ophalen-kop">Nog geen rapport</h3>
           <p class="ophalen-uitleg"><span class="stap">Rapport erbij halen:</span><br>
             Klik hieronder op open het rapport. Kopieer de afbeelding door met de rechter muisknop
             op het rapport te klikken en te kiezen voor Kopieer afbeelding (Ctrl + c | Cmd + c)<br>
             Plak de afbeelding in onderstaand veld</p>
-          <a class="knop link breed" id="mOpen" href="#" target="_blank" rel="noopener">
+          <a class="knop link" id="mOpen" href="#" target="_blank" rel="noopener">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
                  style="width:16px;height:16px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
             <span>open het rapport</span>
@@ -1111,11 +1165,11 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       veldje('Gecontroleerd door', w(c.checkedBy, 'nog niemand')) +
       veldje('Notitie', w(c.notitie, '—'), ' notitie');
 
-    el('mLink').href = r.url || '#';
-    el('mLink').textContent = r.url || 'geen verificatie-URL';
     el('mOpen').href = r.url || '#';
     el('mPlakVeld').value = '';
     el('mPlakMelding').hidden = true;
+    lezing = null;
+    el('mGelezen').hidden = true;
     toonPapier();
 
     el('vVelden').innerHTML = VELDEN.map(function (v) {
@@ -1165,7 +1219,27 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     el('mWis').hidden = !wisbaar;
   }
 
+  // Alleen de weg naar het rapport tonen, of ook de velden en de knoppen.
+  // Er valt niets in te vullen zolang er geen document is om naar te kijken.
+  function zetPaneelstand() {
+    var kaart = document.querySelector('.kaart-in');
+    if (!kaart) return;
+    var nietsTeZien = el('mPapier').hidden && !el('mPlak').hidden;
+    kaart.classList.toggle('geen-rapport', nietsTeZien);
+    // Uitlezen kan alleen als er een rapport BIJ HET LAB staat. De kopie van
+    // de shop uitlezen zou de verkeerde kant op werken: dan haal je de
+    // waarden van de shop op en leg je ze vast als wat het lab zegt.
+    var r = werk[index] || {};
+    var heeftLabrapport = !!(r.rapportAfbeelding || r.rapportBestand || blobPerRef[r.referentie]);
+    el('mUitlezen').classList.toggle('verborgen', !heeftLabrapport);
+  }
+
   function toonPapier() {
+    toonPapierBinnen();
+    zetPaneelstand();
+  }
+
+  function toonPapierBinnen() {
     var r = werk[index] || {}, k = r.kopie || {};
     var labUrl = r.rapportAfbeelding || blobPerRef[r.referentie] || null;
 
@@ -1327,6 +1401,95 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       })
       .catch(function (e) { plakMelding('Weghalen mislukt: ' + e.message, true); });
   }
+
+  // --- het rapport machinaal laten lezen -----------------------------------
+  // Wat hier uitkomt is een LEZING. Het staat in een eigen blok, in een andere
+  // kleur, en gaat pas de administratie in als je per veld aanvinkt dat het
+  // klopt. Een verkeerd gelezen zuiverheid die stil als labwaarde wordt
+  // weggeschreven is erger dan geen lezing (A14).
+  var GELEZEN_VELDEN = [
+    { s: 'client', l: 'Opdrachtgever' },
+    { s: 'manufacturer', l: 'Fabrikant' },
+    { s: 'product', l: 'Product' },
+    { s: 'batchnummer', l: 'Batch' },
+    { s: 'zuiverheid', l: 'Zuiverheid' },
+    { s: 'gemetenMg', l: 'Gemeten (mg)' },
+    { s: 'datumAnalyse', l: 'Analysedatum' },
+    { s: 'testnaam', l: 'Test' }
+  ];
+  var lezing = null;
+
+  function huidigeWaarde(r, sleutel) {
+    var c = r.controle || {};
+    if (sleutel === 'datumAnalyse') return c.datumAnalyse ? String(c.datumAnalyse).slice(0, 10) : '';
+    if (sleutel === 'gemetenMg') return c.gemetenMg != null ? String(c.gemetenMg) : '';
+    return c[sleutel] != null ? String(c[sleutel]) : '';
+  }
+
+  function toonLezing() {
+    var r = werk[index];
+    if (!lezing || !r) { el('mGelezen').hidden = true; return; }
+    var onzeker = lezing.onzeker || [];
+    var rijen = GELEZEN_VELDEN.map(function (v) {
+      var gelezen = lezing[v.s];
+      if (gelezen == null || gelezen === '') return '';
+      var nu = huidigeWaarde(r, v.s);
+      var gelijk = nu !== '' && String(nu).toLowerCase() === String(gelezen).toLowerCase();
+      var twijfel = onzeker.indexOf(v.s) !== -1;
+      return '<label class="gelezenrij' + (gelijk ? ' gelijk' : '') + '">' +
+        (gelijk ? '<span title="komt overeen met wat er al staat">=</span>'
+                : '<input type="checkbox" value="' + esc(v.s) + '"' + (twijfel ? '' : ' checked') + '>') +
+        '<span class="wat">' + esc(v.l) + '</span>' +
+        '<span class="nieuw">' + esc(String(gelezen)) +
+          (nu !== '' && !gelijk ? '<span class="oud">stond: ' + esc(nu) + '</span>' : '') +
+          (twijfel ? '<span class="twijfel">het model twijfelt hierover — zelf nakijken</span>' : '') +
+        '</span></label>';
+    }).filter(Boolean).join('');
+    el('mGelezenRijen').innerHTML = rijen || '<p class="leeg">Er viel niets uit het rapport te lezen.</p>';
+    el('mGelezen').hidden = false;
+  }
+
+  el('mUitlezen').addEventListener('click', function () {
+    var r = werk[index]; if (!r) return;
+    el('mUitlezen').disabled = true;
+    el('mUitlezen').textContent = 'Bezig met lezen…';
+    haal('/api/admin/coa/references/rapport/uitlezen', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referentie: r.referentie })
+    }).then(function (j) {
+      lezing = j.gelezen || null;
+      toonLezing();
+    }).catch(function (e) {
+      meld('Uitlezen mislukt: ' + e.message);
+    }).then(function () {
+      el('mUitlezen').disabled = false;
+      el('mUitlezen').textContent = 'Rapport uitlezen';
+    });
+  });
+
+  el('mGelezenWeg').addEventListener('click', function () { lezing = null; toonLezing(); });
+
+  el('mOvernemen').addEventListener('click', function () {
+    var r = werk[index]; if (!r || !lezing) return;
+    var body = { referentie: r.referentie, lab: r.lab || 'Janoshik' }, aantal = 0;
+    Array.prototype.forEach.call(el('mGelezenRijen').querySelectorAll('input[type=checkbox]'), function (cb) {
+      if (!cb.checked) return;
+      var w = lezing[cb.value];
+      if (w == null || w === '') return;
+      aantal++;
+      body[cb.value] = cb.value === 'gemetenMg' ? Number(w) : String(w);
+    });
+    if (!aantal) { meld('Vink aan welke velden je overneemt.'); return; }
+    // Vastleggen HOE deze waarden er gekomen zijn. Zonder deze regel is later
+    // niet te zien dat een machine het las en een mens het aanvinkte.
+    body.notitie = 'Velden overgenomen uit de rapportscan: ' +
+      Object.keys(body).filter(function (k) {
+        return ['referentie', 'lab', 'notitie'].indexOf(k) === -1;
+      }).join(', ') + '. Machinaal gelezen, veld voor veld nagekeken door ' + (naam || '?') + '.';
+    verberg();
+    legBlijf(body, aantal + ' veld' + (aantal === 1 ? '' : 'en') + ' overgenomen uit het rapport.');
+    lezing = null; el('mGelezen').hidden = true;
+  });
 
   // Even zeker weten, herbruikbaar. Geeft true terug als iemand doorzet.
   var zekerAntwoord = null;
