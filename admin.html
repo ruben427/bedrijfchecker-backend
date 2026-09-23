@@ -224,8 +224,14 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   display:flex; flex-direction:column; gap:48px }
 .links-onder{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
   justify-content:space-between; gap:12px }
-.titel{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:32px;
-  line-height:1.5; letter-spacing:-.05em; margin:0; color:var(--heading-3); flex:none }
+/* De titel staat op dezelfde regel als Sluiten: titel links, Sluiten helemaal
+   rechts (Figma "COA inladen", 23 september). Een lange referentie breekt niet
+   af over twee regels maar eindigt op een beletselteken - anders duwt hij de
+   hele kop uit elkaar. */
+.titel{ font-family:var(--font-kop,"Baloo 2",system-ui,sans-serif); font-weight:600; font-size:32px;
+  line-height:1.5; letter-spacing:-.05em; margin:0; color:var(--heading-3);
+  flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.paneel-kop #bSluiten{ flex:none; margin-left:auto }
 /* De gegevens van de controle staan in dezelfde doosjes als de invoervelden
    (Figma 1586:6324, herzien 23 september), maar het zijn leesvelden: je kunt
    er niets in typen. Wat het lab zegt verander je niet in dit scherm. */
@@ -266,30 +272,17 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 /* Weggooien is zeldzaam en onomkeerbaar: die knop staat alleen in beeld als
    je met de muis over het rapport gaat. Hij mag over het plaatje heen vallen.
    Geen uitzondering voor aanraakschermen: dit scherm is voor de desktop. */
-/* Wat een model van de scan heeft gelezen. Andere kleur dan de velden
-   erboven, want het is een LEZING en geen vaststelling: pas als je per veld
-   aanvinkt dat het klopt gaat het de administratie in (A14). */
-/* Een veld dat net uit het rapport is overgenomen. Blijft gemarkeerd tot je
+
+
+/* Een veld dat net uit het rapport komt. Het opschrift zegt zelf waar de
+   waarde vandaan komt, dus geen tekst uit CSS erbij. Blijft staan tot je
    vastlegt, zodat je ziet wat je nog moet nakijken en wat je zelf typte. */
 .veld.uit-rapport > input, .veld.uit-rapport > textarea{ box-shadow:inset 3px 0 0 var(--warn) }
-.veld.uit-rapport > .veld-label::after{ content:' — uit het rapport'; color:var(--warn) }
-.gelezen[hidden]{ display:none }
-.gelezen{ margin-top:16px; padding:16px; border-radius:var(--radius-md,12px);
-  background:var(--warn-soft); border:1px solid var(--warn) }
-.gelezen-kop{ display:flex; align-items:baseline; justify-content:space-between;
-  gap:12px; flex-wrap:wrap; margin:0 0 12px }
-.gelezen-kop h3{ font-family:var(--font-kop); font-weight:600;
-  font-size:1.05rem; margin:0; color:var(--warn) }
-.gelezen-waarschuwing{ font-size:.8rem; color:var(--warn) }
-.gelezenrij{ display:grid; grid-template-columns:auto 150px 1fr; gap:10px;
-  align-items:baseline; padding:6px 0; border-top:1px solid var(--warn);
-  font-size:.9rem }
-.gelezenrij:first-child{ border-top:0 }
-.gelezenrij .wat{ font-weight:600 }
-.gelezenrij .nieuw{ overflow-wrap:anywhere }
-.gelezenrij .oud{ color:var(--text-muted); font-size:.82rem; display:block }
-.gelezenrij.gelijk{ color:var(--text-muted) }
-.gelezenrij .twijfel{ color:var(--danger); font-size:.78rem; display:block }
+.veld.uit-rapport > .veld-label{ color:var(--warn) }
+/* Rood: hier moet je echt kijken. Het model twijfelde, of er stond al iets
+   anders dan op het rapport - dat laatste overschrijven we nooit. */
+.veld.nakijken > input, .veld.nakijken > textarea{ box-shadow:inset 3px 0 0 var(--danger) }
+.veld.nakijken > .veld-label{ color:var(--danger) }
 
 .wisknop{ position:absolute; top:20px; right:20px; opacity:0; transition:opacity .12s }
 .papier:hover .wisknop, .wisknop:focus-visible{ opacity:1 }
@@ -304,14 +297,18 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
    shop - dan staat alleen de weg naar het rapport in beeld. De velden en de
    knoppen komen pas als er iets ligt om naar te kijken; ze invullen zonder
    document zou raden zijn. Besluit Ruben, 23 september. */
+/* Het blok staat gecentreerd, 96px onder de kopregel. */
+.kaart-in.geen-rapport .links{ display:none }
+.kaart-in.geen-rapport .rechts{ align-items:center; justify-content:flex-start;
+  padding-top:56px; min-height:320px }
+/* 56 en niet 96: tussen de onderkant van de titel en de bovenkant van het blok
+   zit al 16px (de kopregel en de ruimte eronder) plus de 24px eigen padding van
+   het blok. 16 + 56 + 24 = 96, gemeten in de browser. */
 .kaart-in.geen-rapport .links-onder{ display:none }
 .kaart-in.geen-rapport .vaktitel{ display:none }
 .kaart-in.geen-rapport{ flex-wrap:wrap }
 .kaart-in.geen-rapport .links,
 .kaart-in.geen-rapport .rechts{ flex:1 1 100%; max-width:none }
-/* De titel op zijn eigen regel, het blok daaronder in het midden. */
-.kaart-in.geen-rapport .links{ flex-basis:100% }
-.kaart-in.geen-rapport .rechts{ align-items:center; justify-content:center; min-height:320px }
 .ophalen[hidden]{ display:none }
 .ophalen-uitleg{ margin:0; font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--text) }
 .ophalen .stap{ font-weight:600 }
@@ -505,6 +502,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 <div class="laag" id="laag" role="dialog" aria-modal="true" aria-labelledby="mTitel">
   <div class="paneel">
     <div class="paneel-kop">
+      <h2 class="titel" id="mTitel"></h2>
       <button class="knop link" id="bSluiten">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"
              style="width:14px;height:14px"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -513,24 +511,9 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     </div>
     <div class="kaart-in">
       <div class="links">
-        <h2 class="titel" id="mTitel"></h2>
         <div class="links-onder">
         <div>
           <div class="veldenraster" id="mVelden"></div>
-
-          <!-- Wat een model van de scan heeft gelezen. Staat apart van de
-               velden hierboven en gaat pas mee als je het aanvinkt. -->
-          <div class="gelezen" id="mGelezen" hidden>
-            <div class="gelezen-kop">
-              <h3>Gelezen van het rapport</h3>
-              <span class="gelezen-waarschuwing">een lezing, nog geen vaststelling</span>
-            </div>
-            <div id="mGelezenRijen"></div>
-            <div class="keuzes">
-              <button class="knop sec klein" id="mOvernemen">Overnemen</button>
-              <button class="knop link" id="mGelezenWeg"><span>weggooien</span></button>
-            </div>
-          </div>
 
           <div class="vervolg" id="vGeen" hidden>
             <h3>Wat zag je op die pagina?</h3>
@@ -1190,9 +1173,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     el('mOpen').href = r.url || '#';
     el('mPlakVeld').value = '';
     el('mPlakMelding').hidden = true;
-    lezing = null;
     uitRapport = [];
-    el('mGelezen').hidden = true;
     toonPapier();
 
     el('vVelden').innerHTML = VELDEN.map(function (v) {
@@ -1426,50 +1407,65 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   }
 
   // --- het rapport machinaal laten lezen -----------------------------------
-  // Wat hier uitkomt is een LEZING. Het staat in een eigen blok, in een andere
-  // kleur, en gaat pas de administratie in als je per veld aanvinkt dat het
-  // klopt. Een verkeerd gelezen zuiverheid die stil als labwaarde wordt
-  // weggeschreven is erger dan geen lezing (A14).
-  var GELEZEN_VELDEN = [
-    { s: 'client', l: 'Opdrachtgever' },
-    { s: 'manufacturer', l: 'Fabrikant' },
-    { s: 'product', l: 'Product' },
-    { s: 'batchnummer', l: 'Batch' },
-    { s: 'zuiverheid', l: 'Zuiverheid' },
-    { s: 'gemetenMg', l: 'Gemeten (mg)' },
-    { s: 'datumAnalyse', l: 'Analysedatum' },
-    { s: 'testnaam', l: 'Test' }
-  ];
-  var lezing = null;
+  // De gelezen waarden gaan RECHTSTREEKS in de velden. Geen tussenblok meer:
+  // je kijkt ze na naast het rapport dat ernaast staat, en pas jouw klik op
+  // de knop onderaan maakt er een vaststelling van. Tot dan is het een
+  // lezing, en dat is te zien aan de markering op het veld (A14).
+  var VELD_BIJ_GELEZEN = {
+    client: 'fClient', manufacturer: 'fManufacturer', product: 'fProduct',
+    batchnummer: 'fBatch', zuiverheid: 'fZuiverheid', gemetenMg: 'fGemeten',
+    datumAnalyse: 'fDatum', testnaam: 'fTest'
+  };
+  var OPSCHRIFT = {
+    fClient: 'Opdrachtgever', fManufacturer: 'Fabrikant', fProduct: 'Product',
+    fBatch: 'Batch', fZuiverheid: 'Zuiverheid', fGemeten: 'Gemeten (mg)',
+    fDatum: 'Analysedatum', fTest: 'Test'
+  };
+  var uitRapport = [];
 
-  function huidigeWaarde(r, sleutel) {
-    var c = r.controle || {};
-    if (sleutel === 'datumAnalyse') return c.datumAnalyse ? String(c.datumAnalyse).slice(0, 10) : '';
-    if (sleutel === 'gemetenMg') return c.gemetenMg != null ? String(c.gemetenMg) : '';
-    return c[sleutel] != null ? String(c[sleutel]) : '';
+  function merkVeld(veldId, soort, extra) {
+    var e = el(veldId); if (!e || !e.parentNode) return;
+    var doos = e.parentNode, op = doos.querySelector('.veld-label');
+    doos.classList.remove('uit-rapport', 'nakijken');
+    if (soort) doos.classList.add(soort);
+    if (op) op.textContent = (OPSCHRIFT[veldId] || '') + (extra || '');
   }
 
-  function toonLezing() {
-    var r = werk[index];
-    if (!lezing || !r) { el('mGelezen').hidden = true; return; }
+  function vulUitLezing(lezing) {
     var onzeker = lezing.onzeker || [];
-    var rijen = GELEZEN_VELDEN.map(function (v) {
-      var gelezen = lezing[v.s];
-      if (gelezen == null || gelezen === '') return '';
-      var nu = huidigeWaarde(r, v.s);
-      var gelijk = nu !== '' && String(nu).toLowerCase() === String(gelezen).toLowerCase();
-      var twijfel = onzeker.indexOf(v.s) !== -1;
-      return '<label class="gelezenrij' + (gelijk ? ' gelijk' : '') + '">' +
-        (gelijk ? '<span title="komt overeen met wat er al staat">=</span>'
-                : '<input type="checkbox" value="' + esc(v.s) + '"' + (twijfel ? '' : ' checked') + '>') +
-        '<span class="wat">' + esc(v.l) + '</span>' +
-        '<span class="nieuw">' + esc(String(gelezen)) +
-          (nu !== '' && !gelijk ? '<span class="oud">stond: ' + esc(nu) + '</span>' : '') +
-          (twijfel ? '<span class="twijfel">het model twijfelt hierover — zelf nakijken</span>' : '') +
-        '</span></label>';
-    }).filter(Boolean).join('');
-    el('mGelezenRijen').innerHTML = rijen || '<p class="leeg">Er viel niets uit het rapport te lezen.</p>';
-    el('mGelezen').hidden = false;
+    var gevuld = 0, botsing = 0;
+    uitRapport = [];
+    Object.keys(VELD_BIJ_GELEZEN).forEach(function (sleutel) {
+      var waarde = lezing[sleutel];
+      if (waarde == null || waarde === '') return;
+      var veldId = VELD_BIJ_GELEZEN[sleutel], e = el(veldId);
+      if (!e) return;
+      var staat = String(e.value || '').trim();
+      var nieuw = String(waarde).trim();
+      var twijfel = onzeker.indexOf(sleutel) !== -1;
+
+      // Staat er al iets anders? Dan NIET overschrijven. Wat er staat is door
+      // iemand vastgelegd; wat het model leest is een lezing. Het verschil
+      // zelf is de waarneming, en die hoort een mens te wegen.
+      if (staat && staat.toLowerCase() !== nieuw.toLowerCase()) {
+        merkVeld(veldId, 'nakijken', ' — rapport zegt: ' + nieuw);
+        botsing++;
+        return;
+      }
+      if (staat) return;                       // stond er al hetzelfde
+      e.value = nieuw;
+      merkVeld(veldId, twijfel ? 'nakijken' : 'uit-rapport',
+               twijfel ? ' — controleer dit' : ' — uit het rapport');
+      uitRapport.push(sleutel);
+      gevuld++;
+    });
+
+    var tekst = [];
+    if (gevuld) tekst.push(gevuld + ' veld' + (gevuld === 1 ? '' : 'en') + ' ingevuld uit het rapport');
+    if (botsing) tekst.push(botsing + ' veld' + (botsing === 1 ? '' : 'en') +
+      ' waar iets anders staat dan op het rapport — die zijn NIET overschreven');
+    if (!gevuld && !botsing) tekst.push('Er viel niets in te vullen dat er nog niet stond');
+    meld(tekst.join('; ') + '. Kijk ze na naast het rapport; ze staan pas vast als je hieronder vastlegt.');
   }
 
   el('mUitlezen').addEventListener('click', function () {
@@ -1480,8 +1476,10 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ referentie: r.referentie })
     }).then(function (j) {
-      lezing = j.gelezen || null;
-      toonLezing();
+      vulUitLezing(j.gelezen || {});
+      if (j.waarschuwingen && j.waarschuwingen.length) {
+        meld(j.waarschuwingen.join(' ') + ' Kijk goed of dit het juiste rapport is.');
+      }
     }).catch(function (e) {
       meld('Uitlezen mislukt: ' + e.message);
     }).then(function () {
@@ -1490,44 +1488,8 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     });
   });
 
-  el('mGelezenWeg').addEventListener('click', function () { lezing = null; toonLezing(); });
-
-  // Overnemen schrijft NIETS weg. Het zet de gelezen waarden in de velden,
-  // gemarkeerd, zodat je ze naast het rapport kunt nakijken. Vastleggen doe
-  // je daarna zelf met de knop onderaan - dat is dezelfde volgorde als bij
-  // een controle zonder lezing, en het houdt de lezing een lezing (A14).
-  var VELD_BIJ_GELEZEN = {
-    client: 'fClient', manufacturer: 'fManufacturer', product: 'fProduct',
-    batchnummer: 'fBatch', zuiverheid: 'fZuiverheid', gemetenMg: 'fGemeten',
-    datumAnalyse: 'fDatum', testnaam: 'fTest'
-  };
-  var uitRapport = [];
-
-  el('mOvernemen').addEventListener('click', function () {
-    if (!lezing) return;
-    var aantal = 0;
-    uitRapport = [];
-    Array.prototype.forEach.call(el('mGelezenRijen').querySelectorAll('input[type=checkbox]'), function (cb) {
-      if (!cb.checked) return;
-      var waarde = lezing[cb.value];
-      if (waarde == null || waarde === '') return;
-      var veld = el(VELD_BIJ_GELEZEN[cb.value]);
-      if (!veld) return;
-      veld.value = String(waarde);
-      if (veld.parentNode && veld.parentNode.classList) veld.parentNode.classList.add('uit-rapport');
-      aantal++;
-      uitRapport.push(cb.value);
-    });
-    if (!aantal) { meld('Vink aan welke velden je overneemt.'); return; }
-    lezing = null;
-    el('mGelezen').hidden = true;
-    meld(aantal + ' veld' + (aantal === 1 ? '' : 'en') + ' in de velden gezet. Kijk ze na naast het ' +
-         'rapport; ze staan pas vast als je hieronder vastlegt.');
-  });
-
-  // Wat er in de velden staat op het moment dat je vastlegt. Leeg veld =
-  // niets meesturen, want een leeg veld is "niet ingevuld" en niet "leeg
-  // gemeten".
+  // Wat er in de velden staat op het moment dat je vastlegt. Een leeg veld
+  // sturen we niet mee: leeg betekent "niet ingevuld", niet "leeg gemeten".
   function veldwaarden() {
     var b = {};
     function t(id) { var e = el(id); return e ? String(e.value || '').trim() : ''; }
@@ -1539,8 +1501,8 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     if (t('fTest')) b.testnaam = t('fTest');
     var mg = parseFloat(t('fGemeten').replace(',', '.'));
     if (!isNaN(mg)) b.gemetenMg = mg;
-    // Alleen een datum in de vorm die de server verwacht; anders liever niets
-    // dan een half gelezen datum die als iets anders wordt opgeslagen.
+    // Alleen een datum in de vorm die de server verwacht; liever niets dan een
+    // half gelezen datum die als iets anders wordt opgeslagen.
     if (/^\d{4}-\d{2}-\d{2}$/.test(t('fDatum'))) b.datumAnalyse = t('fDatum');
     var n = t('fNotitie');
     if (n) b.notitie = n;
