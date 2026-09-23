@@ -1326,6 +1326,19 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   // of slaat het getal op iets anders. Dan splitsen we niet: liever de naam
   // ongemoeid dan een verzonnen etiketwaarde, want daar rolt een
   // vullingspercentage uit dat nergens op rust.
+  // Een getal uit de database komt soms als string binnen ("11.42"). Alleen
+  // een echt getal telt; alles anders is niet ingevuld en geen nul.
+  function getal(v) {
+    if (v === null || v === undefined || v === '') return null;
+    var n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+    return isNaN(n) ? null : n;
+  }
+
+  // Nederlandse komma, en geen slepende nullen: 11,42 en 10 in plaats van 10,00.
+  function nl(n) {
+    return String(Math.round(n * 1000) / 1000).replace('.', ',');
+  }
+
   function splitsProduct(naamVanProduct) {
     var t = String(naamVanProduct || '').trim();
     var treffers = t.match(/(\d+(?:[.,]\d+)?)\s*mg\b/gi) || [];
@@ -1400,7 +1413,32 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     status.push(c.resolvet === true ? 'Lost op bij het lab'
       : (c.resolvet === false ? 'Lost NIET op bij het lab' : 'Nog niet nagetrokken bij het lab'));
     status.push(c.checkedBy ? 'gecontroleerd door ' + c.checkedBy : 'nog door niemand gecontroleerd');
-    if (c.vulling) status.push('vulling ' + c.vulling);
+    // VULLING ALTIJD MET EENHEID, EN OPGEBOUWD UIT DE TWEE LOSSE GETALLEN.
+    //
+    // 23 september. Hier stond het tekstveld c.vulling rauw op het scherm:
+    // "vulling +14.2", zonder eenheid, pal naast "zuiverheid 99.634%". Het
+    // labrapport zei 11.42 mg op een monster dat tir10mg heet, en +14,2% is
+    // daar de juiste uitkomst van - maar het las als een verkeerd overgetypte
+    // 11,42. Toeval dat die cijfers zo op elkaar lijken, en precies daarom
+    // gevaarlijk: het zag eruit als een typefout terwijl het een berekening was.
+    //
+    // De vulling is geen waarneming maar het gevolg van er twee. Dus rekenen we
+    // hem hier uit gemeten en etiket, en valt het tekstveld terug op de
+    // reservebank. Dan kan hij niet meer uit de pas lopen met de getallen
+    // waar hij op rust.
+    var gem = getal(c.gemetenMg), etiket = getal(c.etiketMg);
+    if (gem != null && etiket != null && etiket !== 0) {
+      var pct = (gem / etiket - 1) * 100;
+      status.push('vulling ' + nl(gem) + ' mg / ' + nl(etiket) + ' mg (' +
+        (pct >= 0 ? '+' : '') + nl(Math.round(pct * 10) / 10) + '%)');
+    } else if (c.vullingPct != null && c.vullingPct !== '') {
+      var p = getal(c.vullingPct);
+      if (p != null) status.push('vulling ' + (p >= 0 ? '+' : '') + nl(p) + '%');
+    } else if (c.vulling) {
+      // Oudere controles waar alleen het tekstveld is gevuld. Zonder eenheid
+      // erbij te verzinnen: we weten niet of er mg of procenten in staat.
+      status.push('vulling ' + c.vulling + ' (zoals ingevoerd)');
+    }
     el('mStatus').textContent = status.join(' · ');
 
     zichtbaar = VELDEN_DEF.filter(function (v) {
