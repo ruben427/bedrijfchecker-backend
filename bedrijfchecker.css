@@ -466,16 +466,20 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
      die in het ontwerp niet bestaat, en trekt bovendien een streep door de
      pill heen. */
   background:var(--surface);
-  width:100%; height:41px; position:relative; z-index:2;
+  /* 60px en 12px padding komen uit het ontwerp (Figma "Header", node
+     1651-7984): de balk is 60 hoog, het logo begint 12 van boven en is 80
+     hoog, dus het steekt er 32 onderuit. */
+  width:100%; height:60px; position:relative; z-index:2;
 }
 .site-header-inner{
   max-width:1040px; margin:0 auto; padding-inline:20px; height:100%;
-  display:flex; align-items:flex-start; padding-top:11px;
+  display:flex; align-items:flex-start; padding-top:12px;
 }
 .site-logo{ background:none; border:none; padding:0; cursor:pointer; display:inline-flex; line-height:0; }
 .site-logo img{ height:80px; width:auto; display:block; }
 /* Ruimte onder de balk voor het deel van het logo dat eronder uitsteekt:
-   11 + 80 - 41 = 50px overhang, plus lucht. */
+   12 + 80 - 60 = 32px overhang, plus lucht. De pagina begint zo op 120 van
+   boven, precies zoals in het ontwerp. */
 .wrap{ padding-top:60px; }
 
 /* Tekst naast het logo. "BETA 1.0" staat sinds 23 september in het logo zelf,

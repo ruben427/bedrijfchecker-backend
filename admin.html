@@ -22,26 +22,35 @@ button{ font:inherit; color:inherit }
 .verborgen{ display:none !important }
 
 /* ---------- header ---------- */
-.kop-balk{ background:var(--surface); border-bottom:1px solid var(--border) }
-.kop-in{ max-width:1024px; margin:0 auto; padding:12px 16px;
-  display:flex; align-items:center; justify-content:space-between; gap:16px }
-.merk{ display:flex; align-items:center; gap:12px; min-width:0 }
-/* Het logo draagt de ADMIN PANEL-pil zelf; hier staat geen losse badge meer. */
-.merk img{ display:block; height:56px; width:auto }
-.kop-rechts{ display:flex; align-items:center; gap:14px; flex:none }
+/* Dezelfde balk als op de publieke pagina (Figma "Header", node 1651-7984):
+   60 hoog, geen lijn eronder. De scheiding IS het kleurverschil tussen de
+   balk (surface) en de pagina; een lijn erbij zou dwars door het logo lopen,
+   want dat steekt er nu onderuit. */
+.kop-balk{ background:var(--surface); height:60px; position:relative; z-index:2 }
+.kop-in{ max-width:1024px; margin:0 auto; padding:12px 16px 0; height:100%;
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px }
+.merk{ display:flex; align-items:flex-start; gap:12px; min-width:0 }
+/* Het logo draagt de ADMIN PANEL-pil zelf; hier staat geen losse badge meer.
+   80 hoog en dus 20 onder de balk uit, net als op de publieke pagina. */
+.merk img{ display:block; height:80px; width:auto }
+/* Links en rechts beginnen allebei op 12 van boven en zijn allebei 80 hoog,
+   dus ze steken er even ver onderuit. */
+.kop-rechts{ display:flex; align-items:center; gap:12px; flex:none; padding:12px 0 }
 
 /* Belletje. Twee standen: oranje met verloop in rust, wit met een oranje
    rand zodra de lade openstaat. Het getal hangt ernaast, niet erop, zodat
    het niet over de bel valt. Ontwerp: Figma-node 1516:5600. */
 .bel-wrap{ position:relative }
-.bel{ position:relative; width:40px; height:40px; border-radius:50%; cursor:pointer;
+.bel{ position:relative; width:56px; height:56px; border-radius:72px; cursor:pointer;
   display:grid; place-items:center; color:#fff9f5;
   border:1px solid var(--accent-strong);
-  background-image:linear-gradient(80deg, var(--accent) 50%, var(--accent-light) 100%) }
+  background-image:linear-gradient(80.38deg, var(--accent) 50%, var(--accent-light) 100%) }
 .bel[aria-expanded="true"]{ background-image:none; background:var(--surface);
   border-color:var(--accent); color:var(--accent) }
-.bel svg{ width:18px; height:18px }
-.bel .tel{ position:absolute; top:-5px; right:-9px; min-width:22px; height:22px; padding:0 5px;
+.bel svg{ width:22px; height:22px }
+/* Het getal hangt rechtsboven over de rand: 22 breed, waarvan 17 op de knop
+   en 5 ernaast (ontwerp 1651-7994). */
+.bel .tel{ position:absolute; top:0; right:-5px; min-width:22px; height:22px; padding:0 5px;
   border-radius:11px; background:var(--surface); color:var(--accent); border:1px solid var(--accent);
   box-shadow:-1px 1px 2px rgba(166,52,6,.5); letter-spacing:-.05em;
   font-family:var(--font-kop); font-weight:600; font-size:14px;
@@ -69,18 +78,28 @@ button{ font:inherit; color:inherit }
 .lade-rij .chev{ width:14px; height:14px; flex:none; color:var(--text) }
 .lade-leeg{ padding:16px; background:var(--lade-vlak); color:var(--text-faint); font-size:.88rem }
 
-.ik{ display:flex; align-items:center; gap:10px }
-.ik-bol{ width:40px; height:40px; border-radius:50%; flex:none; display:grid; place-items:center;
-  background:var(--accent); color:#fff9f5;
-  font-family:var(--font-kop); font-weight:700; font-size:1rem }
-.ik-tekst{ line-height:1.2 }
-.ik-naam{ font-family:var(--font-kop); font-weight:600; font-size:.95rem; display:block }
-.ik-rol{ color:var(--text-subtle); font-size:.78rem; display:block }
+.ik{ display:flex; align-items:center; gap:12px }
+/* Zelfde knop als de bel, met een persoon erin in plaats van een letter. */
+.ik-bol{ width:56px; height:56px; border-radius:72px; flex:none; display:grid; place-items:center;
+  color:#fff9f5; border:1px solid var(--accent-strong);
+  background-image:linear-gradient(80.38deg, var(--accent) 50%, var(--accent-light) 100%) }
+.ik-bol svg{ width:22px; height:22px }
+.ik-tekst{ display:flex; flex-direction:column; gap:1px; justify-content:center; line-height:1 }
+.ik-naam{ font-family:var(--font-kop); font-weight:400; font-size:16px;
+  letter-spacing:-0.8px; color:var(--text) }
+/* De rol staat niet meer in de balk (besluit Ruben, 23 september: het ontwerp
+   volgen). Wat je mag blijkt uit wat je kunt aanklikken, en de kijkbalk
+   bovenaan zegt het met zoveel woorden zodra je alleen mag kijken. */
 .ik-uit{ border:0; background:none; padding:0; cursor:pointer; color:var(--accent);
-  font-size:.8rem; text-decoration:underline; text-underline-offset:2px }
+  display:inline-flex; align-items:center; gap:4px;
+  font-family:var(--font-kop); font-weight:600; font-size:16px; letter-spacing:-0.8px }
+.ik-uit svg{ width:14px; height:14px }
+.ik-uit:hover{ color:var(--accent-strong) }
 
 /* ---------- inhoud ---------- */
-.inhoud{ max-width:1024px; margin:0 auto; padding:24px 16px 96px }
+ /* 60 van boven: het logo steekt 32 onder de balk uit, dus de pagina begint
+    op 120 van de bovenkant - de maat uit het ontwerp. */
+.inhoud{ max-width:1024px; margin:0 auto; padding:60px 16px 96px }
 .kijkbalk{ margin:0 0 20px; padding:10px 14px; border-radius:var(--radius-md,12px);
   background:var(--warn-soft); border:1px solid var(--warn); color:var(--warn); font-size:.86rem }
 body:not(.alleen-kijken) .kijkbalk{ display:none }
@@ -360,21 +379,6 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text) }
 .veldregel input[type=text][hidden]{ display:none }
 
-/* Het logo is 398 breed. Op een telefoon duwt dat samen met de bel en het
-   bolletje de pagina uit beeld, dus daar wordt het kleiner en verdwijnt de
-   naam naast het bolletje — uitloggen blijft staan. */
-@media (max-width:760px){
-  .merk img{ height:44px }
-  .merk{ min-width:0 }
-  .ik-naam, .ik-rol{ display:none }
-}
-@media (max-width:420px){
-  .merk img{ height:34px }
-  .kop-rechts{ gap:10px }
-  .ik{ gap:6px }
-  .kop-in{ gap:8px }
-}
-
 @media (max-width:900px){
   .cijfers{ grid-template-columns:repeat(2,1fr) }
   .cel{ border-left:1px solid var(--border); border-top:1px solid var(--border) }
@@ -440,6 +444,49 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
 
 .stand-knop:hover:not(.onbekend){ border-color:var(--accent-strong) }
 .stand-knop:focus-visible{ outline:2px solid var(--accent); outline-offset:2px }
+
+/* ---------- de balk op een smal scherm ----------
+   LET OP waarom dit hier staat en niet bij de andere media queries hierboven:
+   het krimpen van de Live-pil moet NA .stand-knop komen. Stond het ervoor,
+   dan won de min-width van 102px gewoon en bleef de pil breed - waarna hij op
+   een telefoon over de bel heen lag. Gevonden door te renderen; aan de code
+   was er niets aan te zien.
+
+   Het logo is 398 breed op 80 hoog. Dat past samen met de pil en twee knoppen
+   van 56 niet op een telefoon, dus alles krimpt mee. De naam gaat weg,
+   uitloggen blijft staan - dat is waar je op dat moment naar zoekt. */
+@media (max-width:760px){
+  .merk img{ height:60px }
+  .merk{ min-width:0 }
+  .ik-naam{ display:none }
+  .bel, .ik-bol{ width:44px; height:44px }
+  .bel svg, .ik-bol svg{ width:18px; height:18px }
+  .kop-rechts{ gap:10px }
+}
+/* Onder 640px past het niet meer op een regel, en dat is geen kwestie van
+   krimpen: gemeten op 390px vraagt alleen het logo al 199px, de twee knoppen
+   met het getal 105, de pil 38 en uitloggen 97 - samen 462 in 358 ruimte. Er
+   ging dus altijd iets overheen liggen.
+
+   Wat eerst gebeurde was erger dan lelijk: de bel lag half onder het logo en
+   de pil onder het persoonsbolletje. Dingen verbergen kon ook, maar dan is de
+   beheerder net dat ene ding kwijt waarvoor hij zijn telefoon pakte - de
+   check dichtzetten.
+
+   Dus twee regels. Het logo steekt dan niet meer onder de balk uit; op een
+   telefoon is daar toch geen ruimte voor, en de pagina schuift mee omhoog. */
+@media (max-width:640px){
+  .kop-balk{ height:auto }
+  .kop-in{ flex-wrap:wrap; row-gap:10px; padding-bottom:12px }
+  .merk{ width:100% }
+  .kop-rechts{ padding:0; width:100%; justify-content:flex-start }
+  .inhoud{ padding-top:24px }
+}
+@media (max-width:420px){
+  .merk img{ height:48px }
+  .ik{ gap:8px }
+  .kop-in{ gap:8px }
+}
 </style>
 </head>
 <body>
@@ -448,6 +495,16 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   <div class="kop-in">
     <div class="merk">
       <img src="PEPPROOF-ADMIN-LOGO-BLAUW.svg" width="398" height="80" alt="PepProof — admin panel">
+      <!-- De publieke check open of dicht. Staat sinds 23 september naast het
+           logo in plaats van rechts: in het ontwerp hoort hij bij WAAR je bent,
+           niet bij WIE je bent. Alleen de beheerder ziet hem - een beoordelaar
+           legt oordelen vast, die doet de deur niet dicht. -->
+      <div class="stand verborgen" id="standVak">
+        <button type="button" class="stand-knop onbekend" id="standKnop" aria-pressed="false" title="Stand van de publieke check">
+          <span class="stand-bol" aria-hidden="true"></span>
+          <span class="stand-woord" id="standWoord">…</span>
+        </button>
+      </div>
     </div>
     <div class="kop-rechts verborgen" id="kopRechts">
       <div class="bel-wrap">
@@ -459,20 +516,19 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
         </button>
         <div class="lade" id="lade" hidden></div>
       </div>
-      <!-- De publieke check open of dicht. Alleen de beheerder ziet dit: een
-           beoordelaar legt oordelen vast, die doet de deur niet dicht. -->
-      <div class="stand verborgen" id="standVak">
-        <button type="button" class="stand-knop onbekend" id="standKnop" aria-pressed="false" title="Stand van de publieke check">
-          <span class="stand-bol" aria-hidden="true"></span>
-          <span class="stand-woord" id="standWoord">…</span>
-        </button>
-      </div>
       <div class="ik">
-        <span class="ik-bol" id="ikBol">?</span>
+        <span class="ik-bol" id="ikBol" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+          </svg>
+        </span>
         <span class="ik-tekst">
           <span class="ik-naam" id="ikNaam">—</span>
-          <span class="ik-rol" id="ikRol"></span>
-          <button type="button" class="ik-uit" id="uit">uitloggen</button>
+          <button type="button" class="ik-uit" id="uit">uitloggen
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 4v16"/><path d="M8 12h12"/><path d="M15 7l5 5-5 5"/>
+            </svg>
+          </button>
         </span>
       </div>
     </div>
@@ -798,12 +854,15 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
       el('binnen').classList.remove('verborgen');
       el('kopRechts').classList.remove('verborgen');
       el('ikNaam').textContent = n || '—';
-      el('ikRol').textContent = rol === 'lezer' ? 'alleen kijken' : rol;
+      // De rol staat niet meer in de balk (ontwerp 1651-7984). Wat je mag
+      // blijft wel zichtbaar: 'alleen-kijken' verbergt de knoppen waarmee je
+      // niets kunt, en de kijkbalk bovenaan zegt het met zoveel woorden.
       document.body.classList.toggle('alleen-kijken', rol === 'lezer');
       // Ontbreekt het veld (backend nog niet bijgewerkt), dan verbergen we
       // niets: alleen een expliciete 'nee' haalt de knoppen weg.
       document.body.classList.toggle('geen-testrecht', !!j && j.magTestenAccepteren === false);
-      el('ikBol').textContent = (n || '?').trim().charAt(0).toUpperCase() || '?';
+      // Geen beginletter meer in het bolletje: daar zit nu het persoonsicoon
+      // uit het ontwerp. De naam staat ernaast, dus de letter zei niets extra.
       if (rol === 'beheerder') { el('standVak').classList.remove('verborgen'); toonStand(); }
       return laden();
     });
