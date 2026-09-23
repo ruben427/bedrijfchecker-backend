@@ -1,266 +1,396 @@
-<!DOCTYPE html>
+<!doctype html>
+<html lang="nl">
+<head>
 <meta charset="utf-8">
-<title>Stafpagina — Bedrijfchecker</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<title>PepProof — admin panel</title>
 <link rel="stylesheet" href="solike.css">
-<link rel="stylesheet" href="bedrijfchecker.css">
-
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=Open+Sans:ital,wght@0,400;0,600;0,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  /* De stafpagina. Een hub, geen vierde formulier: de lijsten staan hier,
-     het beoordelen gebeurt op de pagina's die daar al voor zijn. Dat scheelt
-     een tweede kopie van een formulier dat anders uit elkaar gaat lopen. */
-  /* LET OP de padding bovenaan: het logo is 80px hoog en steekt onder de
-     balk van 41px uit. .wrap doet dat met padding-top:60px; deze pagina
-     gebruikt .wrap niet, dus het moet hier apart. Zonder die ruimte schuift
-     de gebruikersbalk onder het logo door. */
-  .staf{ max-width:1180px; margin:0 auto; padding:60px 16px 80px; }
+/* Kleur voor een rij die werk heeft liggen. Komt uit het ontwerp
+   (orange/100) en staat daarom niet in solike.css. */
+:root{ --rij-werk:#ffefd7; --lade-vlak:#fffdfc }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --rij-werk:#3a2113; --lade-vlak:#211911 } }
+:root[data-theme="dark"]{ --rij-werk:#3a2113; --lade-vlak:#211911 }
 
-  /* --- balk met wie je bent en wat er nieuw is --- */
-  .staf-balk{
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-    padding:14px 0 18px; border-bottom:1px solid var(--border); margin-bottom:24px;
-  }
-  .ik{
-    display:flex; align-items:center; gap:10px; padding:6px 14px 6px 6px;
-    border:1px solid var(--border); border-radius:var(--radius-pill,48px); background:var(--surface);
-  }
-  .ik-bol{
-    width:32px; height:32px; border-radius:50%; flex:none;
-    display:grid; place-items:center; background:var(--purple-50,#fcf3ff); color:var(--heading-2,#4d0266);
-    font-family:"Baloo 2",system-ui,sans-serif; font-weight:700; font-size:.95rem;
-  }
-  .ik-naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1rem; line-height:1.15; min-width:0; }
-  .ik-rol{ display:block; font-size:.72rem; color:var(--text-faint); font-weight:400; letter-spacing:.04em; text-transform:uppercase; }
-  .ik-uit{
-    appearance:none; border:0; background:none; cursor:pointer; padding:4px 6px; margin-left:6px; flex:none;
-    color:var(--text-muted); font:inherit; font-size:.8rem; text-decoration:underline;
-    text-underline-offset:3px;
-  }
-  .ik-uit:hover{ color:var(--accent-strong); }
+*{ box-sizing:border-box }
+body{ margin:0; background:var(--bg); color:var(--text);
+  font-family:"Open Sans",system-ui,sans-serif; font-size:16px; line-height:1.5; }
+button{ font:inherit; color:inherit }
+.verborgen{ display:none !important }
 
-  /* Het klokje met wat er nieuw is. Dicht is het een telling, open een lijst
-     waar je doorheen kunt klikken. */
-  .nieuw{ position:relative; margin-left:auto; }
-  .nieuw-knop{
-    appearance:none; cursor:pointer; display:inline-flex; align-items:center; gap:10px;
-    padding:8px 16px; border-radius:var(--radius-knop,12px);
-    border:1px solid var(--border); background:var(--surface); font:inherit;
-    font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:.95rem; color:var(--text);
-  }
-  .nieuw-knop:hover{ border-color:var(--accent); color:var(--accent-strong); }
-  .nieuw-knop[aria-expanded="true"]{ border-color:var(--accent); }
-  .nieuw-bol{
-    min-width:22px; height:22px; padding:0 7px; border-radius:11px; display:grid; place-items:center;
-    background:var(--accent); color:#fff9f5; font-size:.78rem; font-weight:700;
-    font-variant-numeric:tabular-nums;
-  }
-  .nieuw-bol.leeg{ background:var(--border); color:var(--text-faint); }
-  .nieuw-lade{
-    position:absolute; right:0; top:calc(100% + 8px); width:min(460px,88vw); z-index:20;
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md,16px);
-    box-shadow:var(--shadow,0 12px 40px rgba(0,0,0,.14)); padding:8px; display:none;
-    max-height:min(62vh,540px); overflow:auto;
-  }
-  .nieuw-lade.open{ display:block; }
-  .nieuw-kop{
-    font-family:"Open Sans",sans-serif; font-weight:700; font-size:.68rem; letter-spacing:.08em;
-    text-transform:uppercase; color:var(--text-subtle); padding:10px 12px 6px;
-  }
-  .nieuw-item{
-    display:flex; align-items:flex-start; gap:10px; width:100%; text-align:left;
-    padding:10px 12px; border-radius:10px; border:0; background:none; cursor:pointer;
-    font:inherit; color:var(--text); text-decoration:none;
-  }
-  .nieuw-item:hover{ background:var(--surface-2); }
-  .nieuw-item .t{ flex:1; min-width:0; }
-  .nieuw-item .naam{ font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .nieuw-item .waarom{ display:block; font-size:.8rem; color:var(--text-muted); line-height:1.35; }
-  .vlag{
-    flex:none; font-size:.62rem; font-weight:700; letter-spacing:.08em; padding:3px 7px;
-    border-radius:6px; background:var(--accent); color:#fff9f5; margin-top:2px;
-  }
-  .nieuw-item.gezien .vlag{ background:transparent; color:var(--text-faint); border:1px solid var(--border); }
-  .nieuw-leeg{ padding:16px 12px; color:var(--text-muted); font-size:.9rem; }
+/* ---------- header ---------- */
+.kop-balk{ background:var(--surface); border-bottom:1px solid var(--border) }
+.kop-in{ max-width:1024px; margin:0 auto; padding:12px 16px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px }
+.merk{ display:flex; align-items:center; gap:12px; min-width:0 }
+/* Het logo draagt de ADMIN PANEL-pil zelf; hier staat geen losse badge meer. */
+.merk img{ display:block; height:56px; width:auto }
+.kop-rechts{ display:flex; align-items:center; gap:14px; flex:none }
 
-  /* --- snelle inzichten --- */
-  .inzichten{ display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:12px; margin-bottom:28px; }
-  .inzicht{
-    background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-md,16px);
-    padding:14px 16px; display:flex; flex-direction:column; gap:4px; text-decoration:none; color:inherit;
-  }
-  a.inzicht:hover{ border-color:var(--accent); }
-  .inzicht .k{
-    font-family:"Open Sans",sans-serif; font-weight:700; font-size:.68rem; letter-spacing:.06em;
-    text-transform:uppercase; color:var(--text-subtle);
-  }
-  .inzicht .v{
-    font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.8rem; line-height:1.05;
-    color:var(--text); font-variant-numeric:tabular-nums;
-  }
-  .inzicht .n{ font-size:.78rem; color:var(--text-faint); line-height:1.35; }
-  .inzicht.aandacht .v{ color:var(--accent-strong); }
+/* Belletje. Twee standen: oranje met verloop in rust, wit met een oranje
+   rand zodra de lade openstaat. Het getal hangt ernaast, niet erop, zodat
+   het niet over de bel valt. Ontwerp: Figma-node 1516:5600. */
+.bel-wrap{ position:relative }
+.bel{ position:relative; width:40px; height:40px; border-radius:50%; cursor:pointer;
+  display:grid; place-items:center; color:#fff9f5;
+  border:1px solid var(--accent-strong);
+  background-image:linear-gradient(80deg, var(--accent) 50%, var(--accent-light) 100%) }
+.bel[aria-expanded="true"]{ background-image:none; background:var(--surface);
+  border-color:var(--accent); color:var(--accent) }
+.bel svg{ width:18px; height:18px }
+.bel .tel{ position:absolute; top:-5px; right:-9px; min-width:22px; height:22px; padding:0 5px;
+  border-radius:11px; background:var(--surface); color:var(--accent); border:1px solid var(--accent);
+  box-shadow:-1px 1px 2px rgba(166,52,6,.5); letter-spacing:-.05em;
+  font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:14px;
+  display:grid; place-items:center }
+.bel .tel.leeg{ display:none }
+/* De lade: rijen van 54 hoog met een haarlijn ertussen (de gap laat de
+   achtergrond van de lade zien). Geen ronde hoeken — zo staat het ontwerp. */
+.lade{ position:absolute; top:52px; right:0; width:340px; max-width:80vw; z-index:30;
+  display:flex; flex-direction:column; gap:1px; background:var(--border);
+  box-shadow:0 4px 12px var(--surface-2); max-height:60vh; overflow:auto }
+.lade[hidden]{ display:none }
+.lade-rij{ display:flex; align-items:center; justify-content:space-between; gap:8px;
+  width:100%; text-align:left; height:54px; flex:none; padding:4px 12px; border:0;
+  background:var(--lade-vlak); cursor:pointer }
+.lade-rij:hover{ background:var(--accent-soft) }
+.lade-rij .links-in-rij{ display:flex; align-items:center; gap:6px; min-width:0 }
+.lade-rij .stip{ width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none }
+.lade-rij.gezien .stip{ background:var(--border) }
+.lade-rij .tekst{ min-width:0 }
+.lade-rij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:18px;
+  line-height:1.1; letter-spacing:-.05em; display:block;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.lade-rij .waarom{ color:var(--text-subtle); font-size:14px; line-height:1.2;
+  letter-spacing:-.05em; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.lade-rij .chev{ width:14px; height:14px; flex:none; color:var(--text) }
+.lade-leeg{ padding:16px; background:var(--lade-vlak); color:var(--text-faint); font-size:.88rem }
 
-  /* --- tabs --- */
-  .tabs{ display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; }
-  .tab{
-    appearance:none; border:0; background:none; cursor:pointer; font:inherit;
-    font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.05rem;
-    padding:10px 18px; color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-1px;
-  }
-  .tab:hover{ color:var(--text); }
-  .tab[aria-selected="true"]{ color:var(--accent-strong); border-bottom-color:var(--accent); }
-  .tab .mee{ font-size:.8rem; color:var(--text-faint); font-weight:400; margin-left:6px; }
+.ik{ display:flex; align-items:center; gap:10px }
+.ik-bol{ width:40px; height:40px; border-radius:50%; flex:none; display:grid; place-items:center;
+  background:var(--accent); color:#fff9f5;
+  font-family:"Baloo 2",system-ui,sans-serif; font-weight:700; font-size:1rem }
+.ik-tekst{ line-height:1.2 }
+.ik-naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:.95rem; display:block }
+.ik-rol{ color:var(--text-subtle); font-size:.78rem; display:block }
+.ik-uit{ border:0; background:none; padding:0; cursor:pointer; color:var(--accent);
+  font-size:.8rem; text-decoration:underline; text-underline-offset:2px }
 
-  /* --- de lijsten --- */
-  .rij{
-    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-    padding:14px 4px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit;
-  }
-  .rij:hover{ background:var(--surface-2); }
-  .rij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.05rem; flex:1 1 220px; }
-  .rij .cijfers{ display:flex; gap:14px; flex-wrap:wrap; font-size:.82rem; color:var(--text-muted); font-variant-numeric:tabular-nums; }
-  .chip{
-    font-size:.72rem; padding:3px 9px; border-radius:20px; border:1px solid var(--border);
-    color:var(--text-muted); white-space:nowrap;
-  }
-  .chip.ok{ border-color:var(--ok,#2e7d4f); color:var(--ok,#2e7d4f); }
-  .chip.warn{ border-color:var(--warn,#b26a00); color:var(--warn,#b26a00); }
-  .chip.danger{ border-color:var(--danger,#cf2443); color:var(--danger,#cf2443); }
-  .chip.nieuw{ background:var(--accent); border-color:var(--accent); color:#fff9f5; font-weight:700; }
-  .zoek{
-    width:100%; box-sizing:border-box; padding:10px 14px; font:inherit; margin-bottom:12px;
-    border:1px solid var(--border); border-radius:var(--radius-md,12px); background:var(--surface);
-  }
-  .leeg{ padding:28px 4px; color:var(--text-muted); }
+/* ---------- inhoud ---------- */
+.inhoud{ max-width:1024px; margin:0 auto; padding:24px 16px 96px }
+.kijkbalk{ margin:0 0 20px; padding:10px 14px; border-radius:var(--radius-md,12px);
+  background:var(--warn-soft); border:1px solid var(--warn); color:var(--warn); font-size:.86rem }
+body:not(.alleen-kijken) .kijkbalk{ display:none }
+.mismatch{ margin:0 0 20px; padding:10px 14px; border-radius:var(--radius-md,12px);
+  background:var(--danger-soft); border:1px solid var(--danger); color:var(--danger); font-size:.88rem }
 
-  /* --- aanmelden --- */
-  .aanmelden{ max-width:460px; margin:48px auto; }
-  .aanmelden label{ display:block; font-weight:600; font-size:.85rem; margin:14px 0 4px; }
-  .aanmelden input, .aanmelden select{
-    width:100%; box-sizing:border-box; padding:11px 14px; font:inherit;
-    border:1px solid var(--border); border-radius:var(--radius-md,12px); background:var(--surface);
-    color:var(--text);
-  }
-  .aanmelden select{ appearance:none; cursor:pointer;
-    background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%);
-    background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;
-    background-size:6px 6px,6px 6px; background-repeat:no-repeat; padding-right:40px; }
-  .mismatch{
-    margin-top:10px; padding:10px 12px; border-radius:10px; font-size:.84rem; line-height:1.45;
-    background:var(--ds-oranje-50,#fff8ef); border:1px solid var(--accent); color:var(--text);
-  }
-  .aanmelden .uitleg{ font-size:.82rem; color:var(--text-muted); margin:6px 0 0; line-height:1.45; }
-  .fout{ color:var(--danger,#cf2443); font-size:.88rem; margin-top:12px; }
-  .verborgen{ display:none !important; }
+/* aanmelden */
+.aanmelden{ max-width:460px; margin:48px auto; background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius-md,12px); padding:24px; box-shadow:var(--shadow) }
+.aanmelden h1{ font-family:"Baloo 2",system-ui,sans-serif; color:var(--heading-2);
+  margin:0 0 4px; font-size:1.5rem }
+.aanmelden .veld{ margin-top:16px }
+.uitleg{ color:var(--text-subtle); font-size:.84rem; margin:6px 0 0 }
+.fout{ color:var(--danger); font-size:.88rem; margin-top:12px }
 
-  /* Alleen kijken. De lijsten en de tellingen blijven gewoon staan - daar is
-     niets mis mee - maar de doorkliks naar de beoordelingspagina's worden
-     gedempt. De server weigert daar toch, en een knop die pas bij het
-     opslaan nee zegt is een slechtere mededeling dan een knop die het meteen
-     laat zien. */
-  body.alleen-kijken .nieuw-item,
-  body.alleen-kijken .rij{ pointer-events:none; }
-  body.alleen-kijken .rij .naam{ color:var(--text-muted); }
-  body.alleen-kijken .inzicht.aandacht .v{ color:var(--text); }
-  .kijkbalk{
-    margin:0 0 20px; padding:10px 14px; border-radius:var(--radius-md,12px);
-    background:var(--surface-2); border:1px solid var(--border);
-    font-size:.86rem; color:var(--text-muted); line-height:1.45;
-  }
-  body:not(.alleen-kijken) .kijkbalk{ display:none; }
+/* cijferstrook */
+.cijfers{ display:grid; grid-template-columns:repeat(5,1fr);
+  border:1px solid var(--border); border-radius:var(--radius-md,12px); overflow:hidden;
+  background:var(--surface); margin:0 0 40px }
+.cel{ padding:24px; border-left:1px solid var(--border); position:relative;
+  display:flex; flex-direction:column; text-align:left }
+.cel:first-child{ border-left:0 }
+button.cel{ background:var(--surface); cursor:pointer; border:0;
+  border-left:1px solid var(--border); border-radius:0; color:inherit }
+button.cel:hover{ background:var(--accent-soft) }
+.cel-kop{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:21px;
+  line-height:1.15; color:var(--heading-2); margin:0 0 4px; min-height:2.3em }
+.cel-getal{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:72px;
+  line-height:1; letter-spacing:-.03em; color:var(--heading-3); margin:0 0 12px }
+.cel.actie .cel-getal{ color:var(--accent) }
+.cel-onder{ font-size:14px; color:var(--text-subtle); line-height:1.4; margin:auto 0 0 }
+.cel-pijl{ position:absolute; right:16px; top:50%; transform:translateY(-50%);
+  color:var(--text-subtle); width:20px; height:20px }
+
+/* tabs */
+.tabs{ display:flex; border-bottom:1px solid var(--border); margin:0 0 20px }
+.tab{ border:0; background:none; cursor:pointer; padding:10px 20px 12px;
+  font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:18px;
+  color:var(--heading-3); border-bottom:3px solid transparent; margin-bottom:-1px }
+.tab .mee{ color:var(--text-subtle); font-weight:400; font-size:15px; margin-left:6px }
+.tab[aria-selected="true"]{ color:var(--accent); border-bottom-color:var(--accent) }
+.zoek{ margin:0 0 16px; height:56px }
+
+/* lijst */
+.lijst{ border:1px solid var(--border); border-radius:var(--radius-md,12px);
+  overflow:hidden; background:var(--surface) }
+.rij{ display:grid; grid-template-columns:1fr 150px 190px 210px 24px; align-items:center; gap:12px;
+  width:100%; text-align:left; padding:14px 20px; border:0; border-top:1px solid var(--border);
+  background:var(--surface); cursor:pointer }
+.rij:first-child{ border-top:0 }
+.rij:hover{ background:var(--accent-soft) }
+.rij.werk{ background:var(--rij-werk); box-shadow:inset 4px 0 0 var(--accent) }
+.rij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:18px;
+  color:var(--heading-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.paar{ display:flex; align-items:baseline; gap:8px; min-width:0 }
+.paar b{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:16px;
+  color:var(--heading-3); flex:none }
+.paar span{ font-size:14px; color:var(--text-subtle); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.rij .pijl{ color:var(--text-subtle); width:20px; height:20px; justify-self:end }
+.chip{ font-size:.72rem; padding:3px 9px; border-radius:var(--radius-pill,999px);
+  border:1px solid var(--border); color:var(--text-muted); white-space:nowrap }
+.chip.ok{ border-color:var(--ok); color:var(--ok); background:var(--ok-soft) }
+.chip.warn{ border-color:var(--warn); color:var(--warn); background:var(--warn-soft) }
+.chip.danger{ border-color:var(--danger); color:var(--danger); background:var(--danger-soft) }
+.chip.nieuw{ border-color:var(--accent); color:var(--accent); background:var(--accent-soft) }
+.leeg{ padding:20px; color:var(--text-faint); font-size:.9rem }
+
+/* detail op dezelfde pagina */
+.terug{ border:0; background:none; cursor:pointer; padding:0; margin:0 0 16px;
+  color:var(--accent); font-size:.9rem; text-decoration:underline; text-underline-offset:3px }
+h1.titelgroot{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:2rem;
+  line-height:1.1; letter-spacing:-.03em; color:var(--heading-3); margin:0 0 4px }
+.sub{ color:var(--text-subtle); margin:0 0 24px; font-size:.95rem }
+.blok{ background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-md,12px); padding:20px; margin-bottom:16px }
+.blok h2{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.15rem;
+  color:var(--heading-2); margin:0 0 2px; display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+.teller{ font-family:"Open Sans",sans-serif; font-weight:700; font-size:.72rem;
+  min-width:22px; height:22px; padding:0 8px; border-radius:11px;
+  display:inline-grid; place-items:center; background:var(--accent); color:#fff9f5 }
+.blok .duiding{ color:var(--text-subtle); font-size:.88rem; margin:0 0 16px }
+.ref{ font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.76rem; color:var(--text-subtle) }
+.werkrij{ display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:12px 14px; border:1px solid var(--border); border-radius:var(--radius-md,12px); margin-bottom:8px }
+.werkrij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.02rem; flex:1 1 200px }
+
+/* Knoppen (.knop) en invoervelden (.veld) staan nu in solike.css, met alle
+   standen uit Anne's designsysteem. Hier alleen wat déze pagina extra doet. */
+.rij2{ display:grid; grid-template-columns:1fr 1fr; gap:14px }
+.melding{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:.88rem;
+  background:var(--surface-2); border:1px solid var(--border) }
+.melding[hidden]{ display:none }
+body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
+.rij:focus-visible, .tab:focus-visible, .bel:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px }
+
+/* modal: kopie naast labrapport */
+.laag{ position:fixed; inset:0; background:rgba(15,15,14,.4);
+  display:none; align-items:flex-start; justify-content:center; padding:48px 24px; overflow:auto; z-index:50 }
+.laag.open{ display:flex }
+.kaart{ background:var(--surface); border-radius:var(--radius-lg,24px); padding:36px;
+  width:100%; max-width:1200px; box-shadow:var(--shadow) }
+.kaart-in{ display:flex; gap:24px; align-items:stretch }
+.links{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:24px }
+.titel{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:32px;
+  line-height:1.5; letter-spacing:-.05em; margin:0 0 12px; color:var(--heading-3) }
+.velden{ display:flex; gap:12px; font-size:16px; letter-spacing:-.02em }
+.velden .kol-label{ width:189px; flex:none }
+.velden .kol-waarde{ flex:1 1 0; min-width:0 }
+.velden p{ margin:0 0 12px; line-height:1.5 }
+.velden p:last-child{ margin-bottom:0 }
+.velden .niet{ color:var(--text-faint) }
+.acties{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap }
+.acties-groep{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+.volgende{ width:56px; height:56px; flex:none; border-radius:var(--radius-knop,12px); cursor:pointer;
+  border:1px solid var(--accent); background:transparent; color:var(--accent); display:grid; place-items:center }
+.volgende svg{ width:18px; height:18px; display:block }
+.rechts{ flex:0 0 430px; display:flex; flex-direction:column; gap:12px; align-items:center }
+.labverwijzing{ font-size:14px; color:var(--accent); text-decoration:underline;
+  text-underline-offset:3px; word-break:break-all; text-align:center }
+.kopievak{ width:430px; max-width:100%; height:588px; border:1px solid var(--border);
+  border-radius:8px; overflow:hidden; background:var(--surface-2) }
+.kopievak img, .kopievak iframe{ width:100%; height:100%; border:0; display:block;
+  object-fit:contain; background:#fff }
+.geenkopie{ width:100%; height:100%; display:grid; place-items:center; padding:24px;
+  text-align:center; color:var(--text-muted); font-size:.9rem }
+.vervolg{ margin-top:16px; padding:16px; border-radius:var(--radius-md,12px);
+  background:var(--accent-soft); border:1px solid var(--accent) }
+.vervolg[hidden]{ display:none }
+.vervolg h3{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.05rem; margin:0 0 4px }
+.vervolg .waarom{ margin:0 0 12px; font-size:.86rem; color:var(--text-muted) }
+.keuzes{ display:flex; gap:10px; flex-wrap:wrap }
+.veldlijst{ display:flex; flex-direction:column; gap:10px; margin:0 0 12px }
+.veldregel{ display:grid; grid-template-columns:auto 1fr 1fr; gap:10px; align-items:center; font-size:.9rem }
+.veldregel .shop{ color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.veldregel input[type=text]{ padding:6px 10px; font:inherit; font-size:.88rem;
+  border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text) }
+.veldregel input[type=text][hidden]{ display:none }
+
+@media (max-width:900px){
+  .cijfers{ grid-template-columns:repeat(2,1fr) }
+  .cel{ border-left:1px solid var(--border); border-top:1px solid var(--border) }
+  .cel:nth-child(odd){ border-left:0 }
+  .cel:nth-child(-n+2){ border-top:0 }
+  .cel-getal{ font-size:52px }
+  .rij{ grid-template-columns:1fr 24px; row-gap:6px }
+  .rij .naam{ grid-column:1 } .rij .pijl{ grid-row:1; grid-column:2 }
+  .paar{ grid-column:1 / -1 }
+  .rij2{ grid-template-columns:1fr }
+}
+@media (max-width:980px){
+  .kaart{ padding:24px; border-radius:var(--radius-md,16px) }
+  .kaart-in{ flex-direction:column-reverse }
+  .rechts{ flex:1 1 auto; width:100% }
+  .kopievak{ width:100%; height:420px }
+  .titel{ font-size:26px }
+  .velden{ flex-direction:column; gap:0 }
+  .velden .kol-label{ width:auto; color:var(--text-muted); font-size:.82rem }
+  .velden .kol-label p{ margin:0 }
+  .acties, .acties-groep{ flex-direction:column; align-items:stretch }
+  .knop, .volgende{ width:100% }
+  .veldregel{ grid-template-columns:auto 1fr; }
+}
 </style>
+</head>
+<body>
 
-<header class="site-header">
-  <div class="site-header-inner">
-    <a class="site-logo" href="index.html" aria-label="Naar de startpagina">
-      <img src="PEPPROOF-LOGO.svg" width="259" height="83" alt="PepProof">
-    </a>
-    <span class="betavlag">BETA 1.0</span>
+<header class="kop-balk">
+  <div class="kop-in">
+    <div class="merk">
+      <img src="PEPPROOF-ADMIN-LOGO.svg" width="398" height="80" alt="PepProof — admin panel">
+    </div>
+    <div class="kop-rechts verborgen" id="kopRechts">
+      <div class="bel-wrap">
+        <button class="bel" id="bel" aria-expanded="false" aria-label="Wat er nog ligt">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+          </svg>
+          <span class="tel leeg" id="belTel">0</span>
+        </button>
+        <div class="lade" id="lade" hidden></div>
+      </div>
+      <div class="ik">
+        <span class="ik-bol" id="ikBol">?</span>
+        <span class="ik-tekst">
+          <span class="ik-naam" id="ikNaam">—</span>
+          <span class="ik-rol" id="ikRol"></span>
+          <button type="button" class="ik-uit" id="uit">uitloggen</button>
+        </span>
+      </div>
+    </div>
   </div>
 </header>
 
-<main class="staf">
+<main class="inhoud">
 
   <!-- Aanmelden. Geen accounts: het token bepaalt de rol, de naam typ je zelf
        en die komt bij je oordelen te staan. -->
-  <section class="aanmelden panel" id="aanmelden">
-    <h1 style="font-family:'Baloo 2',system-ui,sans-serif;color:var(--heading);margin:0 0 4px;font-size:1.5rem">Stafpagina</h1>
-    <p class="uitleg" style="margin:0">Leveranciers, laboratoria en wat er nieuw is, op een plek.</p>
-    <label for="nm">Wie ben je</label>
-    <select id="nm">
-      <option value="">Kies je naam</option>
-      <option value="Annemarie">Annemarie</option>
-      <option value="Ruben">Ruben</option>
-      <option value="Viewer">Viewer (alleen kijken)</option>
-    </select>
+  <section class="aanmelden" id="aanmelden">
+    <h1>Stafpagina</h1>
+    <p class="uitleg" style="margin:0">Leveranciers, laboratoria en wat er nog ligt, op een plek.</p>
+    <label class="veld keuze">
+      <select id="nm">
+        <option value="">—</option>
+        <option value="Annemarie">Annemarie</option>
+        <option value="Ruben">Ruben</option>
+        <option value="Viewer">Viewer (alleen kijken)</option>
+      </select>
+      <span class="veld-label">Wie ben je</span>
+    </label>
     <p class="uitleg">Komt bij elk oordeel te staan, zodat later na te gaan is wie wat heeft vastgesteld.</p>
-    <label for="tk">Toegangssleutel</label>
-    <input id="tk" type="password" autocomplete="off" spellcheck="false">
-    <p class="uitleg" id="tkUitleg">Jouw eigen sleutel. Anne en Ruben hebben er elk een; de sleutel bepaalt wat je mag.</p>
-    <p><button class="btn" id="aan" style="margin-top:16px">Aanmelden</button></p>
+    <label class="veld">
+      <input id="tk" type="password" autocomplete="off" spellcheck="false" placeholder=" ">
+      <span class="veld-label">Toegangssleutel</span>
+    </label>
+    <p class="uitleg">Jouw eigen sleutel. Anne en Ruben hebben er elk een; de sleutel bepaalt wat je mag.</p>
+    <p><button class="knop prim" id="aan" style="margin-top:16px">Aanmelden</button></p>
     <p class="fout verborgen" id="aanfout"></p>
   </section>
 
   <div id="binnen" class="verborgen">
-
-    <div class="staf-balk">
-      <div class="ik">
-        <span class="ik-bol" id="ikBol">?</span>
-        <span class="ik-naam" id="ikNaam">—<span class="ik-rol" id="ikRol"></span></span>
-        <button type="button" class="ik-uit" id="uit">uitloggen</button>
-      </div>
-
-      <div class="nieuw">
-        <button type="button" class="nieuw-knop" id="nieuwKnop" aria-expanded="false">
-          Nieuw <span class="nieuw-bol leeg" id="nieuwBol">0</span>
-        </button>
-        <div class="nieuw-lade" id="nieuwLade"></div>
-      </div>
-    </div>
-
     <p class="kijkbalk">Je kijkt mee met een leestoken. Alles is zichtbaar, maar je kunt niets
-      vastleggen - geen labstanden, geen beoordelingen, geen tekstcorrecties.</p>
+      vastleggen — geen labstanden, geen beoordelingen, geen controles.</p>
 
-    <div class="inzichten" id="inzichten"></div>
-    <p style="margin:-16px 0 28px"><a href="admin-analytics.html"
-      style="font-size:.86rem;color:var(--accent);text-decoration:underline;text-underline-offset:4px">Alle inzichten →</a></p>
+    <div id="overzicht">
+      <div class="cijfers" id="cijfers"></div>
 
-    <div class="tabs" role="tablist">
-      <button class="tab" role="tab" id="tabLev" aria-selected="true" aria-controls="paneelLev">Leveranciers <span class="mee" id="telLev"></span></button>
-      <button class="tab" role="tab" id="tabLab" aria-selected="false" aria-controls="paneelLab">Laboratoria <span class="mee" id="telLab"></span></button>
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tabLev" aria-selected="true">Leveranciers <span class="mee" id="telLev"></span></button>
+        <button class="tab" role="tab" id="tabLab" aria-selected="false">Laboratoria <span class="mee" id="telLab"></span></button>
+      </div>
+
+      <section id="paneelLev">
+        <input class="zoek" id="zoekLev" type="search" placeholder="Zoek een leverancier">
+        <div class="lijst" id="lijstLev"><p class="leeg">Laden…</p></div>
+      </section>
+
+      <section id="paneelLab" class="verborgen">
+        <input class="zoek" id="zoekLab" type="search" placeholder="Zoek een laboratorium">
+        <div class="lijst" id="lijstLab"><p class="leeg">Laden…</p></div>
+      </section>
     </div>
 
-    <section id="paneelLev" role="tabpanel">
-      <input class="zoek" id="zoekLev" type="search" placeholder="Zoek een leverancier">
-      <div id="lijstLev"><p class="leeg">Laden…</p></div>
-    </section>
-
-    <section id="paneelLab" role="tabpanel" class="verborgen">
-      <input class="zoek" id="zoekLab" type="search" placeholder="Zoek een laboratorium">
-      <div id="lijstLab"><p class="leeg">Laden…</p></div>
-    </section>
-
+    <div id="detail" class="verborgen">
+      <button class="terug" id="terug">← terug naar de lijst</button>
+      <h1 class="titelgroot" id="dNaam"></h1>
+      <p class="sub" id="dSub"></p>
+      <div id="dInhoud"></div>
+    </div>
   </div>
 </main>
+
+<div class="laag" id="laag" role="dialog" aria-modal="true" aria-labelledby="mTitel">
+  <div class="kaart">
+    <div class="kaart-in">
+      <div class="links">
+        <div>
+          <h2 class="titel" id="mTitel"></h2>
+          <div class="velden">
+            <div class="kol-label" id="mLabels"></div>
+            <div class="kol-waarde" id="mWaarden"></div>
+          </div>
+
+          <div class="vervolg" id="vGeen" hidden>
+            <h3>Wat zag je op die pagina?</h3>
+            <p class="waarom">Dit is het enige verschil dat telt: gaf het lab antwoord, of kwam je er niet langs?
+              Bij twijfel kies je de onderste — die zegt niets over de leverancier.</p>
+            <div class="keuzes">
+              <button class="knop sec klein" data-uitkomst="lost-niet-op">Janoshiks eigen pagina, zonder rapport</button>
+              <button class="knop sec klein" data-uitkomst="niet-bereikt">Een beveiligingsscherm of foutmelding</button>
+            </div>
+          </div>
+
+          <div class="vervolg" id="vKlopt" hidden>
+            <h3>Wat staat er bij het lab anders?</h3>
+            <p class="waarom">Vink aan en vul in wat het lab zegt. Wát er afwijkt bepaalt het gevolg —
+              dat rekent de server uit, jij hoeft geen letter te kiezen.</p>
+            <div class="veldlijst" id="vVelden"></div>
+            <div class="keuzes"><button class="knop sec klein" id="vOpslaan">Vastleggen</button></div>
+          </div>
+
+          <div class="melding" id="mMelding" hidden></div>
+        </div>
+
+        <div class="acties">
+          <div class="acties-groep">
+            <button class="knop sec" id="bGeen">Ik zie geen rapport</button>
+            <button class="knop sec" id="bKlopt">Klopt niet</button>
+            <button class="knop prim" id="bAccept">Accepteren</button>
+          </div>
+          <button class="volgende" id="bVolgende" title="Volgende, zonder iets vast te leggen" aria-label="Volgende, zonder iets vast te leggen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="rechts">
+        <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
+        <div class="kopievak" id="mKopie"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 (function () {
   'use strict';
 
   var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
-
-  // Dezelfde sleutel als de andere stafpagina's, zodat je niet op elke pagina
-  // opnieuw hoeft aan te melden.
   var SLEUTEL_TOKEN = 'bedrijfchecker.ownerToken';
   var SLEUTEL_NAAM = 'bedrijfchecker.naam';
-  // Wat je al hebt gezien blijft lokaal staan. Het staat ook op de server
-  // (markeer_gesignaleerd), maar dat is een melding voor het hele team; dit
-  // bolletje gaat over jouw scherm en mag meteen weg zonder te wachten op een
-  // antwoord van de server.
   var SLEUTEL_GEZIEN = 'bedrijfchecker.gezien';
 
   function el(id) { return document.getElementById(id); }
@@ -272,12 +402,18 @@
   function bewaar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function lees(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function wis(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  function of(v, leeg) {
+    return v == null || v === '' ? '<span class="niet">' + esc(leeg || 'niet gemeten') + '</span>' : esc(v);
+  }
 
   var token = '', naam = '', rol = '';
-  var data = { leveranciers: [], labs: [], signalen: null, naamkoppelingen: [], tekstoordelen: [] };
+  var data = { leveranciers: [], labs: [], statussen: [], signalen: null, naamkoppelingen: [], tekstoordelen: [] };
 
-  function haal(pad) {
-    return fetch(API_BASE + pad, { headers: { 'X-Owner-Token': token } }).then(function (r) {
+  function haal(pad, opties) {
+    var o = opties || {};
+    var h = { 'X-Owner-Token': token };
+    if (o.headers) for (var k in o.headers) h[k] = o.headers[k];
+    return fetch(API_BASE + pad, { method: o.method || 'GET', headers: h, body: o.body }).then(function (r) {
       if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) {
         throw new Error((j && j.message) || ('HTTP ' + r.status));
       });
@@ -285,21 +421,18 @@
     });
   }
 
-  // --- wat je al hebt gezien -----------------------------------------------
   function gezienSet() {
     try { return new Set(JSON.parse(lees(SLEUTEL_GEZIEN) || '[]')); } catch (e) { return new Set(); }
   }
   function markeerGezien(sleutel) {
-    var s = gezienSet();
-    s.add(sleutel);
+    var s = gezienSet(); s.add(sleutel);
     bewaar(SLEUTEL_GEZIEN, JSON.stringify(Array.prototype.slice.call(s)));
   }
 
   // --- aanmelden -----------------------------------------------------------
-  // Welke naam hoort bij welke rol. Er zijn er twee, en de sleutel bepaalt de
-  // rol - niet het keuzelijstje. Kiest iemand de verkeerde naam bij zijn eigen
-  // sleutel, dan zeggen we dat, want die naam komt onder zijn oordelen te
-  // staan en is achteraf niet meer te corrigeren zonder het oordeel te raken.
+  // De sleutel bepaalt de rol, niet het keuzelijstje. Kiest iemand de
+  // verkeerde naam bij zijn eigen sleutel, dan zeggen we dat: die naam komt
+  // onder zijn oordelen te staan.
   var NAAM_BIJ_ROL = { beheerder: 'Ruben', beoordelaar: 'Annemarie', lezer: 'Viewer' };
 
   function aanmelden(t, n) {
@@ -315,14 +448,12 @@
         var b = el('binnen');
         if (!b.querySelector('.mismatch')) b.insertBefore(w, b.firstChild);
       }
-      bewaar(SLEUTEL_TOKEN, t);
-      bewaar(SLEUTEL_NAAM, n);
+      bewaar(SLEUTEL_TOKEN, t); bewaar(SLEUTEL_NAAM, n);
       el('aanmelden').classList.add('verborgen');
       el('binnen').classList.remove('verborgen');
-      el('ikNaam').firstChild.nodeValue = n || '—';
+      el('kopRechts').classList.remove('verborgen');
+      el('ikNaam').textContent = n || '—';
       el('ikRol').textContent = rol === 'lezer' ? 'alleen kijken' : rol;
-      // Een lezer mag alles zien en niets vastleggen. Dat staat er, in plaats
-      // van dat hij het ontdekt als een knop 403 teruggeeft.
       document.body.classList.toggle('alleen-kijken', rol === 'lezer');
       el('ikBol').textContent = (n || '?').trim().charAt(0).toUpperCase() || '?';
       return laden();
@@ -334,21 +465,14 @@
     el('aanfout').classList.add('verborgen');
     if (!t || !n) {
       el('aanfout').textContent = 'Vul allebei de velden in.';
-      el('aanfout').classList.remove('verborgen');
-      return;
+      el('aanfout').classList.remove('verborgen'); return;
     }
     aanmelden(t, n).catch(function (e) {
       el('aanfout').textContent = 'Aanmelden mislukt: ' + e.message;
       el('aanfout').classList.remove('verborgen');
     });
   });
-
-  el('uit').addEventListener('click', function () {
-    // De sleutel weg, maar NIET wat je al hebt gezien: dat is geen geheim en
-    // het opnieuw moeten doorklikken van dertig signalen is alleen vervelend.
-    wis(SLEUTEL_TOKEN);
-    location.reload();
-  });
+  el('uit').addEventListener('click', function () { wis(SLEUTEL_TOKEN); location.reload(); });
 
   // --- laden ---------------------------------------------------------------
   function laden() {
@@ -361,250 +485,516 @@
     ]).then(function (r) {
       data.leveranciers = (r[0] && r[0].leveranciers) || (r[0] && r[0].rijen) || [];
       data.labs = (r[1] && r[1].labs) || [];
+      data.statussen = (r[1] && r[1].statussen) || [];
       data.signalen = r[2] || null;
       data.naamkoppelingen = (r[3] && r[3].oordelen) || [];
       data.tekstoordelen = (r[4] && r[4].oordelen) || [];
-      toonAlles();
+      toonCijfers(); toonLev(); toonLab(); toonLade();
     });
   }
 
-  // --- nieuwe items --------------------------------------------------------
-  //
-  // Vier soorten werk die om aandacht vragen, in een lijst. Bewust niet alleen
-  // "nieuw gezien": een lab zonder stand is ook werk, ook als het er al een
-  // week staat.
-  function nieuweItems() {
-    var uit = [];
-    var gezien = gezienSet();
-    var s = data.signalen || {};
+  // --- cijferstrook --------------------------------------------------------
+  function toonCijfers() {
+    var verw = 0, gec = 0;
+    data.leveranciers.forEach(function (l) {
+      verw += (l.referenties || 0); gec += (l.gecontroleerd || 0);
+    });
+    var zonderStand = data.labs.filter(function (l) { return !l.oordeel; }).length;
+    var pct = verw ? Math.round(gec / verw * 100) : 0;
+    var wacht = data.naamkoppelingen.filter(function (o) { return o.status === 'wacht op beoordeling'; }).length;
 
+    var cellen = [
+      { kop: 'Leveranciers', getal: data.leveranciers.length, onder: verw + ' labverwijzingen bekend' },
+      { kop: 'Handmatig gecontroleerd', getal: gec, onder: pct + '% van de verwijzingen' },
+      { kop: 'Labs zonder stand', getal: zonderStand, onder: 'van de ' + data.labs.length + ' laboratoria' },
+      { kop: 'Wacht op een oordeel', getal: wacht, onder: 'naamkoppelingen', actie: true },
+      { kop: 'Nog niet gecontroleerd', getal: Math.max(0, verw - gec), onder: 'labverwijzingen' }
+    ];
+    el('cijfers').innerHTML = cellen.map(function (c) {
+      return '<div class="cel' + (c.actie ? ' actie' : '') + '">' +
+        '<p class="cel-kop">' + esc(c.kop) + '</p>' +
+        '<p class="cel-getal">' + c.getal + '</p>' +
+        '<p class="cel-onder">' + esc(c.onder) + '</p></div>';
+    }).join('');
+  }
+
+  // --- wat er nog ligt (het belletje) --------------------------------------
+  var CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M9 5l7 7-7 7"/></svg>';
+
+  function nieuweItems() {
+    var uit = [], gezien = gezienSet(), s = data.signalen || {};
     (s.leveranciers || []).forEach(function (l) {
-      var sleutel = 'lev:' + (l.sleutel || l.supplierKey || l);
-      uit.push({
-        sleutel: sleutel, soort: 'leverancier',
-        naam: l.sleutel || l.supplierKey || String(l),
-        waarom: 'nieuwe leverancier, nog niet eerder gemeld',
-        href: 'admin-leveranciers.html', gezien: gezien.has(sleutel)
-      });
+      var k = 'lev:' + (l.sleutel || l.supplierKey || l);
+      uit.push({ sleutel: k, soort: 'leverancier', naam: l.sleutel || l.supplierKey || String(l),
+        waarom: 'nieuwe leverancier, nog niet eerder gemeld', gezien: gezien.has(k) });
     });
     (s.labs || []).forEach(function (l) {
-      var sleutel = 'lab:' + (l.sleutel || l.naam || l);
-      uit.push({
-        sleutel: sleutel, soort: 'lab',
-        naam: l.naam || l.sleutel || String(l),
+      var k = 'lab:' + (l.sleutel || l.naam || l);
+      uit.push({ sleutel: k, soort: 'lab', naam: l.naam || l.sleutel || String(l),
         waarom: l.uitCasesZonderReferentie
           ? 'nieuw lab, genoemd op een rapport zonder verificatiecode'
-          : 'nieuw lab, nog geen stand',
-        href: 'admin-laboratoria.html', gezien: gezien.has(sleutel)
-      });
+          : 'nieuw lab, nog geen stand', gezien: gezien.has(k) });
     });
     data.labs.filter(function (l) { return !l.oordeel; }).forEach(function (l) {
-      var sleutel = 'labstand:' + (l.lab || '');
+      var k = 'labstand:' + (l.lab || '');
       if (uit.some(function (x) { return x.naam === l.lab; })) return;
-      uit.push({
-        sleutel: sleutel, soort: 'lab',
-        naam: l.lab, waarom: 'wacht op een stand',
-        href: 'admin-laboratoria.html', gezien: gezien.has(sleutel)
-      });
+      uit.push({ sleutel: k, soort: 'lab', naam: l.lab, waarom: 'wacht op een stand', gezien: gezien.has(k) });
     });
     data.naamkoppelingen.filter(function (o) { return o.status === 'wacht op beoordeling'; }).forEach(function (o) {
-      var sleutel = 'naam:' + o.sleutel;
-      uit.push({
-        sleutel: sleutel, soort: 'naamkoppeling',
-        naam: o.product + ' bij ' + o.supplierKey,
+      var k = 'naam:' + o.sleutel;
+      uit.push({ sleutel: k, soort: 'leverancier', naam: o.product + ' bij ' + o.supplierKey,
+        doel: o.supplierKey,
         waarom: 'getoetst tegen ' + o.getoetsteStof + '; telt niet mee tot iemand het nakijkt',
-        href: 'admin-leveranciers.html', gezien: gezien.has(sleutel)
-      });
+        gezien: gezien.has(k) });
     });
     data.tekstoordelen.forEach(function (t) {
-      var sleutel = 'tekst:' + t.id;
-      uit.push({
-        sleutel: sleutel, soort: 'tekst',
-        naam: 'Tekstcorrectie van ' + (t.door || 'onbekend'),
-        waarom: String(t.origineel || '').slice(0, 90),
-        href: null, gezien: gezien.has(sleutel)
-      });
+      var k = 'tekst:' + t.id;
+      uit.push({ sleutel: k, soort: 'tekst', naam: 'Tekstcorrectie van ' + (t.door || '?'),
+        waarom: 'nog niet verwerkt', gezien: gezien.has(k) });
     });
     return uit;
   }
 
-  function toonNieuw() {
+  function toonLade() {
     var items = nieuweItems();
-    var ongezien = items.filter(function (i) { return !i.gezien; });
-    var bol = el('nieuwBol');
-    bol.textContent = ongezien.length;
-    bol.className = 'nieuw-bol' + (ongezien.length ? '' : ' leeg');
-
-    var lade = el('nieuwLade');
-    if (!items.length) {
-      lade.innerHTML = '<p class="nieuw-leeg">Niets nieuws. Alle labs hebben een stand en er wacht geen beoordeling.</p>';
-      return;
-    }
-    var perSoort = { lab: [], leverancier: [], naamkoppeling: [], tekst: [] };
-    items.forEach(function (i) { (perSoort[i.soort] || perSoort.lab).push(i); });
-    var koppen = {
-      lab: 'Laboratoria', leverancier: 'Leveranciers',
-      naamkoppeling: 'Naamkoppelingen', tekst: 'Tekstcorrecties'
-    };
-    var h = '';
-    Object.keys(perSoort).forEach(function (k) {
-      if (!perSoort[k].length) return;
-      h += '<p class="nieuw-kop">' + esc(koppen[k]) + '</p>';
-      perSoort[k].forEach(function (i) {
-        h += '<a class="nieuw-item' + (i.gezien ? ' gezien' : '') + '" data-sleutel="' + esc(i.sleutel) + '"' +
-          (i.href ? ' href="' + esc(i.href) + '"' : ' href="#"') + '>' +
-          '<span class="vlag">' + (i.gezien ? 'gezien' : 'NIEUW') + '</span>' +
-          '<span class="t"><span class="naam">' + esc(i.naam) + '</span>' +
-          '<span class="waarom">' + esc(i.waarom) + '</span></span></a>';
-      });
-    });
-    lade.innerHTML = h;
-
-    Array.prototype.forEach.call(lade.querySelectorAll('.nieuw-item'), function (a) {
-      a.addEventListener('click', function () {
-        markeerGezien(a.getAttribute('data-sleutel'));
-        a.classList.add('gezien');
-        a.querySelector('.vlag').textContent = 'gezien';
-        var n = el('nieuwBol');
-        var nu = Math.max(0, Number(n.textContent) - 1);
-        n.textContent = nu;
-        n.className = 'nieuw-bol' + (nu ? '' : ' leeg');
+    var ongezien = items.filter(function (i) { return !i.gezien; }).length;
+    el('belTel').textContent = ongezien;
+    el('belTel').classList.toggle('leeg', ongezien === 0);
+    el('lade').innerHTML = items.length
+      ? items.map(function (i, n) {
+          return '<button class="lade-rij' + (i.gezien ? ' gezien' : '') + '" data-n="' + n + '">' +
+            '<span class="links-in-rij"><span class="stip"></span><span class="tekst">' +
+            '<span class="naam">' + esc(i.naam) + '</span>' +
+            '<span class="waarom">' + esc(i.waarom) + '</span></span></span>' + CHEV + '</button>';
+        }).join('')
+      : '<p class="lade-leeg">Niets nieuws. Alle labs hebben een stand en er wacht geen beoordeling.</p>';
+    Array.prototype.forEach.call(el('lade').querySelectorAll('[data-n]'), function (b) {
+      b.addEventListener('click', function () {
+        var i = items[Number(b.getAttribute('data-n'))];
+        markeerGezien(i.sleutel);
+        sluitLade();
+        if (i.soort === 'lab') openLab(i.naam);
+        else if (i.soort === 'leverancier') openLeverancier(i.doel || i.naam);
+        else toonLade();
       });
     });
   }
 
-  el('nieuwKnop').addEventListener('click', function () {
-    var lade = el('nieuwLade');
-    var open = lade.classList.toggle('open');
-    el('nieuwKnop').setAttribute('aria-expanded', open ? 'true' : 'false');
+  function sluitLade() {
+    el('bel').setAttribute('aria-expanded', 'false');
+    el('lade').hidden = true;
+  }
+  el('bel').addEventListener('click', function (e) {
+    e.stopPropagation();
+    var open = el('bel').getAttribute('aria-expanded') === 'true';
+    el('bel').setAttribute('aria-expanded', open ? 'false' : 'true');
+    el('lade').hidden = open;
   });
   document.addEventListener('click', function (e) {
-    if (!e.target.closest || e.target.closest('.nieuw')) return;
-    el('nieuwLade').classList.remove('open');
-    el('nieuwKnop').setAttribute('aria-expanded', 'false');
+    if (!el('lade').hidden && !el('lade').contains(e.target)) sluitLade();
   });
 
-  // --- snelle inzichten ----------------------------------------------------
-  //
-  // Vijf getallen die zeggen waar het werk zit. Bewust geen percentages of
-  // scores: dit is een werkoverzicht, geen beoordeling van de markt.
-  function toonInzichten() {
-    var labs = data.labs || [];
-    var zonderStand = labs.filter(function (l) { return !l.oordeel; }).length;
-    var erkend = labs.filter(function (l) { return l.oordeel && l.oordeel.status === 'erkend'; }).length;
-    var lev = data.leveranciers || [];
-    var refs = lev.reduce(function (n, r) { return n + (r.referenties || 0); }, 0);
-    var gecontroleerd = lev.reduce(function (n, r) { return n + (r.gecontroleerd || 0); }, 0);
-    var wachtNaam = (data.naamkoppelingen || []).filter(function (o) { return o.status === 'wacht op beoordeling'; }).length;
-
-    var vakken = [
-      { k: 'Leveranciers', v: lev.length, n: refs + ' labverwijzingen bekend' },
-      { k: 'Handmatig gecontroleerd', v: gecontroleerd,
-        n: refs ? Math.round((100 * gecontroleerd) / refs) + '% van de verwijzingen' : 'nog niets te controleren' },
-      { k: 'Laboratoria', v: labs.length, n: erkend + ' erkend' },
-      { k: 'Labs zonder stand', v: zonderStand, aandacht: zonderStand > 0,
-        n: zonderStand ? 'werk dat op een beoordelaar wacht' : 'alles beoordeeld', href: 'admin-laboratoria.html' },
-      { k: 'Koppelingen in afwachting', v: wachtNaam, aandacht: wachtNaam > 0,
-        n: wachtNaam ? 'dit bewijs telt nu niet mee' : 'geen open koppelingen' }
-    ];
-
-    el('inzichten').innerHTML = vakken.map(function (v) {
-      var binnen = '<span class="k">' + esc(v.k) + '</span>' +
-        '<span class="v">' + esc(String(v.v)) + '</span>' +
-        '<span class="n">' + esc(v.n) + '</span>';
-      var kl = 'inzicht' + (v.aandacht ? ' aandacht' : '');
-      return v.href
-        ? '<a class="' + kl + '" href="' + esc(v.href) + '">' + binnen + '</a>'
-        : '<div class="' + kl + '">' + binnen + '</div>';
-    }).join('');
-  }
-
   // --- de twee lijsten -----------------------------------------------------
-  function toonLeveranciers() {
+  var PIJL = '<svg class="pijl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
+
+  var KLEUR = {
+    'erkend': 'ok', 'nog niet beoordeeld': '', 'niet bereikbaar voor ons': 'warn',
+    'onvoldoende verifieerbaar': 'warn', 'niet onafhankelijk': 'danger', 'bestaat niet': 'danger',
+    'geen lab - databron/testplatform': 'warn', 'afgekeurd - kwaliteitsborging': 'danger'
+  };
+
+  function toonLev() {
     var q = el('zoekLev').value.trim().toLowerCase();
-    var rijen = (data.leveranciers || []).filter(function (r) {
-      return !q || String(r.supplierKey || '').toLowerCase().indexOf(q) !== -1;
+    var r = data.leveranciers.filter(function (x) {
+      return !q || String(x.supplierKey || '').toLowerCase().indexOf(q) !== -1;
     });
-    el('telLev').textContent = rijen.length ? '(' + rijen.length + ')' : '';
-    if (!rijen.length) {
-      el('lijstLev').innerHTML = '<p class="leeg">Geen leveranciers gevonden.</p>';
-      return;
-    }
-    el('lijstLev').innerHTML = rijen.map(function (r) {
-      return '<a class="rij" href="admin-leveranciers.html">' +
-        '<span class="naam">' + esc(r.supplierKey || '?') + '</span>' +
-        '<span class="cijfers">' +
-          '<span>' + (r.referenties || 0) + ' verwijzingen</span>' +
-          '<span>' + (r.gecontroleerd || 0) + ' gecontroleerd</span>' +
-          (r.opNaamVanDerde ? '<span>' + r.opNaamVanDerde + ' op naam van een derde</span>' : '') +
-        '</span></a>';
-    }).join('');
+    el('telLev').textContent = '(' + r.length + ')';
+    el('lijstLev').innerHTML = r.length ? r.map(function (x) {
+      var open = Math.max(0, (x.referenties || 0) - (x.gecontroleerd || 0));
+      return '<button class="rij' + (open ? ' werk' : '') + '" data-lev="' + esc(x.supplierKey) + '">' +
+        '<span class="naam">' + esc(x.supplierKey || '?') + '</span>' +
+        '<span class="paar"><b>' + (x.referenties || 0) + '</b><span>verwijzingen</span></span>' +
+        '<span class="paar"><b>' + (x.gecontroleerd || 0) + '</b><span>gecontroleerd</span></span>' +
+        '<span class="paar">' + (open ? '<b>' + open + '</b><span>nog open</span>' : '<span>alles gecontroleerd</span>') + '</span>' +
+        PIJL + '</button>';
+    }).join('') : '<p class="leeg">Geen leveranciers gevonden.</p>';
+    Array.prototype.forEach.call(el('lijstLev').querySelectorAll('[data-lev]'), function (b) {
+      b.addEventListener('click', function () { openLeverancier(b.getAttribute('data-lev')); });
+    });
   }
 
-  function toonLabs() {
+  function toonLab() {
     var q = el('zoekLab').value.trim().toLowerCase();
-    var rijen = (data.labs || []).filter(function (l) {
-      return !q || String(l.lab || '').toLowerCase().indexOf(q) !== -1;
-    });
-    el('telLab').textContent = rijen.length ? '(' + rijen.length + ')' : '';
-    if (!rijen.length) {
-      el('lijstLab').innerHTML = '<p class="leeg">Geen laboratoria gevonden.</p>';
-      return;
-    }
-    // Werk eerst: labs zonder stand bovenaan. Dat is de hele reden dat deze
-    // lijst er is.
-    rijen = rijen.slice().sort(function (a, b) {
+    var r = data.labs.filter(function (x) { return !q || String(x.lab || '').toLowerCase().indexOf(q) !== -1; });
+    // Labs zonder stand bovenaan: dat is de hele reden dat deze lijst er is.
+    r = r.slice().sort(function (a, b) {
       var az = a.oordeel ? 1 : 0, bz = b.oordeel ? 1 : 0;
       if (az !== bz) return az - bz;
       return (b.verwijzingen || 0) - (a.verwijzingen || 0);
     });
-    var kleur = {
-      'erkend': 'ok', 'nog niet beoordeeld': '', 'niet bereikbaar voor ons': 'warn',
-      'onvoldoende verifieerbaar': 'warn', 'niet onafhankelijk': 'danger', 'bestaat niet': 'danger',
-      'geen lab - databron/testplatform': 'warn', 'afgekeurd - kwaliteitsborging': 'danger'
-    };
-    el('lijstLab').innerHTML = rijen.map(function (l) {
-      var st = l.oordeel ? l.oordeel.status : null;
-      var chip = st
-        ? '<span class="chip ' + (kleur[st] || '') + '">' + esc(st) + '</span>'
-        : '<span class="chip nieuw">geen stand</span>';
-      return '<a class="rij" href="admin-laboratoria.html">' +
-        '<span class="naam">' + esc(l.lab) + '</span>' + chip +
-        '<span class="cijfers">' +
-          '<span>' + (l.verwijzingen || 0) + ' verwijzingen</span>' +
-          '<span>' + (l.leveranciers || 0) + ' shop' + (l.leveranciers === 1 ? '' : 's') + '</span>' +
-        '</span></a>';
-    }).join('');
-  }
-
-  function toonAlles() { toonNieuw(); toonInzichten(); toonLeveranciers(); toonLabs(); }
-
-  el('zoekLev').addEventListener('input', toonLeveranciers);
-  el('zoekLab').addEventListener('input', toonLabs);
-
-  function kiesTab(welke) {
-    var lev = welke === 'lev';
-    el('tabLev').setAttribute('aria-selected', lev ? 'true' : 'false');
-    el('tabLab').setAttribute('aria-selected', lev ? 'false' : 'true');
-    el('paneelLev').classList.toggle('verborgen', !lev);
-    el('paneelLab').classList.toggle('verborgen', lev);
-  }
-  el('tabLev').addEventListener('click', function () { kiesTab('lev'); });
-  el('tabLab').addEventListener('click', function () { kiesTab('lab'); });
-
-  // Al eerder aangemeld? Dan meteen door.
-  var bewaardT = lees(SLEUTEL_TOKEN), bewaardN = lees(SLEUTEL_NAAM);
-  if (bewaardT && bewaardN) {
-    aanmelden(bewaardT, bewaardN).catch(function () {
-      el('tk').value = '';
-      el('nm').value = bewaardN;
-      el('aanfout').textContent = 'De bewaarde sleutel werkt niet meer. Vul hem opnieuw in.';
-      el('aanfout').classList.remove('verborgen');
+    el('telLab').textContent = '(' + r.length + ')';
+    el('lijstLab').innerHTML = r.length ? r.map(function (x) {
+      var st = x.oordeel ? x.oordeel.status : null;
+      var chip = st ? '<span class="chip ' + (KLEUR[st] || '') + '">' + esc(st) + '</span>'
+                    : '<span class="chip nieuw">geen stand</span>';
+      return '<button class="rij' + (st ? '' : ' werk') + '" data-lab="' + esc(x.lab) + '">' +
+        '<span class="naam">' + esc(x.lab) + '</span>' +
+        '<span class="paar"><b>' + (x.verwijzingen || 0) + '</b><span>verwijzingen</span></span>' +
+        '<span class="paar"><b>' + (x.leveranciers || 0) + '</b><span>shop' + (x.leveranciers === 1 ? '' : 's') + '</span></span>' +
+        '<span class="paar">' + chip + '</span>' + PIJL + '</button>';
+    }).join('') : '<p class="leeg">Geen laboratoria gevonden.</p>';
+    Array.prototype.forEach.call(el('lijstLab').querySelectorAll('[data-lab]'), function (b) {
+      b.addEventListener('click', function () { openLab(b.getAttribute('data-lab')); });
     });
-  } else if (bewaardN) {
-    el('nm').value = bewaardN;
   }
-  // Bij een mislukte automatische aanmelding blijft de naam staan; alleen de
-  // sleutel is dan fout of verlopen.
+
+  el('zoekLev').addEventListener('input', toonLev);
+  el('zoekLab').addEventListener('input', toonLab);
+  el('tabLev').addEventListener('click', function () {
+    el('tabLev').setAttribute('aria-selected', 'true'); el('tabLab').setAttribute('aria-selected', 'false');
+    el('paneelLev').classList.remove('verborgen'); el('paneelLab').classList.add('verborgen');
+  });
+  el('tabLab').addEventListener('click', function () {
+    el('tabLab').setAttribute('aria-selected', 'true'); el('tabLev').setAttribute('aria-selected', 'false');
+    el('paneelLab').classList.remove('verborgen'); el('paneelLev').classList.add('verborgen');
+  });
+
+  function naarDetail() {
+    el('overzicht').classList.add('verborgen');
+    el('detail').classList.remove('verborgen');
+    window.scrollTo(0, 0);
+  }
+  el('terug').addEventListener('click', function () {
+    el('detail').classList.add('verborgen');
+    el('overzicht').classList.remove('verborgen');
+  });
+
+  // --- leverancier: wat er nog te checken valt -----------------------------
+  var werk = [], index = 0, huidigeLeverancier = '';
+
+  function openLeverancier(key) {
+    huidigeLeverancier = key;
+    el('dNaam').textContent = key;
+    el('dSub').textContent = 'Leverancier';
+    el('dInhoud').innerHTML = '<p class="leeg">Laden…</p>';
+    naarDetail();
+    haal('/api/admin/leveranciers/' + encodeURIComponent(key)).then(function (j) {
+      var refs = j.referenties || [], docs = j.documenten || [];
+      // Een kopie bij de shop hoort bij een referentie via het taaknummer.
+      // Zonder kopie valt er niets naast elkaar te leggen.
+      var perTask = {};
+      docs.forEach(function (d) {
+        var t = String(d.taskNumber || '').replace(/^#/, '');
+        if (t) perTask[t] = d;
+      });
+      refs.forEach(function (r) {
+        var t = String(r.referentie || '').split('-')[0];
+        r.kopie = perTask[t] || null;
+      });
+      werk = refs.filter(function (r) { return r.kopie; });
+
+      var gecontroleerd = refs.filter(function (r) { return r.controle; }).length;
+      el('dSub').textContent = 'Leverancier · ' + refs.length + ' labverwijzingen · ' +
+        gecontroleerd + ' gecontroleerd · ' + docs.length + ' eigen kopieën';
+
+      var h = '';
+      if (j.laboordeel && j.laboordeel.status && j.laboordeel.status !== 'erkend') {
+        h += '<div class="blok"><h2>Labstand die hier doorwerkt</h2>' +
+          '<p class="duiding">' + esc(j.laboordeel.lab || '') + ' staat op <strong>' +
+          esc(j.laboordeel.status) + '</strong>. Bewijs dat alleen op dit lab rust telt navenant mee.</p></div>';
+      }
+
+      h += '<div class="blok"><h2>Nog te checken door ' + esc(naam || 'de beoordelaar') +
+        ' <span class="teller">' + werk.length + '</span></h2>' +
+        '<p class="duiding">Bij deze rapporten publiceert de shop zelf een kopie. Openen zet die kopie ' +
+        'naast de verificatiepagina van het lab.</p>';
+      h += werk.length ? werk.map(function (r, i) {
+        var c = r.controle || {};
+        return '<div class="werkrij">' +
+          '<span class="naam">' + esc((r.kopie && r.kopie.product) || c.product || r.referentie) + '</span>' +
+          '<span class="ref">' + esc(r.referentie) + '</span>' +
+          (c.klasse ? '<span class="chip ok">klasse ' + esc(c.klasse) + '</span>'
+                    : '<span class="chip nieuw">geen klasse</span>') +
+          '<button class="knop sec klein" data-i="' + i + '">Naast elkaar leggen</button></div>';
+      }).join('') : '<p class="leeg">Geen enkele referentie heeft een kopie bij de shop. Er valt hier niets te vergelijken.</p>';
+      h += '</div>';
+
+      var zonder = refs.filter(function (r) { return !r.kopie; });
+      if (zonder.length) {
+        h += '<div class="blok"><h2>Kale referenties <span class="teller">' + zonder.length + '</span></h2>' +
+          '<p class="duiding">Wel een labverwijzing, geen kopie bij de shop. Hier valt alleen te controleren ' +
+          'óf de referentie oplost, niet of de shop hem goed weergeeft.</p>' +
+          zonder.slice(0, 40).map(function (r) {
+            return '<div class="werkrij"><span class="naam">' +
+              esc((r.controle && r.controle.product) || r.referentie) + '</span>' +
+              '<span class="ref">' + esc(r.referentie) + '</span>' +
+              (r.controle ? '<span class="chip ok">gecontroleerd</span>'
+                          : '<span class="chip nieuw">nog niet gecontroleerd</span>') +
+              (r.url ? '<a class="knop sec klein" href="' + esc(r.url) + '" target="_blank" rel="noopener">Openen bij het lab</a>' : '') +
+              '</div>';
+          }).join('') +
+          (zonder.length > 40 ? '<p class="duiding">…en nog ' + (zonder.length - 40) + '.</p>' : '') +
+          '</div>';
+      }
+
+      el('dInhoud').innerHTML = h;
+      Array.prototype.forEach.call(el('dInhoud').querySelectorAll('[data-i]'), function (b) {
+        b.addEventListener('click', function () { openModal(Number(b.getAttribute('data-i'))); });
+      });
+    }).catch(function (e) {
+      el('dInhoud').innerHTML = '<p class="fout">Ophalen mislukt: ' + esc(e.message) + '</p>';
+    });
+  }
+
+  // --- laboratorium: de stand vastleggen -----------------------------------
+  // Wat een stand betekent voor het bewijs. Staat hier zodat de beoordelaar
+  // het gevolg ziet vóór ze kiest, niet erna.
+  var GEVOLG = {
+    'erkend': 'Bewijs van dit lab telt mee.',
+    'nog niet beoordeeld': 'Niemand heeft ernaar gekeken. Het bewijs blijft staan zoals het was.',
+    'niet bereikbaar voor ons': 'Het lab deugt, onze server komt er niet in. Blokkeert niets; een mens die de referentie natrekt tilt hem alsnog naar geverifieerd.',
+    'onvoldoende verifieerbaar': 'Wij konden het lab niet onafhankelijk bevestigen. Het bewijs telt niet mee. Dit zegt NIET dat het lab vals is.',
+    'niet onafhankelijk': 'Bestaat wel, maar hoort bij de leverancier. Het bewijs telt niet mee.',
+    'bestaat niet': 'Vastgesteld dat het niet bestaat. Elk certificaat dat ernaar wijst wordt waardeloos — zwaar, en alleen met bronnen.',
+    'geen lab - databron/testplatform': 'Geen analytisch lab maar een platform. De bewijswaarde komt van het lab dat de analyse écht deed; is dat niet te achterhalen, dan levert het rapport geen labbewijs op.',
+    'afgekeurd - kwaliteitsborging': 'Het lab bestaat en is bereikbaar, maar je hebt in de rapporten concrete gebreken gezien. Alleen gebruiken als je die kunt benoemen.'
+  };
+
+  function openLab(naamLab) {
+    var l = data.labs.filter(function (x) { return x.lab === naamLab; })[0];
+    if (!l) return;
+    var o = l.oordeel || null;
+    el('dNaam').textContent = naamLab;
+    el('dSub').textContent = 'Laboratorium · ' + (l.verwijzingen || 0) + ' verwijzingen · ' +
+      (l.leveranciers || 0) + ' shop' + (l.leveranciers === 1 ? '' : 's');
+
+    var opties = (data.statussen.length ? data.statussen : Object.keys(GEVOLG)).map(function (s) {
+      return '<option value="' + esc(s) + '"' + (o && o.status === s ? ' selected' : '') + '>' + esc(s) + '</option>';
+    }).join('');
+
+    var h = '<div class="blok"><h2>Stand van dit laboratorium</h2>';
+    if (o) {
+      h += '<p class="duiding">Nu: <strong>' + esc(o.status) + '</strong>, vastgelegd door ' +
+        esc(o.vastgelegdDoor || '?') + '. Opnieuw vastleggen overschrijft dat.</p>';
+    } else {
+      h += '<p class="duiding">Dit lab heeft nog geen stand. Zolang die er niet is telt zijn bewijs ' +
+        'volledig mee in de FREE.</p>';
+    }
+    h += '<form id="labForm">' +
+      '<div class="rij2">' +
+        '<div><label class="veld keuze"><select id="fStatus" name="status">' + opties + '</select>' +
+          '<span class="veld-label">Hoe behandelen we bewijs van dit lab?</span></label>' +
+          '<p class="veld-hulp" id="fGevolg"></p></div>' +
+        '<label class="veld"><textarea id="fBronnen" name="bronnen" placeholder=" ">' +
+          esc((o && o.bronnen) ? [].concat(o.bronnen).join('\n') : '') + '</textarea>' +
+          '<span class="veld-label">Bronnen — één per regel</span></label>' +
+      '</div>' +
+      '<label class="veld"><textarea id="fOnder" name="onderbouwing" placeholder=" ">' +
+        esc((o && o.onderbouwing) || '') + '</textarea>' +
+        '<span class="veld-label">Wat heb je nagegaan, en wat vond je?</span></label>' +
+      '<p class="veld-hulp">Schrijf wat je hebt gezien, niet wat je vermoedt.</p>' +
+      '<div class="rij2">' +
+        '<label class="veld keuze"><select id="fOpg" name="informatieOpgevraagd">' +
+            '<option value="">— niet van toepassing —</option>' +
+            '<option value="ja"' + (o && o.informatieOpgevraagd === true ? ' selected' : '') + '>ja</option>' +
+            '<option value="nee"' + (o && o.informatieOpgevraagd === false ? ' selected' : '') + '>nee</option>' +
+          '</select><span class="veld-label">Bedrijfsgegevens opgevraagd bij de leverancier?</span></label>' +
+        '<label class="veld"><input type="text" id="fReac" name="informatieReactie" placeholder=" " value="' +
+          esc((o && o.informatieReactie) || '') + '">' +
+          '<span class="veld-label">Wat kwam daarop terug?</span></label>' +
+      '</div>' +
+      '<p class="veld-hulp">Weigeren bewijst niets, maar het is wel waar de keten ophoudt.</p>' +
+      '<p style="margin-top:8px"><button type="submit" class="knop prim">Vastleggen</button></p>' +
+      '<p class="melding" id="fMelding" hidden></p>' +
+      '</form></div>';
+
+    el('dInhoud').innerHTML = h;
+    naarDetail();
+
+    function gevolg() {
+      el('fGevolg').textContent = GEVOLG[el('fStatus').value] || '';
+    }
+    el('fStatus').addEventListener('change', gevolg);
+    gevolg();
+
+    el('labForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var body = {
+        lab: naamLab,
+        status: el('fStatus').value,
+        onderbouwing: el('fOnder').value.trim(),
+        bronnen: el('fBronnen').value.split('\n').map(function (s) { return s.trim(); })
+          .filter(function (s) { return s; }),
+        vastgelegdDoor: naam
+      };
+      var opg = el('fOpg').value;
+      if (opg) { body.informatieOpgevraagd = opg === 'ja'; body.informatieReactie = el('fReac').value.trim(); }
+      if (body.onderbouwing.length < 10) {
+        melding('fMelding', 'Schrijf eerst op wat je hebt nagegaan. Zonder onderbouwing geen stand.');
+        return;
+      }
+      haal('/api/admin/laboratoria/beoordeling', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      }).then(function () {
+        melding('fMelding', 'Vastgelegd. Elke leverancier die naar dit lab verwijst erft deze stand.');
+        return laden();
+      }).catch(function (err) { melding('fMelding', 'Mislukt: ' + err.message); });
+    });
+  }
+
+  function melding(id, tekst) { el(id).textContent = tekst; el(id).hidden = false; }
+
+  // --- de kopie naast het labrapport ---------------------------------------
+  var VELDEN = [
+    { s: 'product', l: 'Product' }, { s: 'batchnummer', l: 'Batch' },
+    { s: 'client', l: 'Opdrachtgever' }, { s: 'manufacturer', l: 'Fabrikant' },
+    { s: 'purityPercent', l: 'Zuiverheid' }, { s: 'analysisDate', l: 'Analysedatum' }
+  ];
+
+  function shopWaarde(r, sleutel) {
+    var c = r.controle || {}, k = r.kopie || {};
+    if (sleutel === 'product') return k.product || c.product || '';
+    if (sleutel === 'batchnummer') return c.batchnummer || '';
+    if (sleutel === 'client') return c.client || '';
+    if (sleutel === 'manufacturer') return c.manufacturer || '';
+    if (sleutel === 'purityPercent') return (k.zuiverheid != null ? k.zuiverheid : (c.zuiverheid || ''));
+    if (sleutel === 'analysisDate') return c.datumAnalyse ? String(c.datumAnalyse).slice(0, 10) : '';
+    return '';
+  }
+
+  function openModal(i) { index = i; toonModal(); el('laag').classList.add('open'); el('bAccept').focus(); }
+
+  function toonModal() {
+    var r = werk[index], c = r.controle || {}, k = r.kopie || {};
+    el('mTitel').textContent = k.product || c.product || r.referentie;
+    var labels = ['Opdrachtgever', 'Fabrikant', 'Batch', 'Zuiverheid', 'Vulling',
+                  'Lost op bij het lab', 'Klasse', 'Gecontroleerd door', 'Notitie'];
+    el('mLabels').innerHTML = labels.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('');
+    el('mWaarden').innerHTML = [
+      of(c.client), of(c.manufacturer), of(c.batchnummer), of(c.zuiverheid),
+      of(c.vulling, 'niet berekend'),
+      c.resolvet === true ? 'ja' : (c.resolvet === false ? 'nee' : '<span class="niet">nog niet gecontroleerd</span>'),
+      of(c.klasse, 'nog niet toegekend'), of(c.checkedBy, 'nog niemand'), of(c.notitie, '—')
+    ].map(function (w) { return '<p>' + w + '</p>'; }).join('');
+
+    el('mLink').href = r.url || '#';
+    el('mLink').textContent = r.url || 'geen verificatie-URL';
+
+    var vak = el('mKopie');
+    if (!k.url) vak.innerHTML = '<div class="geenkopie">Geen kopie bij de shop gevonden.</div>';
+    else if (/pdf/i.test(k.mimetype || '') || /\.pdf($|\?)/i.test(k.url))
+      vak.innerHTML = '<iframe src="' + esc(k.url) + '#toolbar=0" title="Kopie bij de shop"></iframe>';
+    else vak.innerHTML = '<img src="' + esc(k.url) + '" alt="Kopie van het rapport bij de shop">';
+
+    el('vVelden').innerHTML = VELDEN.map(function (v) {
+      var w = shopWaarde(r, v.s);
+      return '<label class="veldregel">' +
+        '<input type="checkbox" value="' + esc(v.s) + '">' +
+        '<span class="shop">' + esc(v.l) + ' — shop: ' + esc(w === '' ? 'niets' : w) + '</span>' +
+        '<input type="text" placeholder="bij het lab…" hidden></label>';
+    }).join('');
+    Array.prototype.forEach.call(el('vVelden').querySelectorAll('input[type=checkbox]'), function (cb) {
+      cb.addEventListener('change', function () {
+        cb.parentNode.querySelector('input[type=text]').hidden = !cb.checked;
+      });
+    });
+
+    verberg();
+  }
+
+  function verberg() { el('vGeen').hidden = true; el('vKlopt').hidden = true; el('mMelding').hidden = true; }
+  function meld(t) { el('mMelding').textContent = t; el('mMelding').hidden = false; }
+  function volgende() {
+    if (index + 1 < werk.length) { index++; toonModal(); }
+    else { el('laag').classList.remove('open'); openLeverancier(huidigeLeverancier); }
+  }
+
+  function leg(body, tekst) {
+    body.gecontroleerdDoor = naam;
+    body.checkedBy = naam;
+    return haal('/api/admin/coa/references/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(function () { meld(tekst); setTimeout(volgende, 900); })
+      .catch(function (e) { meld('Mislukt: ' + e.message); });
+  }
+
+  // Accepteren = de referentie lost op en de kopie komt overeen. De letter A
+  // volgt uit besluit A15b; de beoordelaar kiest hem niet zelf. vergelekenMet
+  // is de kopie waartegen is afgezet - zonder die verwijzing rust een klasse
+  // nergens op.
+  el('bAccept').addEventListener('click', function () {
+    var r = werk[index];
+    verberg();
+    leg({ referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: true,
+          klasse: 'A', vergelekenMet: (r.kopie && r.kopie.url) || null },
+        'Vastgelegd: de referentie lost op en de kopie komt overeen. Klasse A volgt daaruit.');
+  });
+
+  el('bGeen').addEventListener('click', function () { verberg(); el('vGeen').hidden = false; });
+
+  Array.prototype.forEach.call(el('vGeen').querySelectorAll('[data-uitkomst]'), function (b) {
+    b.addEventListener('click', function () {
+      var r = werk[index], u = b.getAttribute('data-uitkomst');
+      verberg();
+      if (u === 'lost-niet-op') {
+        leg({ referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: false,
+              klasse: 'D', vergelekenMet: (r.kopie && r.kopie.url) || null },
+            'Vastgelegd: het lab antwoordde en kent deze referentie niet.');
+      } else {
+        // GEEN resolvet:false. Een botmuur zegt iets over ons, niet over de
+        // leverancier. Alleen de poging wordt vastgelegd.
+        leg({ referentie: r.referentie, lab: r.lab || 'Janoshik',
+              notitie: 'Poging op ' + new Date().toISOString().slice(0, 10) +
+                       ': wij kwamen niet langs de beveiliging van het lab. Zegt niets over de leverancier.' },
+            'Vastgelegd als poging. De referentie blijft openstaan.');
+      }
+    });
+  });
+
+  el('bKlopt').addEventListener('click', function () { verberg(); el('vKlopt').hidden = false; });
+
+  el('vOpslaan').addEventListener('click', function () {
+    var r = werk[index], kopieShop = {}, bijLab = {}, aantal = 0;
+    Array.prototype.forEach.call(el('vVelden').querySelectorAll('.veldregel'), function (rg) {
+      var cb = rg.querySelector('input[type=checkbox]');
+      if (!cb.checked) return;
+      var sleutel = cb.value, labWaarde = rg.querySelector('input[type=text]').value.trim();
+      if (!labWaarde) return;
+      aantal++;
+      var shop = shopWaarde(r, sleutel);
+      if (sleutel === 'purityPercent') {
+        var ps = parseFloat(String(shop).replace('%', '')), pl = parseFloat(labWaarde.replace('%', ''));
+        if (!isNaN(ps)) kopieShop.purityPercent = ps;
+        if (!isNaN(pl)) bijLab.purityPercent = pl;
+      } else {
+        if (shop) kopieShop[sleutel] = String(shop);
+        bijLab[sleutel] = labWaarde;
+      }
+    });
+    if (!aantal) { meld('Vink aan wát afwijkt en vul in wat het lab zegt — anders valt er niets te classificeren.'); return; }
+    verberg();
+    leg({ referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: true,
+          kopieShop: kopieShop, bijLab: bijLab, vergelekenMet: (r.kopie && r.kopie.url) || null },
+        'Vastgelegd: ' + aantal + ' veld' + (aantal === 1 ? '' : 'en') +
+        ' wijkt af. De server bepaalt of dat schrijfwijze, een labwaarde of de koppeling raakt.');
+  });
+
+  el('bVolgende').addEventListener('click', volgende);
+  el('laag').addEventListener('click', function (e) { if (e.target === el('laag')) el('laag').classList.remove('open'); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { el('laag').classList.remove('open'); sluitLade(); }
+  });
+
+  // --- opstarten -----------------------------------------------------------
+  var bewaardToken = lees(SLEUTEL_TOKEN), bewaardNaam = lees(SLEUTEL_NAAM);
+  if (bewaardToken && bewaardNaam) {
+    aanmelden(bewaardToken, bewaardNaam).catch(function () { wis(SLEUTEL_TOKEN); });
+  } else if (bewaardNaam) {
+    el('nm').value = bewaardNaam;
+  }
 })();
 </script>
+</body>
+</html>
