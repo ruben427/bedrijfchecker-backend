@@ -9,3 +9,8 @@ _oud/
 # Claims van gelijktijdig werkende chats. Nooit committen: ze gelden
 # alleen op deze machine en alleen zolang iemand bezig is.
 .claude-locks/
+
+# Uitwijk-werkmap: staat hier alleen omdat een gekoppelde map de enige
+# plek is waar een chat kan schrijven. Nooit committen - het is een eigen
+# checkout van dezelfde repo, geen inhoud.
+uitwijk/
