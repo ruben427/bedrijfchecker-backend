@@ -19,7 +19,7 @@ const ilsLab = require('./ilsLab');
 // (documenthash, deze versie). Verhoog dit ALLEEN bewust: elke wijziging
 // betekent dat alle eerder gelezen COA's opnieuw door vision gaan.
 const COA_EXTRACTOR_VERSION = 'coa-read-1';
-const { runScoringEngine, computeQuantity, CATEGORY_DEFS, roodGedragen } = require('./scoringEngine');
+const { runScoringEngine, computeQuantity, CATEGORY_DEFS, roodGedragen, evidenceGate } = require('./scoringEngine');
 const { bouwBlokken } = require('./blokken');
 // Het aantal categorieen stond op vier plekken los ingetypt. Hier komt het
 // uit de lijst zelf, zodat het label niet stilletjes verloopt zodra er een
@@ -1985,6 +1985,58 @@ async function runCategorize(caseId, ctx, tier) {
   const slimPhases = trimPhasesForPrompt(phaseData);
   const coaFase = (phaseData.coaDataset && phaseData.coaDataset.data) || {};
   const coaRecords = coaFase.coaRecords || [];
+
+  // ---- de gate weten we al, dus vraag het niet nog een keer -------------
+  //
+  // De Evidence Gate hangt UITSLUITEND af van intake, en die lijst is klaar
+  // op het moment dat de COA-stap eindigt. Hij werd alleen pas na deze stap
+  // berekend, en daardoor draaide de duurste aanroep van de pijplijn ook als
+  // al vaststond dat er niets te beoordelen viel.
+  //
+  // Gemeten op 23 september, drie afgeronde runs:
+  //
+  //   lumopeptides.com    NO_COA_FOUND        0 gevonden, 0 bruikbaar
+  //   peptidekliniek.nl   LAB_NOT_VERIFIABLE  41 gevonden, 0 bruikbaar
+  //   omegapeptides.eu    PARTIAL             76 gevonden, 2 bruikbaar
+  //
+  // Bij lumopeptides leverde de categorisatie op: "Geen positieve bevindingen
+  // vastgesteld op basis van de aangeleverde brondata." Acht minuten wachten
+  // en een API-aanroep voor een zin die uit de gate zelf volgt.
+  //
+  // LET OP de grens. Alleen NO_COA_FOUND wordt overgeslagen: dan is er
+  // letterlijk geen rapport om over te oordelen en wordt elke categorie wit.
+  // Bij LAB_NOT_VERIFIABLE zijn de rapporten WEL gelezen en valt er nog van
+  // alles over de inhoud te zeggen - bij peptidekliniek leverde dat
+  // "zware metalen niet getest" en "geen informatie over monstername" op.
+  // Die blijft dus gewoon draaien.
+  //
+  // En alleen bij de gratis controle. Een Deep Dive heeft bedrijfs- en
+  // reputatiegegevens die los staan van de COA's; daar valt over B01-B05 en
+  // R01/R02 wel iets te zeggen zonder een enkel rapport.
+  const vroegeGate = evidenceGate(coaFase.intake || []);
+  if (tier !== 'deep' && vroegeGate.status === 'FAIL' && vroegeGate.code === 'NO_COA_FOUND') {
+    await meldStap(caseId, 'Er is geen enkel testrapport aangetroffen. Er valt dus niets te ' +
+      'beoordelen, en de categoriebeoordeling wordt overgeslagen.');
+    const leeg = {};
+    CATEGORY_DEFS.forEach(function (d) {
+      leeg[d.id] = {
+        color: 'white',
+        rationale: (d.pillar === 'COA' || d.pillar === 'LAB')
+          ? 'Er is geen testrapport van deze leverancier aangetroffen, dus hierover valt niets vast te stellen.'
+          : 'Deze categorie wordt in de gratis controle niet onderzocht.'
+      };
+    });
+    await db.updateCase(caseId, {
+      categoryAssessments: leeg,
+      adequacy: {
+        coa: null, lab: null,
+        rationale: 'Niet beoordeeld: er is geen testrapport aangetroffen om tegen af te zetten.'
+      }
+    });
+    await finishStep(caseId, 'categorize', startedAt);
+    return;
+  }
+
   // L01 kreeg tot nu toe geen enkele instructie mee, terwijl het 40% van de
   // gratis score is. Zonder uitleg leest een leeg labveld als "fout" in plaats
   // van "niet gevonden".
