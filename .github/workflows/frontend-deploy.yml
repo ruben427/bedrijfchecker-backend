@@ -28,20 +28,24 @@ name: Frontend uitrollen
 on:
   push:
     branches: [main]
+    # Geen lijst met bestandsnamen meer, maar een regel. Een lijst moet je
+    # onthouden bij te werken, en dat gaat mis op de stilste manier die er is:
+    # je pusht een nieuw bestand, de workflow slaat over, en de site blijft
+    # oud zonder dat iets een fout geeft. 23 september zo gevonden bij de twee
+    # nieuwe logo's. Met een patroon telt alles mee wat een browser opvraagt.
     paths:
-      - 'bedrijfchecker.html'
-      - 'bedrijfchecker-test.html'
-      - 'bedrijfchecker.css'
-      - 'solike.css'
-      - 'admin.html'
-      - 'admin-laboratoria.html'
-      - 'admin-analytics.html'
-      - 'PEPPROOF-LOGO.svg'
-      - 'PEPPROOF-ADMIN-LOGO.svg'
-      - 'PEPPROOF-BETA-LOGO.svg'
-      - 'frontend/index.html'
-      - 'frontend/admin-coa.html'
-      - 'frontend/admin-leveranciers.html'
+      - '*.html'
+      - '*.css'
+      - '*.svg'
+      - '*.png'
+      - '*.jpg'
+      - '*.jpeg'
+      - '*.webp'
+      - '*.ico'
+      - '*.woff'
+      - '*.woff2'
+      - '*.js'
+      - 'frontend/**'
       - '.github/workflows/frontend-deploy.yml'
   # Met de hand starten kan ook, bijvoorbeeld na een wijziging op de server
   # zelf of om te controleren of alles er nog net zo op staat.
@@ -61,37 +65,53 @@ jobs:
       - name: Code ophalen
         uses: actions/checkout@v4
 
-      # De bestanden staan in de repo niet op dezelfde plek als op de server.
-      # frontend/index.html wordt /index.html, en de bestanden uit de hoofdmap
-      # gaan een op een mee. Dat is nagemeten tegen de live site op 22
-      # september, niet geraden: elk bestand hieronder is opgehaald van
-      # checker.deannemethode.nl en vergeleken met zijn tegenhanger in de repo.
+      # Wat gaat er mee? Alles in de hoofdmap dat een browser kan opvragen,
+      # plus alles uit frontend/. Die map is de webroot: frontend/index.html
+      # wordt /index.html. Nagemeten tegen de live site op 22 september - elk
+      # bestand is toen opgehaald van checker.deannemethode.nl en vergeleken
+      # met zijn tegenhanger in de repo.
       #
-      # LET OP: admin-analytics.html bestaat wel in de repo maar stond op dat
-      # moment NIET op de server (404). Hij gaat nu mee. Wil je dat niet, haal
-      # dan deze regel en de bijbehorende regel in "paths" hierboven weg.
+      # Op 23 september van een handmatige lijst naar deze regel gegaan. De
+      # lijst was twee keer achter gaan lopen zonder dat iets een fout gaf.
+      # De regel heeft een keerzijde: leg je een los html-bestand in de
+      # hoofdmap, dan staat het de volgende push publiek. Daarom drukt de
+      # stap af wat hij gaat versturen - dat staat in het runlogboek.
+      #
+      # git ls-files en niet ls: zo gaat alleen mee wat ook echt in de repo
+      # staat, en nooit iets dat toevallig in de werkmap rondslingert.
       - name: Map klaarzetten zoals hij op de server hoort
         run: |
           set -euo pipefail
           mkdir -p uitrol
-          cp bedrijfchecker.html        uitrol/bedrijfchecker.html
-          cp bedrijfchecker-test.html   uitrol/bedrijfchecker-test.html
-          cp bedrijfchecker.css         uitrol/bedrijfchecker.css
-          cp solike.css                 uitrol/solike.css
-          cp admin.html                 uitrol/admin.html
-          cp admin-laboratoria.html     uitrol/admin-laboratoria.html
-          cp admin-analytics.html       uitrol/admin-analytics.html
-          cp PEPPROOF-LOGO.svg          uitrol/PEPPROOF-LOGO.svg
-          # 23 september: deze twee stonden wel in de repo en werden wel
-          # door de pagina's opgevraagd, maar gingen niet mee. Gevonden door
-          # elke src/href in de uitgerolde pagina's langs deze lijst te halen.
-          cp PEPPROOF-ADMIN-LOGO.svg   uitrol/PEPPROOF-ADMIN-LOGO.svg
-          cp PEPPROOF-BETA-LOGO.svg    uitrol/PEPPROOF-BETA-LOGO.svg
-          cp frontend/index.html        uitrol/index.html
-          cp frontend/admin-coa.html    uitrol/admin-coa.html
-          cp frontend/admin-leveranciers.html uitrol/admin-leveranciers.html
-          echo "Klaar om te uploaden:"
+
+          # :(top,glob) houdt de ster binnen de hoofdmap: zonder glob-magie
+          # matcht *.html ook frontend/index.html en komt die twee keer mee.
+          git ls-files -z -- \
+            ':(top,glob)*.html' ':(top,glob)*.css'  ':(top,glob)*.svg' \
+            ':(top,glob)*.png'  ':(top,glob)*.jpg'  ':(top,glob)*.jpeg' \
+            ':(top,glob)*.webp' ':(top,glob)*.ico'  ':(top,glob)*.woff' \
+            ':(top,glob)*.woff2' ':(top,glob)*.js' \
+          | while IFS= read -r -d '' f; do
+              cp "$f" "uitrol/$f"
+            done
+
+          # frontend/ wordt plat neergezet in de webroot.
+          git ls-files -z -- 'frontend/*' | while IFS= read -r -d '' f; do
+              naam="${f#frontend/}"
+              # README.md hoort bij de repo, niet op de site.
+              case "$naam" in README.md) continue;; esac
+              if [ -e "uitrol/$naam" ]; then
+                echo "BOTSING: $f en de hoofdmap willen allebei /$naam worden."
+                echo "Eén van de twee moet een andere naam krijgen; anders is"
+                echo "niet te zeggen welke er live komt."
+                exit 1
+              fi
+              cp "$f" "uitrol/$naam"
+            done
+
+          echo "Dit gaat naar de server:"
           ls -l uitrol
+          echo "Aantal bestanden: $(ls -1 uitrol | wc -l)"
 
       - name: Controleren of de geheimen er zijn
         env:
