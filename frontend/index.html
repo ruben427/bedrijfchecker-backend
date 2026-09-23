@@ -1172,9 +1172,18 @@
       '<p class="coa-tussen-tekst">Heb je misschien zelf een COA van een aangeschafde batch of heb je ' +
       'een link waar lab testen staan van deze leverancier? Plaats de link hieronder of kies een bestand ' +
       'om met ons te delen. Je kan er max ' + TUSSEN_COA_MAX + ' met ons delen.</p>' +
-      '<div class="coa-tussen-veld' + (state.tussenCoaError ? ' has-error' : '') + '">' +
-        '<input type="text" id="f-tussen-url" value="' + escapeHtml(state.tussenCoaUrl) + '" placeholder="Link naar de certificaten">' +
-        '<label class="coa-tussen-kies" for="f-tussen-file">Bestand kiezen</label>' +
+      // Het veld uit het designsysteem (.veld met-eenheid), niet een eigen
+      // doosje dat erop lijkt: zo doet dit veld precies wat elk ander veld in
+      // de app doet - het opschrift schuift omhoog zodra er iets staat, het
+      // groeit 4px naar buiten als het actief is, en fout kleurt de rand.
+      //
+      // De placeholder is een spatie. Zonder placeholder grijpt
+      // :not(:placeholder-shown) altijd en zou het opschrift nooit groot in
+      // het veld staan; dat is de afspraak in het hele designsysteem.
+      '<div class="veld met-eenheid' + (state.tussenCoaError ? ' fout' : '') + '">' +
+        '<input type="text" id="f-tussen-url" value="' + escapeHtml(state.tussenCoaUrl) + '" placeholder=" ">' +
+        '<label class="veld-eenheid" for="f-tussen-file">Bestand kiezen</label>' +
+        '<span class="veld-label">Link naar de certificaten</span>' +
         '<input type="file" id="f-tussen-file" accept="image/*,application/pdf" multiple hidden>' +
       '</div>' +
       // Twee keer dezelfde keuze, en dat is geen slordigheid. Op een smal

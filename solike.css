@@ -407,6 +407,61 @@ textarea:focus{ min-height:88px; }
 @keyframes veld-draai{ to{ transform:rotate(360deg) } }
 @media (prefers-reduced-motion: reduce){ .veld.bezig::after{ animation:none } }
 
+/* ---------- veld met een eenheid ernaast ----------
+   Figma "Formfield met unit". Rechts in het veld staat een vaste eenheid of
+   een tweede actie, met een streep ertussen.
+
+   Twee kolommen, geen extra doosje eromheen: de input en de eenheid tekenen
+   ieder hun eigen rand, de input laat zijn rechterrand weg en de eenheid zijn
+   linker-radius, zodat er in het midden precies een streep overblijft.
+
+   Waarom geen absolute eenheid over de input heen: dan moet de input een
+   rechterpadding krijgen die even breed is als de tekst van de eenheid, en
+   die breedte is niet in CSS te kennen. Zo hoeft niemand iets te tellen.
+
+   Actief groeit het veld 4px naar buiten (zie hierboven). Ieder deel groeit
+   daarom naar zijn EIGEN buitenkant - de input naar links, de eenheid naar
+   rechts - en in het midden verschuift er niets. */
+.veld.met-eenheid{
+  display:grid; grid-template-columns:1fr auto; align-items:stretch;
+}
+.veld.met-eenheid > input{
+  min-width:0;
+  /* border-right-width en niet border-right: de korte vorm zet de kleur terug
+     op currentColor, en dan staat er in de foutstand een zwarte rand klaar
+     zodra iemand die breedte ergens weer op 1px zet. */
+  border-right-width:0;
+  border-radius:var(--radius-sm,8px) 0 0 var(--radius-sm,8px);
+}
+.veld-eenheid{
+  display:flex; align-items:center; justify-content:center;
+  box-sizing:border-box; padding:0 20px;
+  position:relative; z-index:2;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-left:1px solid var(--eenheid-streep,#d9d9d9);
+  border-radius:0 var(--radius-sm,8px) var(--radius-sm,8px) 0;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
+  line-height:1; letter-spacing:-.02em; color:var(--accent);
+  white-space:nowrap; cursor:pointer;
+}
+.veld-eenheid:hover{ color:var(--accent-strong); }
+.veld.met-eenheid > input:focus{
+  width:calc(100% + 4px); margin:-4px 0 -4px -4px;
+}
+.veld.met-eenheid > input:focus ~ .veld-eenheid{
+  margin:-4px -4px -4px 0;
+  background:var(--surface-2); border-color:var(--surface-2);
+  /* Het streepje uit het ontwerp valt weg tegen het gevulde vlak van de
+     actieve stand; daar neemt de gewone randkleur het over. */
+  border-left-color:var(--border);
+}
+.veld.met-eenheid.fout > .veld-eenheid{ border-color:var(--melding-fout) }
+.veld.met-eenheid.goed > .veld-eenheid{ border-color:var(--melding-ok) }
+.veld.met-eenheid > input:disabled ~ .veld-eenheid{
+  color:var(--text-faint); cursor:not-allowed;
+}
+
 /* keuzeveld: zelfde doos, met een pijltje erin */
 .veld.keuze > select{
   appearance:none; -webkit-appearance:none;
