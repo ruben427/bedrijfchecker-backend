@@ -54,6 +54,12 @@
     startEigenCoaFiles: [],  // idem, maar als bestand (PDF of foto)
     startEigenCoaError: null,
     startEigenCoaOpen: false,
+    // Hetzelfde veld, maar op de uitkomstpagina van een check die niets vond.
+    // Apart gehouden van de start: dat zijn twee verschillende momenten en de
+    // een mag de ander niet leegmaken.
+    naderhandCoaUrl: '',
+    naderhandCoaFiles: [],
+    naderhandCoaError: null,
     runningCaseIds: {},      // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
     runningStepKeys: {}      // caseId -> key van de stap die nu via "opnieuw" wordt herdraaid (voor renderProgress)
   };
@@ -728,6 +734,7 @@
     if (backBtn) backBtn.addEventListener('click', goDashboard);
     var retryBtn = app.querySelector('#retry-audit');
     if (retryBtn) retryBtn.addEventListener('click', function(){ rerunCase(c); });
+    wireNaderhandCoa(c);
     // Uitklappers, "Lees meer" en elke knop die het Deep Dive-paneel opent.
     Array.prototype.forEach.call(app.querySelectorAll('.acc-header'), function(btn){
       btn.addEventListener('click', function(){
@@ -823,6 +830,59 @@
   // Live-logje binnen de lopende stap. Zonder dit staat er minutenlang alleen
   // "bezig" en is niet te zien of er nog iets gebeurt. De tijdstempels zijn
   // het eigenlijke signaal: lopen die op, dan leeft hij nog.
+  // Het certificaat dat de bezoeker naderhand aanlevert start een NIEUWE
+  // check op dezelfde website, met dat certificaat erbij. Niet een rerun van
+  // deze case: die heeft het certificaat niet gezien en zou het opnieuw
+  // zonder draaien.
+  function wireNaderhandCoa(c){
+    var url = app.querySelector('#f-naderhand-url');
+    if (url){
+      url.addEventListener('input', function(){
+        state.naderhandCoaUrl = url.value;
+        if (state.naderhandCoaError) state.naderhandCoaError = null;
+      });
+    }
+    var best = app.querySelector('#f-naderhand-file');
+    if (best){
+      best.addEventListener('change', function(){
+        state.naderhandCoaFiles = Array.prototype.slice.call(best.files || []).slice(0, 3);
+        render();
+      });
+    }
+    var wis = app.querySelector('#naderhand-wis');
+    if (wis) wis.addEventListener('click', function(){ state.naderhandCoaFiles = []; render(); });
+
+    var start = app.querySelector('#naderhand-start');
+    if (!start) return;
+    start.addEventListener('click', function(){
+      var link = (state.naderhandCoaUrl || '').trim();
+      if (!link && !state.naderhandCoaFiles.length){
+        state.naderhandCoaError = 'Plak een link naar je certificaat of kies een bestand.';
+        render();
+        return;
+      }
+      if (state.runningCaseIds['__naderhand__']) return;
+      state.runningCaseIds['__naderhand__'] = true;
+      render();
+      apiCreateCase(
+        { naam: domainOf(c.website), website: c.website },
+        [], null,
+        { url: link, files: state.naderhandCoaFiles }
+      ).then(function(nieuw){
+        delete state.runningCaseIds['__naderhand__'];
+        state.naderhandCoaUrl = ''; state.naderhandCoaFiles = []; state.naderhandCoaError = null;
+        state.cases.unshift(nieuw);
+        goDetail(nieuw.id);
+      }).catch(function(e){
+        delete state.runningCaseIds['__naderhand__'];
+        state.naderhandCoaError = (e && e.code === 'invalid_coa_url')
+          ? (e.message || 'Die link kunnen we niet lezen.')
+          : ('Starten is mislukt: ' + ((e && e.message) || 'onbekende fout'));
+        render();
+      });
+    });
+  }
+
   function renderStapLog(c){
     var st = c && c.currentStep;
     var log = (st && Array.isArray(st.log)) ? st.log : [];
@@ -1872,9 +1932,62 @@
       '</div></section>';
   }
 
+  // De uitkomstpagina van een check die niets vond. Geen rapport, maar de
+  // enige vraag die op dit punt nog iets kan opleveren.
+  function geenRapportGevonden(c){
+    var host = domainOf(c.website || '');
+    var namen = state.naderhandCoaFiles.map(function(f){ return f.name; }).join(', ');
+    var bezig = !!state.runningCaseIds['__naderhand__'];
+
+    return '<div class="rapport">' +
+      '<section class="geen-rapport">' +
+        '<h2>We vonden geen enkel testrapport op ' + escapeHtml(host) + '.</h2>' +
+        '<p class="gr-uitleg">Wij hebben de website doorzocht op certificaten en labverwijzingen en niets aangetroffen ' +
+        'dat we konden lezen. Daarmee valt er over de identiteit, de zuiverheid en de hoeveelheid van deze producten ' +
+        'niets vast te stellen.</p>' +
+        '<p class="gr-grens"><strong>Dit is geen oordeel over deze leverancier.</strong> Het betekent dat wij niets ' +
+        'hebben gevonden, langs de bronnen die wij doorzochten. Misschien publiceert deze winkel zijn rapporten ergens ' +
+        'waar wij niet kwamen, of alleen op aanvraag.</p>' +
+
+        '<div class="gr-vraag">' +
+          '<h3>Heb jij zelf een certificaat gekregen?</h3>' +
+          '<p class="gr-uitleg">Veel bestellingen komen met een eigen COA, met jouw batchnummer erop. Dat kunnen wij ' +
+          'nooit van de website halen. Stuur hem mee, dan controleren we hem alsnog bij het laboratorium.</p>' +
+          '<div class="check-form">' +
+            '<div class="veld">' +
+              '<input type="text" id="f-naderhand-url" value="' + escapeHtml(state.naderhandCoaUrl) + '" placeholder="Link naar je certificaat">' +
+              '<label class="coa-bestandsknop" for="f-naderhand-file">Bestand kiezen</label>' +
+              '<input type="file" id="f-naderhand-file" accept="image/*,application/pdf" multiple hidden>' +
+            '</div>' +
+            (namen ? '<span class="coa-bestand">' + escapeHtml(namen) +
+              ' <button type="button" class="coa-wis" id="naderhand-wis" aria-label="Verwijderen">&times;</button></span>' : '') +
+            (state.naderhandCoaError ? '<div class="field-error">' + escapeHtml(state.naderhandCoaError) + '</div>' : '') +
+            '<button type="button" class="btn-cta" id="naderhand-start"' + (bezig ? ' disabled' : '') + '>' +
+              ICON_SEARCH + '<span>' + (bezig ? 'Bezig…' : 'Controleer mijn certificaat') + '</span></button>' +
+          '</div>' +
+          '<p class="coa-klein">Je certificaat telt apart van wat de winkel zelf publiceert. De winkel krijgt er geen ' +
+          'betere beoordeling door dat jij iets meestuurt.</p>' +
+        '</div>' +
+      '</section>' +
+      '</div>';
+  }
+
   function renderReport(c){
     var r = c.report || {};
     var engine = c.engineResult;
+
+    // Er is geen enkel testrapport gevonden. Dan is een rapport tonen een
+    // lege huls: elke categorie staat op wit en er is geen score. Wat hier
+    // wel zin heeft is een vraag, want de bezoeker heeft vaak zelf papier bij
+    // zijn bestelling gekregen dat wij nooit van de site kunnen halen.
+    //
+    // LET OP wat hier NIET staat, en waarom niet: dit is geen oordeel over de
+    // leverancier. Niets gevonden betekent dat wij niets vonden - langs de
+    // bronnen die wij doorzochten, op dit moment. Dat is een beperking van
+    // onze kant en geen vaststelling over hen.
+    if (engine && engine.gate && engine.gate.code === 'NO_COA_FOUND'){
+      return geenRapportGevonden(c);
+    }
     var documents = c.documents || [];
     var coaRecords = (c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data && c.phaseData.coaDataset.data.coaRecords) || [];
 

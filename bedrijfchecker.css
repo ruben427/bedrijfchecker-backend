@@ -1335,3 +1335,20 @@ body.sheet-open{ overflow:hidden; }
   .coa-uitleg{ font-size:16px; }
   .check-form > .btn-cta{ width:100%; }
 }
+
+
+/* ---------- Uitkomst: geen enkel rapport gevonden ------------------------
+   Geen rapportopmaak, want er is geen rapport. Een vraag, met daarboven
+   precies wat wij wel en niet hebben vastgesteld. */
+.geen-rapport{ display:flex; flex-direction:column; gap:16px; max-width:744px; }
+.geen-rapport h2{ margin:0; font-size:26px; line-height:1.2; letter-spacing:-.01em; }
+.geen-rapport .gr-uitleg{ margin:0; color:var(--text-muted); line-height:1.6; }
+.geen-rapport .gr-grens{
+  margin:0; padding:14px 16px; border-left:3px solid var(--border);
+  background:var(--surface); border-radius:0 8px 8px 0; line-height:1.6;
+}
+.geen-rapport .gr-vraag{
+  margin-top:8px; padding-top:24px; border-top:1px solid var(--border);
+  display:flex; flex-direction:column; gap:12px;
+}
+.geen-rapport .gr-vraag h3{ margin:0; font-size:20px; }
