@@ -224,8 +224,14 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   display:flex; flex-direction:column; gap:48px }
 .links-onder{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
   justify-content:space-between; gap:12px }
-.titel{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:32px;
-  line-height:1.5; letter-spacing:-.05em; margin:0; color:var(--heading-3); flex:none }
+/* De titel staat op dezelfde regel als Sluiten: titel links, Sluiten helemaal
+   rechts (Figma "COA inladen", 23 september). Een lange referentie breekt niet
+   af over twee regels maar eindigt op een beletselteken - anders duwt hij de
+   hele kop uit elkaar. */
+.titel{ font-family:var(--font-kop,"Baloo 2",system-ui,sans-serif); font-weight:600; font-size:32px;
+  line-height:1.5; letter-spacing:-.05em; margin:0; color:var(--heading-3);
+  flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.paneel-kop #bSluiten{ flex:none; margin-left:auto }
 /* De gegevens van de controle staan in dezelfde doosjes als de invoervelden
    (Figma 1586:6324, herzien 23 september), maar het zijn leesvelden: je kunt
    er niets in typen. Wat het lab zegt verander je niet in dit scherm. */
@@ -305,9 +311,13 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 .kaart-in.geen-rapport{ flex-wrap:wrap }
 .kaart-in.geen-rapport .links,
 .kaart-in.geen-rapport .rechts{ flex:1 1 100%; max-width:none }
-/* De titel op zijn eigen regel, het blok daaronder in het midden. */
-.kaart-in.geen-rapport .links{ flex-basis:100% }
-.kaart-in.geen-rapport .rechts{ align-items:center; justify-content:center; min-height:320px }
+/* Het blok staat gecentreerd, 96px onder de kopregel. */
+.kaart-in.geen-rapport .links{ display:none }
+.kaart-in.geen-rapport .rechts{ align-items:center; justify-content:flex-start;
+  padding-top:56px; min-height:320px }
+/* 56 en niet 96: tussen de onderkant van de titel en de bovenkant van het blok
+   zit al 16px (de kopregel en de ruimte eronder) plus de 24px eigen padding van
+   het blok. 16 + 56 + 24 = 96, gemeten in de browser. */
 .ophalen[hidden]{ display:none }
 .ophalen-uitleg{ margin:0; font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--text) }
 .ophalen .stap{ font-weight:600 }
@@ -501,6 +511,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 <div class="laag" id="laag" role="dialog" aria-modal="true" aria-labelledby="mTitel">
   <div class="paneel">
     <div class="paneel-kop">
+      <h2 class="titel" id="mTitel"></h2>
       <button class="knop link" id="bSluiten">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"
              style="width:14px;height:14px"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -509,7 +520,6 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     </div>
     <div class="kaart-in">
       <div class="links">
-        <h2 class="titel" id="mTitel"></h2>
         <div class="links-onder">
         <div>
           <div class="veldenraster" id="mVelden"></div>
@@ -1227,8 +1237,8 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     var nietsTeZien = el('mPapier').hidden && !el('mPlak').hidden;
     kaart.classList.toggle('geen-rapport', nietsTeZien);
     // Uitlezen kan alleen als er een rapport BIJ HET LAB staat. De kopie van
-    // de shop uitlezen zou de verkeerde kant op werken: dan haal je de
-    // waarden van de shop op en leg je ze vast als wat het lab zegt.
+    // de shop uitlezen zou de verkeerde kant op werken: dan haal je waarden
+    // van de shop op en legt de administratie ze vast als wat het lab zegt.
     var r = werk[index] || {};
     var heeftLabrapport = !!(r.rapportAfbeelding || r.rapportBestand || blobPerRef[r.referentie]);
     el('mUitlezen').classList.toggle('verborgen', !heeftLabrapport);
