@@ -274,15 +274,28 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
    Geen uitzondering voor aanraakschermen: dit scherm is voor de desktop. */
 
 
-/* Een veld dat net uit het rapport komt. Het opschrift zegt zelf waar de
-   waarde vandaan komt, dus geen tekst uit CSS erbij. Blijft staan tot je
-   vastlegt, zodat je ziet wat je nog moet nakijken en wat je zelf typte. */
-.veld.uit-rapport > input, .veld.uit-rapport > textarea{ box-shadow:inset 3px 0 0 var(--warn) }
-.veld.uit-rapport > .veld-label{ color:var(--warn) }
-/* Rood: hier moet je echt kijken. Het model twijfelde, of er stond al iets
-   anders dan op het rapport - dat laatste overschrijven we nooit. */
-.veld.nakijken > input, .veld.nakijken > textarea{ box-shadow:inset 3px 0 0 var(--danger) }
-.veld.nakijken > .veld-label{ color:var(--danger) }
+
+
+/* Een veld met een vaste eenheid (Figma 1631:7369): de eenheid staat rechts
+   in het veld, achter een scheidingslijntje, en hoort niet in de waarde. Bij
+   het opslaan plakken we hem er weer aan. */
+.veld.met-unit > input{ padding-right:64px }
+.veld-unit{ position:absolute; right:12px; top:50%; transform:translateY(-50%);
+  display:flex; align-items:center; gap:12px; pointer-events:none;
+  font-size:18px; line-height:1; color:var(--text-muted) }
+.veld-unit::before{ content:''; width:1px; height:32px; background:#d9d9d9; display:block }
+
+/* De foutstand van hetzelfde component: rode rand met een regel eronder.
+   Gebruikt als het model twijfelde, of als er al iets anders stond dan op het
+   rapport. Geen eigen kleurtje dus - dit zit in het component. */
+.veld.fout > input, .veld.fout > textarea{ border-color:var(--melding-fout) }
+.veldgroep{ display:flex; flex-direction:column }
+.veldgroep .veld{ margin:0 }
+.veld-hulp.fout{ color:var(--melding-fout); margin:4px 0 14px }
+
+/* Wat er over deze controle vaststaat en niet te typen is. */
+.controlestand{ margin:0 0 4px; font-size:14px; color:var(--text-muted) }
+.toevoegveld{ max-width:260px }
 
 .wisknop{ position:absolute; top:20px; right:20px; opacity:0; transition:opacity .12s }
 .papier:hover .wisknop, .wisknop:focus-visible{ opacity:1 }
@@ -513,6 +526,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       <div class="links">
         <div class="links-onder">
         <div>
+          <p class="controlestand" id="mStatus"></p>
           <div class="veldenraster" id="mVelden"></div>
 
           <div class="vervolg" id="vGeen" hidden>
@@ -1121,6 +1135,120 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     try { el('bAccept').focus({ preventScroll: true }); } catch (e) { el('bAccept').focus(); }
   }
 
+  // --- de velden van een controle ------------------------------------------
+  // Eén lijst waar alles uit volgt: wat er getoond wordt, wat je kunt
+  // toevoegen, wat er wordt uitgelezen en wat er wordt weggeschreven. Zo kan
+  // een veld niet ergens half bestaan.
+  //
+  // "Gecontroleerd door" staat er bewust NIET bij. Dat is de naam waarmee je
+  // inlogt; kon je die kiezen, dan stond er straks iemand anders onder wat jij
+  // hebt vastgesteld.
+  var VELDEN_DEF = [
+    { id: 'fClient',       sleutel: 'client',       op: 'Opdrachtgever' },
+    { id: 'fManufacturer', sleutel: 'manufacturer', op: 'Fabrikant' },
+    { id: 'fProduct',      sleutel: 'product',      op: 'Product' },
+    { id: 'fBatch',        sleutel: 'batchnummer',  op: 'Batch' },
+    { id: 'fZuiverheid',   sleutel: 'zuiverheid',   op: 'Zuiverheid', unit: '%',  half: true },
+    { id: 'fGemeten',      sleutel: 'gemetenMg',    op: 'Gemeten',    unit: 'mg', half: true, getal: true },
+    { id: 'fDatum',        sleutel: 'datumAnalyse', op: 'Analysedatum', half: true },
+    { id: 'fTest',         sleutel: 'testnaam',     op: 'Test',       half: true },
+    { id: 'fEtiket',       sleutel: 'etiketMg',     op: 'Etiket',     unit: 'mg', half: true, getal: true },
+    { id: 'fKlasse',       sleutel: 'klasse',       op: 'Klasse',     half: true },
+    { id: 'fNotitie',      sleutel: 'notitie',      op: 'Notitie',    lang: true }
+  ];
+  var zichtbaar = [];     // welke velden nu in beeld staan
+  var foutBij = {};       // veld -> reden om er nog eens naar te kijken
+
+  function defVan(id) {
+    return VELDEN_DEF.filter(function (v) { return v.id === id; })[0];
+  }
+
+  // De waarde zoals hij in het VELD hoort te staan: zonder de eenheid, want
+  // die staat als vast opschrift in het veld zelf.
+  function veldWaardeUit(c, v) {
+    var rauw = c[v.sleutel];
+    if (v.sleutel === 'datumAnalyse') rauw = c.datumAnalyse ? String(c.datumAnalyse).slice(0, 10) : '';
+    if (rauw == null) return '';
+    var t = String(rauw).trim();
+    if (v.unit && t.slice(-v.unit.length).toLowerCase() === v.unit.toLowerCase()) {
+      t = t.slice(0, -v.unit.length).trim();
+    }
+    return t;
+  }
+
+  function veldHtml(v, waarde) {
+    var fout = foutBij[v.id];
+    var doos = '<label class="veld altijd' + (v.unit ? ' met-unit' : '') + (fout ? ' fout' : '') + '">' +
+      (v.lang
+        ? '<textarea id="' + v.id + '" placeholder=" ">' + esc(waarde || '') + '</textarea>'
+        : '<input type="text" id="' + v.id + '" placeholder=" " value="' + esc(waarde == null ? '' : waarde) + '">') +
+      '<span class="veld-label">' + esc(v.op) + '</span>' +
+      (v.unit ? '<span class="veld-unit">' + esc(v.unit) + '</span>' : '') +
+      '</label>';
+    if (!fout) return doos;
+    return '<div class="veldgroep">' + doos + '<p class="veld-hulp fout">' + esc(fout) + '</p></div>';
+  }
+
+  // De vulling rekenen wij uit: gemeten tegen wat het etiket belooft. Dat
+  // getal zit in de productnaam ("Tirzepatide 60mg"), dus dat splitsen we
+  // eraf - maar alleen als er precies EEN hoeveelheid in staat.
+  //
+  // Bij "Wolverine Blend (TB-500 + BPC-157) 10 mg" of bij een metaalcomplex
+  // staat er meer dan een getal, of slaat het getal op iets anders. Dan laten
+  // we het veld leeg: liever niets dan een verzonnen etiketwaarde, want daar
+  // rolt een vullingspercentage uit dat nergens op slaat.
+  function etiketUitNaam(naamVanProduct) {
+    var t = String(naamVanProduct || '');
+    var treffers = t.match(/(\d+(?:[.,]\d+)?)\s*mg\b/gi) || [];
+    if (treffers.length !== 1) return null;
+    var n = parseFloat(String(treffers[0]).replace(/\s*mg\b/i, '').replace(',', '.'));
+    return isNaN(n) ? null : n;
+  }
+
+  function tekenVelden(c) {
+    var uit = '', wacht = null;
+    VELDEN_DEF.forEach(function (v) {
+      if (zichtbaar.indexOf(v.id) === -1) return;
+      var html = veldHtml(v, veldWaardeUit(c, v));
+      if (!v.half) { if (wacht) { uit += '<div class="veldpaar">' + wacht + '</div>'; wacht = null; } uit += html; return; }
+      if (wacht) { uit += '<div class="veldpaar">' + wacht + html + '</div>'; wacht = null; }
+      else wacht = html;
+    });
+    if (wacht) uit += '<div class="veldpaar">' + wacht + '</div>';
+
+    var rest = VELDEN_DEF.filter(function (v) { return zichtbaar.indexOf(v.id) === -1; });
+    if (rest.length) {
+      uit += '<label class="veld altijd keuze toevoegveld"><select id="fToevoegen">' +
+        '<option value="">—</option>' +
+        rest.map(function (v) { return '<option value="' + v.id + '">' + esc(v.op) + '</option>'; }).join('') +
+        '</select><span class="veld-label">Veld toevoegen</span></label>';
+    }
+    el('mVelden').innerHTML = uit;
+
+    var kiezer = el('fToevoegen');
+    if (kiezer) kiezer.addEventListener('change', function () {
+      var id = kiezer.value; if (!id) return;
+      // Wat er al ingevuld staat bewaren, anders ben je het kwijt zodra je een
+      // veld erbij haalt.
+      var bewaard = huidigeVelden();
+      zichtbaar.push(id);
+      tekenVelden(bewaard);
+      var nieuw = el(id); if (nieuw) nieuw.focus();
+    });
+  }
+
+  // Wat er NU in de velden staat, als een object met dezelfde sleutels als een
+  // controle. Zo kan tekenVelden opnieuw tekenen zonder iets te verliezen.
+  function huidigeVelden() {
+    var c = {};
+    VELDEN_DEF.forEach(function (v) {
+      var e = el(v.id); if (!e) return;
+      var t = String(e.value || '').trim();
+      if (t) c[v.sleutel] = t;
+    });
+    return c;
+  }
+
   function toonModal() {
     var r = werk[index], c = r.controle || {}, k = r.kopie || {};
     el('mTitel').textContent = k.product || c.product || r.referentie;
@@ -1130,50 +1258,28 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     // komt hier binnen en jij kijkt hem na voor je vastlegt. Wat WIJ afleiden
     // (vulling, klasse, opgelost, wie het deed) blijft leesveld - dat typ je
     // niet, dat volgt ergens uit.
-    function invul(id, op, waarde, breed) {
-      return '<label class="veld altijd' + (breed ? ' breed' : '') + '">' +
-        '<input type="text" id="' + id + '" placeholder=" " value="' + esc(waarde == null ? '' : waarde) + '">' +
-        '<span class="veld-label">' + esc(op) + '</span></label>';
-    }
-    function veldje(op, waarde, extra) {
-      return '<div class="leesveld' + (extra || '') + '">' +
-        '<span class="op">' + esc(op) + '</span>' +
-        '<span class="waarde' + (waarde.leeg ? ' niet' : '') + '">' + esc(waarde.tekst) + '</span></div>';
-    }
-    function w(v, leeg) {
-      return (v == null || v === '') ? { tekst: leeg || 'niet gemeten', leeg: true }
-                                     : { tekst: String(v), leeg: false };
-    }
-    el('mVelden').innerHTML =
-      invul('fClient', 'Opdrachtgever', c.client) +
-      invul('fManufacturer', 'Fabrikant', c.manufacturer) +
-      invul('fProduct', 'Product', c.product) +
-      invul('fBatch', 'Batch', c.batchnummer) +
-      '<div class="veldpaar">' +
-        invul('fZuiverheid', 'Zuiverheid', c.zuiverheid) +
-        invul('fGemeten', 'Gemeten (mg)', c.gemetenMg) +
-      '</div>' +
-      '<div class="veldpaar">' +
-        invul('fDatum', 'Analysedatum', c.datumAnalyse ? String(c.datumAnalyse).slice(0, 10) : '') +
-        invul('fTest', 'Test', c.testnaam) +
-      '</div>' +
-      '<div class="veldpaar">' +
-        veldje('Vulling', w(c.vulling, 'niet berekend')) +
-        veldje('Klasse', w(c.klasse, 'geen')) +
-      '</div>' +
-      '<div class="veldpaar">' +
-        veldje('Opgelost bij het lab', c.resolvet === true ? { tekst: 'ja', leeg: false }
-             : (c.resolvet === false ? { tekst: 'nee', leeg: false }
-                                     : { tekst: 'nog niet gecontroleerd', leeg: true })) +
-        veldje('Gecontroleerd door', w(c.checkedBy, 'nog niemand')) +
-      '</div>' +
-      '<label class="veld altijd"><textarea id="fNotitie" placeholder=" ">' +
-        esc(c.notitie || '') + '</textarea><span class="veld-label">Notitie</span></label>';
+    // Alleen velden die iets bevatten staan in beeld. De rest haal je erbij
+    // met "Veld toevoegen". Dat houdt het scherm leeg bij een referentie waar
+    // nog niets van bekend is, in plaats van tien lege doosjes.
+    var status = [];
+    status.push(c.resolvet === true ? 'Lost op bij het lab'
+      : (c.resolvet === false ? 'Lost NIET op bij het lab' : 'Nog niet nagetrokken bij het lab'));
+    status.push(c.checkedBy ? 'gecontroleerd door ' + c.checkedBy : 'nog door niemand gecontroleerd');
+    if (c.vulling) status.push('vulling ' + c.vulling);
+    el('mStatus').textContent = status.join(' · ');
+
+    zichtbaar = VELDEN_DEF.filter(function (v) {
+      var waarde = veldWaardeUit(c, v);
+      return waarde !== '' && waarde != null;
+    }).map(function (v) { return v.id; });
+    tekenVelden(c);
 
     el('mOpen').href = r.url || '#';
     el('mPlakVeld').value = '';
     el('mPlakMelding').hidden = true;
     uitRapport = [];
+    alGelezen = false;
+    foutBij = {};
     toonPapier();
 
     el('vVelden').innerHTML = VELDEN.map(function (v) {
@@ -1235,7 +1341,10 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     // waarden van de shop op en leg je ze vast als wat het lab zegt.
     var r = werk[index] || {};
     var heeftLabrapport = !!(r.rapportAfbeelding || r.rapportBestand || blobPerRef[r.referentie]);
-    el('mUitlezen').classList.toggle('verborgen', !heeftLabrapport);
+    // Al gelezen? Dan gaat de knop weg. Nog eens lezen zou de velden die je
+    // net hebt nagekeken opnieuw omgooien, en dat is precies wat je niet wilt
+    // nadat je ze hebt gecontroleerd. Verder met de hand.
+    el('mUitlezen').classList.toggle('verborgen', !heeftLabrapport || alGelezen);
   }
 
   function toonPapier() {
@@ -1411,59 +1520,59 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   // je kijkt ze na naast het rapport dat ernaast staat, en pas jouw klik op
   // de knop onderaan maakt er een vaststelling van. Tot dan is het een
   // lezing, en dat is te zien aan de markering op het veld (A14).
-  var VELD_BIJ_GELEZEN = {
-    client: 'fClient', manufacturer: 'fManufacturer', product: 'fProduct',
-    batchnummer: 'fBatch', zuiverheid: 'fZuiverheid', gemetenMg: 'fGemeten',
-    datumAnalyse: 'fDatum', testnaam: 'fTest'
-  };
-  var OPSCHRIFT = {
-    fClient: 'Opdrachtgever', fManufacturer: 'Fabrikant', fProduct: 'Product',
-    fBatch: 'Batch', fZuiverheid: 'Zuiverheid', fGemeten: 'Gemeten (mg)',
-    fDatum: 'Analysedatum', fTest: 'Test'
-  };
   var uitRapport = [];
-
-  function merkVeld(veldId, soort, extra) {
-    var e = el(veldId); if (!e || !e.parentNode) return;
-    var doos = e.parentNode, op = doos.querySelector('.veld-label');
-    doos.classList.remove('uit-rapport', 'nakijken');
-    if (soort) doos.classList.add(soort);
-    if (op) op.textContent = (OPSCHRIFT[veldId] || '') + (extra || '');
-  }
+  var alGelezen = false;
 
   function vulUitLezing(lezing) {
     var onzeker = lezing.onzeker || [];
+    var staat = huidigeVelden();
     var gevuld = 0, botsing = 0;
     uitRapport = [];
-    Object.keys(VELD_BIJ_GELEZEN).forEach(function (sleutel) {
-      var waarde = lezing[sleutel];
-      if (waarde == null || waarde === '') return;
-      var veldId = VELD_BIJ_GELEZEN[sleutel], e = el(veldId);
-      if (!e) return;
-      var staat = String(e.value || '').trim();
-      var nieuw = String(waarde).trim();
-      var twijfel = onzeker.indexOf(sleutel) !== -1;
+    foutBij = {};
 
-      // Staat er al iets anders? Dan NIET overschrijven. Wat er staat is door
-      // iemand vastgelegd; wat het model leest is een lezing. Het verschil
-      // zelf is de waarneming, en die hoort een mens te wegen.
-      if (staat && staat.toLowerCase() !== nieuw.toLowerCase()) {
-        merkVeld(veldId, 'nakijken', ' — rapport zegt: ' + nieuw);
+    VELDEN_DEF.forEach(function (v) {
+      var waarde = lezing[v.sleutel];
+      if (waarde == null || waarde === '') return;
+      var nieuw = String(waarde).trim();
+      if (v.unit && nieuw.slice(-v.unit.length).toLowerCase() === v.unit.toLowerCase()) {
+        nieuw = nieuw.slice(0, -v.unit.length).trim();
+      }
+      var er = staat[v.sleutel] == null ? '' : String(staat[v.sleutel]).trim();
+
+      // Staat er al iets ANDERS? Dan niet overschrijven. Wat er staat is door
+      // iemand vastgelegd, wat het model leest is een lezing. Dat verschil is
+      // zelf de waarneming en hoort een mens te wegen.
+      if (er && er.toLowerCase() !== nieuw.toLowerCase()) {
+        foutBij[v.id] = 'Op het rapport staat: ' + nieuw + '. Niet overschreven.';
         botsing++;
+        if (zichtbaar.indexOf(v.id) === -1) zichtbaar.push(v.id);
         return;
       }
-      if (staat) return;                       // stond er al hetzelfde
-      e.value = nieuw;
-      merkVeld(veldId, twijfel ? 'nakijken' : 'uit-rapport',
-               twijfel ? ' — controleer dit' : ' — uit het rapport');
-      uitRapport.push(sleutel);
+      if (er) return;                       // stond er al hetzelfde
+      staat[v.sleutel] = nieuw;
+      if (zichtbaar.indexOf(v.id) === -1) zichtbaar.push(v.id);
+      if (onzeker.indexOf(v.sleutel) !== -1) foutBij[v.id] = 'Het model twijfelde hierover — zelf nakijken.';
+      uitRapport.push(v.sleutel);
       gevuld++;
     });
 
+    // Etiketwaarde afleiden uit de productnaam, zodat de server de vulling kan
+    // uitrekenen. Staat als gewoon veld in beeld en is dus te corrigeren.
+    if (!staat.etiketMg) {
+      var uitNaam = etiketUitNaam(staat.product);
+      if (uitNaam != null) {
+        staat.etiketMg = uitNaam;
+        if (zichtbaar.indexOf('fEtiket') === -1) zichtbaar.push('fEtiket');
+        foutBij.fEtiket = 'Afgeleid uit de productnaam, niet van het rapport gelezen. Klopt dit?';
+      }
+    }
+
+    tekenVelden(staat);
+
     var tekst = [];
-    if (gevuld) tekst.push(gevuld + ' veld' + (gevuld === 1 ? '' : 'en') + ' ingevuld uit het rapport');
+    if (gevuld) tekst.push(gevuld + ' veld' + (gevuld === 1 ? '' : 'en') + ' ingevuld');
     if (botsing) tekst.push(botsing + ' veld' + (botsing === 1 ? '' : 'en') +
-      ' waar iets anders staat dan op het rapport — die zijn NIET overschreven');
+      ' waar iets anders stond — die zijn niet overschreven');
     if (!gevuld && !botsing) tekst.push('Er viel niets in te vullen dat er nog niet stond');
     meld(tekst.join('; ') + '. Kijk ze na naast het rapport; ze staan pas vast als je hieronder vastlegt.');
   }
@@ -1476,7 +1585,9 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ referentie: r.referentie })
     }).then(function (j) {
+      alGelezen = true;
       vulUitLezing(j.gelezen || {});
+      el('mUitlezen').classList.add('verborgen');
       if (j.waarschuwingen && j.waarschuwingen.length) {
         meld(j.waarschuwingen.join(' ') + ' Kijk goed of dit het juiste rapport is.');
       }
@@ -1490,22 +1601,25 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
   // Wat er in de velden staat op het moment dat je vastlegt. Een leeg veld
   // sturen we niet mee: leeg betekent "niet ingevuld", niet "leeg gemeten".
+  // De eenheid komt er weer aan, want die staat als opschrift in het veld en
+  // niet in de waarde.
   function veldwaarden() {
     var b = {};
-    function t(id) { var e = el(id); return e ? String(e.value || '').trim() : ''; }
-    if (t('fClient')) b.client = t('fClient');
-    if (t('fManufacturer')) b.manufacturer = t('fManufacturer');
-    if (t('fProduct')) b.product = t('fProduct');
-    if (t('fBatch')) b.batchnummer = t('fBatch');
-    if (t('fZuiverheid')) b.zuiverheid = t('fZuiverheid');
-    if (t('fTest')) b.testnaam = t('fTest');
-    var mg = parseFloat(t('fGemeten').replace(',', '.'));
-    if (!isNaN(mg)) b.gemetenMg = mg;
-    // Alleen een datum in de vorm die de server verwacht; liever niets dan een
-    // half gelezen datum die als iets anders wordt opgeslagen.
-    if (/^\d{4}-\d{2}-\d{2}$/.test(t('fDatum'))) b.datumAnalyse = t('fDatum');
-    var n = t('fNotitie');
-    if (n) b.notitie = n;
+    VELDEN_DEF.forEach(function (v) {
+      var e = el(v.id); if (!e) return;
+      var t = String(e.value || '').trim();
+      if (!t) return;
+      if (v.getal) {
+        var n = parseFloat(t.replace(',', '.'));
+        if (!isNaN(n)) b[v.sleutel] = n;
+        return;
+      }
+      if (v.sleutel === 'datumAnalyse') {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(t)) b.datumAnalyse = t;
+        return;
+      }
+      b[v.sleutel] = v.unit ? t + v.unit : t;
+    });
     return b;
   }
 
