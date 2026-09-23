@@ -324,6 +324,11 @@ input:focus, select:focus, textarea:focus{
 
 .veld-hulp{ margin:4px 0 0; padding:0 12px; font-size:12px; color:var(--text-muted) }
 
+/* Een veld waar het opschrift altijd klein bovenin staat, ook als er nog
+   niets is ingevuld. Nodig zodra het veld een eigen placeholder heeft: dan
+   zouden het grote opschrift en die placeholder over elkaar heen vallen. */
+.veld.altijd > .veld-label{ top:9px; font-size:12px }
+
 /* fout en goed: alleen de rand en de regel eronder veranderen */
 .veld.fout > input, .veld.fout > select, .veld.fout > textarea{ border-color:var(--melding-fout) }
 .veld.fout .veld-hulp{ color:var(--melding-fout) }

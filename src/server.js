@@ -837,6 +837,66 @@ app.post('/api/admin/coa/references/rapport', rl.caseAction, auth.requireOwnerTo
   }
 });
 
+// De afbeelding zelf, geplakt uit het klembord. Komt binnen als data-URL.
+// Eigen bodyparser met meer ruimte: de standaard staat op 2 MB en dat is
+// voor een rapportscan aan de krappe kant. De browser schaalt al terug.
+app.post('/api/admin/coa/references/rapport/afbeelding',
+  rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, express.json({ limit: '8mb' }),
+  async (req, res) => {
+    try {
+      const b = req.body || {};
+      const referentie = (b.referentie || '').trim();
+      const dataUrl = String(b.dataUrl || '');
+      const door = b.door || b.toegevoegdDoor || null;
+      if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee.' });
+      const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+      if (!m) return res.status(400).json({ error: 'geen_afbeelding', message: 'Plak een afbeelding (png, jpeg of webp).' });
+      const buf = Buffer.from(m[2], 'base64');
+      if (!buf.length) return res.status(400).json({ error: 'leeg', message: 'De afbeelding is leeg.' });
+      if (buf.length > 6 * 1024 * 1024) {
+        return res.status(413).json({ error: 'te_groot', message: 'De afbeelding is groter dan 6 MB.' });
+      }
+      const bekend = await coaStore.referentieMetRapport(null, referentie);
+      if (!bekend) return res.status(404).json({ error: 'onbekende_referentie', message: 'Deze referentie kennen wij niet.' });
+      const opgeslagen = await coaStore.saveReferenceRapportBestand(bekend.lab, bekend.referentie, m[1], buf, door);
+      if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'De afbeelding kon niet worden opgeslagen.' });
+      res.json({ ok: true, rapport: opgeslagen });
+    } catch (e) {
+      res.status(500).json(sanitizeError(e, req));
+    }
+  });
+
+// De geplakte afbeelding teruggeven. Met het token in de header, niet in de
+// URL: een adres belandt in logs en in de geschiedenis van de browser.
+// De pagina haalt hem daarom op met fetch en maakt er zelf een blob van.
+app.get('/api/admin/coa/references/rapport/afbeelding', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const referentie = (req.query.referentie || '').trim();
+    if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee.' });
+    const bestand = await coaStore.referenceRapportBestand(referentie);
+    if (!bestand) return res.status(404).json({ error: 'geen_afbeelding', message: 'Voor deze referentie is geen afbeelding bewaard.' });
+    res.set('Content-Type', bestand.mimetype);
+    res.set('Cache-Control', 'private, max-age=600');
+    res.send(bestand.bytes);
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Weghalen wat erbij gezet is. Het rapport is geen oordeel, dus weggooien
+// raakt geen controle: alleen het papier verdwijnt uit beeld.
+app.delete('/api/admin/coa/references/rapport', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const referentie = (req.query.referentie || (req.body && req.body.referentie) || '').trim();
+    if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee.' });
+    const ok = await coaStore.wisReferenceRapport(referentie);
+    if (!ok) return res.status(500).json({ error: 'wissen_mislukt', message: 'Het rapport kon niet worden weggehaald.' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Meten of onze server die afbeelding zelf kan ophalen. Alleen een meting:
 // hij slaat niets op en geeft de afbeelding niet door. Nodig om te weten of
 // we het rapport ooit machinaal kunnen uitlezen, of dat dat alleen in de

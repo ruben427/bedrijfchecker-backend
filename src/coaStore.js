@@ -198,6 +198,22 @@ async function initCoaSchema() {
       PRIMARY KEY (lab, referentie)
     );
   `);
+
+  // De afbeelding zelf, voor als iemand hem plakt in plaats van het adres.
+  // Apart van de tabel hierboven: een adres is een verwijzing, dit zijn
+  // bytes. In de lijst van een leverancier gaat alleen de VLAG mee dat er een
+  // bestand is - anders sleep je bij elke referentie een paar honderd kB mee.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coa_reference_rapport_bestanden (
+      lab TEXT NOT NULL,
+      referentie TEXT NOT NULL,
+      mimetype TEXT NOT NULL,
+      bytes BYTEA NOT NULL,
+      toegevoegd_door TEXT,
+      toegevoegd_op BIGINT NOT NULL,
+      PRIMARY KEY (lab, referentie)
+    );
+  `);
   // De veldvergelijking gestructureerd, niet in proza. Een regelset kan niets
   // met 'Client wijkt af' in een notitie; hiermee kan Annemarie haar besluit
   // (A15) straks over alles heen draaien in plaats van 200 notities lezen.
@@ -1655,6 +1671,50 @@ async function saveReferenceRapport(lab, referentie, afbeeldingUrl, door) {
   }
 }
 
+// De geplakte afbeelding opslaan, ophalen en weggooien.
+async function saveReferenceRapportBestand(lab, referentie, mimetype, buffer, door) {
+  if (!lab || !referentie || !buffer || !buffer.length) return null;
+  const labNet = normaliseerLab(lab).naam;
+  try {
+    await pool.query(
+      `INSERT INTO coa_reference_rapport_bestanden (lab, referentie, mimetype, bytes, toegevoegd_door, toegevoegd_op)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (lab, referentie) DO UPDATE SET
+         mimetype = EXCLUDED.mimetype, bytes = EXCLUDED.bytes,
+         toegevoegd_door = EXCLUDED.toegevoegd_door, toegevoegd_op = EXCLUDED.toegevoegd_op`,
+      [labNet, referentie, mimetype, buffer, door || null, Date.now()]
+    );
+    return { lab: labNet, referentie, mimetype, bytes: buffer.length };
+  } catch (e) {
+    console.error('coaStore.saveReferenceRapportBestand:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function referenceRapportBestand(referentie) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT mimetype, bytes FROM coa_reference_rapport_bestanden WHERE referentie = $1 LIMIT 1`,
+      [referentie]
+    );
+    return rows.length ? { mimetype: rows[0].mimetype, bytes: rows[0].bytes } : null;
+  } catch (e) {
+    console.error('coaStore.referenceRapportBestand:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function wisReferenceRapport(referentie) {
+  try {
+    await pool.query('DELETE FROM coa_reference_rapporten WHERE referentie = $1', [referentie]);
+    await pool.query('DELETE FROM coa_reference_rapport_bestanden WHERE referentie = $1', [referentie]);
+    return true;
+  } catch (e) {
+    console.error('coaStore.wisReferenceRapport:', (e && e.message) || e);
+    return false;
+  }
+}
+
 // Eén referentie opzoeken, met het adres van het lab erbij. Nodig om te
 // bepalen welk domein een geplakt adres mag hebben.
 async function referentieMetRapport(lab, referentie) {
@@ -2405,10 +2465,12 @@ async function referentiesVanLeverancier(supplierKey, max) {
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend,
               c.vergeleken_met, c.afleidingsnotitie, c.notitie,
               c.checked_by, c.methode, c.checked_at,
-              p.afbeelding_url, p.toegevoegd_door
+              p.afbeelding_url, p.toegevoegd_door,
+              (b.referentie IS NOT NULL) AS heeft_bestand, b.toegevoegd_door AS bestand_door
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
        LEFT JOIN coa_reference_rapporten p ON p.lab = r.lab AND p.referentie = r.referentie
+       LEFT JOIN coa_reference_rapport_bestanden b ON b.lab = r.lab AND b.referentie = r.referentie
        WHERE r.supplier_key = $1
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $2`,
@@ -2420,7 +2482,8 @@ async function referentiesVanLeverancier(supplierKey, max) {
       // Waar het rapport bij het lab te zien is. Staat los van de controle:
       // een rapport erbij hebben is nog geen oordeel erover.
       rapportAfbeelding: r.afbeelding_url || null,
-      rapportDoor: r.toegevoegd_door || null,
+      rapportBestand: !!r.heeft_bestand,
+      rapportDoor: r.toegevoegd_door || r.bestand_door || null,
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, manufacturer: r.manufacturer,
         product: r.product, batchnummer: r.batchnummer,
@@ -3062,6 +3125,9 @@ async function andereLeveranciersVoor(shaList) {
 
 module.exports = {
   saveReferenceRapport,
+  saveReferenceRapportBestand,
+  referenceRapportBestand,
+  wisReferenceRapport,
   referentieMetRapport,
   vialSpreidingUit,
   bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,

@@ -776,6 +776,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   // De leverancier opent in een zijpaneel, niet op een eigen pagina: zo blijf
   // je zien waar je vandaan komt en kun je doorlopen zonder heen en weer.
   var werk = [], index = 0, huidigeLeverancier = '';
+  var alleRefs = [], werkTab = 'open';
 
   function levVolgorde() {
     // Dezelfde volgorde als de lijst op het scherm, zodat "volgende" doet wat
@@ -825,7 +826,10 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
         var t = String(r.referentie || '').split('-')[0];
         r.kopie = perTask[t] || null;
       });
-      werk = refs.filter(function (r) { return r.kopie; });
+      // Alle verwijzingen zijn werk. Ook een kale referentie - zonder kopie
+      // bij de shop valt er geen klasse te geven, maar je kunt wel nagaan of
+      // hij bij het lab oplost en het rapport erbij zetten.
+      alleRefs = refs;
 
       var gecontroleerd = refs.filter(function (r) { return r.controle; }).length;
       el('lSub').textContent = 'Leverancier · ' + refs.length + ' labverwijzingen · ' +
@@ -838,45 +842,53 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
           esc(j.laboordeel.status) + '</strong>. Bewijs dat alleen op dit lab rust telt navenant mee.</p></div>';
       }
 
-      h += '<div class="blok"><h2>Nog te checken door ' + esc(naam || 'de beoordelaar') +
-        ' <span class="teller">' + werk.length + '</span></h2>' +
-        '<p class="duiding">Bij deze rapporten publiceert de shop zelf een kopie. Openen zet die kopie ' +
-        'naast de verificatiepagina van het lab.</p>';
-      h += werk.length ? werk.map(function (r, i) {
-        var c = r.controle || {};
-        return '<button class="werkrij" data-i="' + i + '">' +
-          '<span class="naam">' + esc((r.kopie && r.kopie.product) || c.product || r.referentie) + '</span>' +
-          '<span class="ref">' + esc(r.referentie) + '</span>' +
-          (c.klasse ? '<span class="chip ok">klasse ' + esc(c.klasse) + '</span>'
-                    : '<span class="chip nieuw">geen klasse</span>') +
-          PIJL + '</button>';
-      }).join('') : '<p class="leeg">Geen enkele referentie heeft een kopie bij de shop. Er valt hier niets te vergelijken.</p>';
-      h += '</div>';
-
-      var zonder = refs.filter(function (r) { return !r.kopie; });
-      if (zonder.length) {
-        h += '<div class="blok"><h2>Kale referenties <span class="teller">' + zonder.length + '</span></h2>' +
-          '<p class="duiding">Wel een labverwijzing, geen kopie bij de shop. Hier valt alleen te controleren ' +
-          'óf de referentie oplost, niet of de shop hem goed weergeeft.</p>' +
-          zonder.slice(0, 40).map(function (r) {
-            return '<div class="werkrij"><span class="naam">' +
-              esc((r.controle && r.controle.product) || r.referentie) + '</span>' +
-              '<span class="ref">' + esc(r.referentie) + '</span>' +
-              (r.controle ? '<span class="chip ok">gecontroleerd</span>'
-                          : '<span class="chip nieuw">nog niet gecontroleerd</span>') +
-              (r.url ? '<a class="knop sec klein" href="' + esc(r.url) + '" target="_blank" rel="noopener">Openen bij het lab</a>' : '') +
-              '</div>';
-          }).join('') +
-          (zonder.length > 40 ? '<p class="duiding">…en nog ' + (zonder.length - 40) + '.</p>' : '') +
-          '</div>';
-      }
+      h += '<div class="blok" id="lBlok"></div>';
 
       el('lInhoud').innerHTML = h;
-      Array.prototype.forEach.call(el('lInhoud').querySelectorAll('[data-i]'), function (b) {
-        b.addEventListener('click', function () { openModal(Number(b.getAttribute('data-i'))); });
-      });
+      toonWerklijst();
     }).catch(function (e) {
       el('lInhoud').innerHTML = '<p class="fout">Ophalen mislukt: ' + esc(e.message) + '</p>';
+    });
+  }
+
+  // Twee tabbladen boven de lijst: wat nog open staat, en wat al is gedaan.
+  // Open staat voorop, want dat is waar je voor komt. werk is steeds het
+  // tabblad dat je aankijkt, zodat "volgende" binnen dat lijstje blijft.
+  function toonWerklijst() {
+    var blok = el('lBlok'); if (!blok) return;
+    var open = alleRefs.filter(function (r) { return !r.controle; });
+    var gedaan = alleRefs.filter(function (r) { return r.controle; });
+    werk = werkTab === 'open' ? open : gedaan;
+
+    var h = '<div class="tabs" role="tablist">' +
+      '<button class="tab" role="tab" data-tab="open" aria-selected="' + (werkTab === 'open') + '">' +
+        'Nog open <span class="mee">(' + open.length + ')</span></button>' +
+      '<button class="tab" role="tab" data-tab="gedaan" aria-selected="' + (werkTab === 'gedaan') + '">' +
+        'Gecontroleerd <span class="mee">(' + gedaan.length + ')</span></button>' +
+      '</div>';
+
+    h += werk.length ? werk.map(function (r, i) {
+      var c = r.controle || {};
+      var naamVan = (r.kopie && r.kopie.product) || c.product || r.referentie;
+      var chip;
+      if (c.klasse) chip = '<span class="chip ok">klasse ' + esc(c.klasse) + '</span>';
+      else if (r.controle) chip = '<span class="chip ok">gecontroleerd</span>';
+      else if (r.kopie) chip = '<span class="chip nieuw">kopie bij de shop</span>';
+      else chip = '<span class="chip">geen kopie bij de shop</span>';
+      return '<button class="werkrij" data-i="' + i + '">' +
+        '<span class="naam">' + esc(naamVan) + '</span>' +
+        '<span class="ref">' + esc(r.referentie) + '</span>' + chip + PIJL + '</button>';
+    }).join('')
+      : '<p class="leeg">' + (werkTab === 'open'
+          ? 'Alles bij deze leverancier is nagelopen.'
+          : 'Hier is nog niets gecontroleerd.') + '</p>';
+
+    blok.innerHTML = h;
+    Array.prototype.forEach.call(blok.querySelectorAll('[data-tab]'), function (b) {
+      b.addEventListener('click', function () { werkTab = b.getAttribute('data-tab'); toonWerklijst(); });
+    });
+    Array.prototype.forEach.call(blok.querySelectorAll('[data-i]'), function (b) {
+      b.addEventListener('click', function () { openModal(Number(b.getAttribute('data-i'))); });
     });
   }
 
@@ -1058,6 +1070,12 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       });
     });
 
+    // Zonder kopie bij de shop valt er niets naast elkaar te leggen. "Klopt
+    // niet" vraagt wat er bij het lab anders staat dan bij de shop - die vraag
+    // bestaat hier niet. Accepteren betekent dan alleen: hij lost op.
+    el('bKlopt').classList.toggle('verborgen', !k.url);
+    el('bAccept').textContent = k.url ? 'Accepteren' : 'Lost op bij het lab';
+
     verberg();
   }
 
@@ -1176,9 +1194,19 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   el('bAccept').addEventListener('click', function () {
     var r = werk[index];
     verberg();
+    if (r.kopie && r.kopie.url) {
+      leg({ referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: true,
+            klasse: 'A', vergelekenMet: r.kopie.url },
+          'Vastgelegd: de referentie lost op en de kopie komt overeen. Klasse A volgt daaruit.');
+      return;
+    }
+    // Geen kopie bij de shop: geen klasse. De letter zegt of het rapport bij
+    // de shop echt is, en die vergelijking is hier niet gemaakt. Alleen
+    // vastleggen dat de referentie bij het lab oplost.
     leg({ referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: true,
-          klasse: 'A', vergelekenMet: (r.kopie && r.kopie.url) || null },
-        'Vastgelegd: de referentie lost op en de kopie komt overeen. Klasse A volgt daaruit.');
+          notitie: 'Referentie lost op bij het lab. Geen kopie bij de shop, dus geen klasse: ' +
+                   'er is niets om het labrapport tegen af te zetten.' },
+        'Vastgelegd: hij lost op bij het lab. Geen klasse — zonder kopie bij de shop rust een letter nergens op.');
   });
 
   el('bGeen').addEventListener('click', function () { verberg(); el('vGeen').hidden = false; });
@@ -1188,9 +1216,13 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       var r = werk[index], u = b.getAttribute('data-uitkomst');
       verberg();
       if (u === 'lost-niet-op') {
-        leg({ referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: false,
-              klasse: 'D', vergelekenMet: (r.kopie && r.kopie.url) || null },
-            'Vastgelegd: het lab antwoordde en kent deze referentie niet.');
+        // Een D zegt iets over de echtheid van het rapport bij de shop. Is er
+        // geen kopie, dan is er geen rapport om die letter aan te hangen: dan
+        // blijft het bij de vaststelling dat de referentie niet oplost.
+        var body = { referentie: r.referentie, lab: r.lab || 'Janoshik', resolvet: false };
+        if (r.kopie && r.kopie.url) { body.klasse = 'D'; body.vergelekenMet = r.kopie.url; }
+        else { body.notitie = 'Het lab kent deze referentie niet. Geen kopie bij de shop, dus geen klasse.'; }
+        leg(body, 'Vastgelegd: het lab antwoordde en kent deze referentie niet.');
       } else {
         // GEEN resolvet:false. Een botmuur zegt iets over ons, niet over de
         // leverancier. Alleen de poging wordt vastgelegd.
