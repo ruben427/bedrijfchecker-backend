@@ -1352,3 +1352,13 @@ body.sheet-open{ overflow:hidden; }
   display:flex; flex-direction:column; gap:12px;
 }
 .geen-rapport .gr-vraag h3{ margin:0; font-size:20px; }
+
+
+/* Onderhoudsbalk: de check staat dicht voor bezoekers. De tekst komt van de
+   server (/api/stand), niet uit deze pagina - zo staat er op elke pagina
+   hetzelfde en is hij om te zetten zonder uitrol. */
+.onderhoud-balk{
+  margin:0 0 20px; padding:14px 18px; border-radius:var(--radius-md,12px);
+  background:var(--accent-soft,#fff1ea); border:1px solid var(--accent,#f63d00);
+  color:var(--text); font-size:1rem; line-height:1.5;
+}

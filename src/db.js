@@ -56,6 +56,19 @@ async function initSchema() {
   // Geüploade brondocumenten (bv. een KvK-uittreksel als PDF) blijven hier
   // persistent bewaard — voorheen werden uploads alleen transiet gebruikt
   // tijdens de audit-run en daarna nergens opgeslagen.
+  // Instellingen die tijdens het draaien te veranderen zijn, zonder uitrol.
+  // Nu alleen "publieke check open of dicht"; de tabel is bewust algemeen,
+  // zodat de volgende schakelaar er geen nieuwe tabel voor nodig heeft.
+  // Wie hem omzette staat erbij: een schakelaar zonder naam erachter is later
+  // niet uit te leggen.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS instellingen (
+      sleutel TEXT PRIMARY KEY,
+      waarde JSONB NOT NULL,
+      gezet_door TEXT,
+      gezet_op TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS documents (
       id TEXT PRIMARY KEY,
@@ -183,6 +196,24 @@ async function mergePhaseData(id, key, value) {
   );
 }
 
+// Instellingen. Geeft null terug als hij nooit is gezet - dan geldt wat er in
+// de omgeving staat, en dat is de beslissing van de aanroeper, niet van hier.
+async function getInstelling(sleutel) {
+  const { rows } = await pool.query('SELECT waarde, gezet_door, gezet_op FROM instellingen WHERE sleutel = $1', [sleutel]);
+  return rows[0] || null;
+}
+
+async function setInstelling(sleutel, waarde, door) {
+  await pool.query(
+    `INSERT INTO instellingen (sleutel, waarde, gezet_door, gezet_op)
+     VALUES ($1, $2::jsonb, $3, now())
+     ON CONFLICT (sleutel) DO UPDATE SET waarde = EXCLUDED.waarde,
+       gezet_door = EXCLUDED.gezet_door, gezet_op = now()`,
+    [sleutel, JSON.stringify(waarde), door || null]
+  );
+  return getInstelling(sleutel);
+}
+
 async function getStepStats() {
   const { rows } = await pool.query("SELECT value FROM stats WHERE key = 'stepDurations'");
   return (rows[0] && rows[0].value) || {};
@@ -239,5 +270,6 @@ async function getLatestDocumentByKind(caseId, kind) {
 
 module.exports = {
   pool, initSchema, createCase, getCase, listCases, listCasesByOwner, updateCase, resetCase, mergePhaseData, getStepStats, updateStepStats,
-  addDocument, listDocuments, getDocument, getLatestDocumentByKind
+  addDocument, listDocuments, getDocument, getLatestDocumentByKind,
+  getInstelling, setInstelling
 };

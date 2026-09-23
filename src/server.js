@@ -86,6 +86,65 @@ app.get('/api/health', (req, res) => res.json({
   mcpPaden: mcpCoaServer.MCP_VOORBEELDPADEN || mcpCoaServer.MCP_PADEN || ['/mcp']
 }));
 
+// --- publieke check: open of dicht -----------------------------------------
+//
+// Besluit Ruben, 23 september 2026. Omschakelen naar onderhoud is een
+// omgevingsvariabele in Railway, geen uitrol: PUBLIEKE_CHECK=uit.
+//
+// LET OP waarom dit in de SERVER zit en niet in de pagina. Een pagina
+// verbergen is geen afsluiten: de HTML en de JS worden door iedereen
+// gedownload, en het startverzoek is met de hand na te bootsen. Alleen een
+// weigering hier sluit de deur echt.
+//
+// Het token van de bezoeker telt hier niet: dat maakt elke browser zelf aan.
+// Alleen een stafrol (ADMIN_TOKEN, COA_REDACTIE_TOKEN, VIEWER_TOKEN) komt er
+// tijdens onderhoud nog langs, zodat wij kunnen blijven werken.
+// De stand staat in de database, zodat hij vanaf de stafpagina om te zetten is
+// zonder uitrol. PUBLIEKE_CHECK in de omgeving is alleen de beginstand, voor
+// het geval er nog nooit iets is gezet.
+const PUBLIEKE_CHECK_STANDAARD = String(process.env.PUBLIEKE_CHECK || 'aan').toLowerCase() !== 'uit';
+const ONDERHOUD_STANDAARD = process.env.ONDERHOUD_BERICHT ||
+  'We zijn even bezig met onderhoud. De check is zo weer beschikbaar.';
+
+async function publiekeStand() {
+  let rij = null;
+  try { rij = await db.getInstelling('publiekeCheck'); } catch (e) { /* db plat: val terug op de omgeving */ }
+  const w = rij && rij.waarde ? rij.waarde : null;
+  return {
+    open: w && typeof w.open === 'boolean' ? w.open : PUBLIEKE_CHECK_STANDAARD,
+    bericht: (w && w.bericht) || ONDERHOUD_STANDAARD,
+    door: rij ? rij.gezet_door : null,
+    op: rij ? rij.gezet_op : null
+  };
+}
+
+// Publiek: de pagina mag weten of de check openstaat, zonder token. Zonder dit
+// zou de pagina het pas merken als iemand op Start klikt.
+app.get('/api/stand', rl.read, async (req, res) => {
+  const stand = await publiekeStand();
+  res.json({
+    publiekeCheck: stand.open,
+    // Alleen meesturen als hij ook echt geldt; anders leest een open site al
+    // een onderhoudstekst mee die nergens voor staat.
+    bericht: stand.open ? null : stand.bericht
+  });
+});
+
+// Omzetten mag alleen de BEHEERDER. Een beoordelaar mag oordelen vastleggen,
+// niet de deur voor de buitenwereld dichtdoen.
+app.post('/api/admin/stand', rl.caseAction, auth.requireOwnerToken, async (req, res) => {
+  if (!auth.isAdmin(req)) return res.status(403).json({ error: 'geen_beheerder' });
+  const open = req.body && typeof req.body.open === 'boolean' ? req.body.open : null;
+  if (open === null) return res.status(400).json({ error: 'open_ontbreekt', message: 'Geef open: true of false mee.' });
+  const bericht = (req.body && typeof req.body.bericht === 'string' && req.body.bericht.trim())
+    ? req.body.bericht.trim() : ONDERHOUD_STANDAARD;
+  const door = (req.body && req.body.door) ? String(req.body.door).slice(0, 80) : null;
+  await db.setInstelling('publiekeCheck', { open: open, bericht: bericht }, door);
+  const stand = await publiekeStand();
+  console.log('[stand] publieke check ' + (stand.open ? 'OPEN' : 'DICHT') + (door ? ' door ' + door : ''));
+  res.json({ publiekeCheck: stand.open, bericht: stand.bericht, door: stand.door, op: stand.op });
+});
+
 const caseAccess = auth.requireCaseAccess(db);
 
 // Lijst eerder gedraaide audits — uitsluitend die van de aanvragende browser.
@@ -167,6 +226,11 @@ app.get('/api/diagnostics/labs', rl.caseAction, auth.requireOwnerToken, async (r
 
 app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, async (req, res) => {
   try {
+    // Onderhoud: dicht voor bezoekers, open voor de staf.
+    const stand = await publiekeStand();
+    if (!stand.open && !(auth.isAdmin(req) || auth.isViewer(req))) {
+      return res.status(503).json({ error: 'gesloten', message: stand.bericht });
+    }
     const website = normalizeUrl(req.body.website || '');
     if (!isValidWebUrl(website)) {
       return res.status(400).json({ error: 'invalid_url', message: 'Vul een geldige web URL in.' });

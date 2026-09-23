@@ -366,9 +366,46 @@
     }).catch(function(e){ if (state.currentCaseId === id && !state.currentCase) alert('Kon deze audit niet laden: ' + e.message); });
   }
 
+
+  // --- onderhoud: staat de check open? --------------------------------------
+  //
+  // De server beslist, niet deze pagina. Staat de check dicht, dan weigert hij
+  // een startverzoek; dit haalt dat antwoord alvast op zodat de bezoeker het
+  // leest voordat hij klikt, in plaats van erna.
+  //
+  // LET OP: dit is de beleefdheid, niet het slot. Wie deze pagina bewerkt of
+  // het verzoek met de hand nastuurt, krijgt nog steeds een weigering van de
+  // server - en dat is waar het dicht zit.
+  var onderhoudBericht = null;
+
+  function toonOnderhoud(){
+    if (!onderhoudBericht) return;
+    var app = document.getElementById('app') || document.body;
+    if (app.querySelector('.onderhoud-balk')) return;
+    var b = document.createElement('div');
+    b.className = 'onderhoud-balk';
+    b.setAttribute('role', 'status');
+    b.textContent = onderhoudBericht;
+    app.insertBefore(b, app.firstChild);
+    Array.prototype.forEach.call(app.querySelectorAll('#wiz-start'), function(k){
+      k.disabled = true;
+    });
+  }
+
+  function haalStand(){
+    return fetch(API_BASE + '/api/stand')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        onderhoudBericht = (j && j.publiekeCheck === false && j.bericht) ? j.bericht : null;
+        toonOnderhoud();
+      })
+      .catch(function(){ /* server onbereikbaar: niets beweren */ });
+  }
+
   function render(){
     if (state.view === 'dashboard') return renderDashboard();
     if (state.view === 'detail') return renderDetail();
+    toonOnderhoud();
   }
 
   // ---------- icons (inline SVG, geen externe iconfont nodig) ----------
@@ -1130,6 +1167,7 @@
   // ---------- wire up ----------
   document.getElementById('brand-home').addEventListener('click', goDashboard);
   initApp();
+  haalStand();
 
 })();
 </script>

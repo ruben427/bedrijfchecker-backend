@@ -399,6 +399,14 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   .acties .knop, .acties .volgende{ width:100% }
   .veldregel{ grid-template-columns:auto 1fr; }
 }
+/* De schakelaar voor de publieke check. Groen = open voor de buitenwereld,
+   rood = alleen wij kunnen nog een check starten. */
+.stand{ display:flex; align-items:center; gap:10px; margin-right:16px }
+.stand.verborgen{ display:none }
+.stand-lamp{ width:10px; height:10px; border-radius:999px; background:var(--text-faint) }
+.stand-lamp.open{ background:var(--ok) }
+.stand-lamp.dicht{ background:var(--danger) }
+.stand-tekst{ font-size:.85rem; color:var(--text-muted); white-space:nowrap }
 </style>
 </head>
 <body>
@@ -417,6 +425,13 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
           <span class="tel leeg" id="belTel">0</span>
         </button>
         <div class="lade" id="lade" hidden></div>
+      </div>
+      <!-- De publieke check open of dicht. Alleen de beheerder ziet dit: een
+           beoordelaar legt oordelen vast, die doet de deur niet dicht. -->
+      <div class="stand verborgen" id="standVak">
+        <span class="stand-lamp" id="standLamp" aria-hidden="true"></span>
+        <span class="stand-tekst" id="standTekst">—</span>
+        <button type="button" class="knop sec klein" id="standKnop">…</button>
       </div>
       <div class="ik">
         <span class="ik-bol" id="ikBol">?</span>
@@ -660,6 +675,52 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     bewaar(SLEUTEL_GEZIEN, JSON.stringify(Array.prototype.slice.call(s)));
   }
 
+  // --- de publieke check open of dicht --------------------------------------
+  //
+  // De stand staat in de database, niet in deze pagina en niet in een
+  // omgevingsvariabele: omzetten is een klik, geen uitrol.
+  //
+  // LET OP wat dit WEL en NIET is. Dicht betekent dat de SERVER een startende
+  // check van een bezoeker weigert. Het betekent niet dat de pagina verdwijnt:
+  // die is en blijft door iedereen op te halen. Een knop verbergen is geen
+  // afsluiten - alleen het weigeren aan de serverkant is dat.
+  var standOpen = null;
+
+  function zetStandInBeeld(open) {
+    standOpen = open;
+    el('standLamp').className = 'stand-lamp ' + (open ? 'open' : 'dicht');
+    el('standTekst').textContent = open ? 'Check staat open' : 'Onderhoud: check dicht';
+    el('standKnop').textContent = open ? 'Sluiten' : 'Openen';
+  }
+
+  function toonStand() {
+    return haal('/api/stand').then(function (j) {
+      zetStandInBeeld(!!(j && j.publiekeCheck));
+    }).catch(function () {
+      el('standTekst').textContent = 'Stand onbekend';
+      el('standKnop').textContent = '—';
+    });
+  }
+
+  function wisselStand() {
+    if (standOpen === null) return;
+    var naarOpen = !standOpen;
+    var vraag = naarOpen
+      ? 'De check weer openzetten voor bezoekers?'
+      : 'De check sluiten voor bezoekers? Wij kunnen zelf blijven werken.';
+    if (!window.confirm(vraag)) return;
+    var knop = el('standKnop'); knop.disabled = true; knop.textContent = 'Bezig…';
+    haal('/api/admin/stand', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ open: naarOpen, door: naam })
+    }).then(function (j) {
+      zetStandInBeeld(!!(j && j.publiekeCheck));
+    }).catch(function (e) {
+      alert('Omzetten is niet gelukt: ' + (e && e.message ? e.message : 'onbekende fout'));
+      toonStand();
+    }).then(function () { knop.disabled = false; });
+  }
+
   // --- aanmelden -----------------------------------------------------------
   // De sleutel bepaalt de rol, niet het keuzelijstje. Kiest iemand de
   // verkeerde naam bij zijn eigen sleutel, dan zeggen we dat: die naam komt
@@ -696,6 +757,7 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
       // niets: alleen een expliciete 'nee' haalt de knoppen weg.
       document.body.classList.toggle('geen-testrecht', !!j && j.magTestenAccepteren === false);
       el('ikBol').textContent = (n || '?').trim().charAt(0).toUpperCase() || '?';
+      if (rol === 'beheerder') { el('standVak').classList.remove('verborgen'); toonStand(); }
       return laden();
     });
   }
@@ -713,6 +775,7 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     });
   });
   el('uit').addEventListener('click', function () { wis(SLEUTEL_TOKEN); location.reload(); });
+  el('standKnop').addEventListener('click', wisselStand);
 
   // --- laden ---------------------------------------------------------------
   function laden() {
