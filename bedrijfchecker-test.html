@@ -4,7 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
@@ -46,7 +46,7 @@
     appearance:none; border:0; background:none; cursor:pointer;
     display:inline-flex; align-items:center; gap:12px;
     height:56px; padding:0; color:var(--accent);
-    font-family:"Baloo 2", sans-serif; font-weight:600; font-size:18px;
+    font-family:var(--font-kop); font-weight:600; font-size:18px;
     letter-spacing:-0.36px;
   }
   .coa-toggle > span:first-child{ border-bottom:1px solid var(--accent); }
@@ -61,13 +61,13 @@
   /* "Bestand kiezen" staat in het ontwerp BINNEN het veld, rechts. */
   .coa-bestandsknop{
     flex:0 0 auto; cursor:pointer; white-space:nowrap;
-    font-family:"Baloo 2", sans-serif; font-weight:600; font-size:18px;
+    font-family:var(--font-kop); font-weight:600; font-size:18px;
     letter-spacing:-0.36px; color:var(--accent);
   }
   .coa-bestandsknop:hover{ color:var(--accent-strong); }
   .coa-bestand{
     display:inline-flex; align-items:center; gap:8px;
-    font-family:"IBM Plex Mono", monospace; font-size:.82rem;
+    font-family:var(--font-mono); font-size:.82rem;
     color:var(--text-muted); word-break:break-all;
   }
   .coa-wis{

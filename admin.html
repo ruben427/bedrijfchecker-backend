@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <title>PepProof — admin panel</title>
 <link rel="stylesheet" href="solike.css">
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=Open+Sans:ital,wght@0,400;0,600;0,700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 /* Kleur voor een rij die werk heeft liggen. Komt uit het ontwerp
    (orange/100) en staat daarom niet in solike.css. */
@@ -16,7 +16,7 @@
 
 *{ box-sizing:border-box }
 body{ margin:0; background:var(--bg); color:var(--text);
-  font-family:"Open Sans",system-ui,sans-serif; font-size:16px; line-height:1.5; }
+  font-family:var(--font-tekst); font-size:16px; line-height:1.5; }
 button{ font:inherit; color:inherit }
 .verborgen{ display:none !important }
 
@@ -43,7 +43,7 @@ button{ font:inherit; color:inherit }
 .bel .tel{ position:absolute; top:-5px; right:-9px; min-width:22px; height:22px; padding:0 5px;
   border-radius:11px; background:var(--surface); color:var(--accent); border:1px solid var(--accent);
   box-shadow:-1px 1px 2px rgba(166,52,6,.5); letter-spacing:-.05em;
-  font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:14px;
+  font-family:var(--font-kop); font-weight:600; font-size:14px;
   display:grid; place-items:center }
 .bel .tel.leeg{ display:none }
 /* De lade: rijen van 54 hoog met een haarlijn ertussen (de gap laat de
@@ -60,7 +60,7 @@ button{ font:inherit; color:inherit }
 .lade-rij .stip{ width:10px; height:10px; border-radius:50%; background:var(--accent); flex:none }
 .lade-rij.gezien .stip{ background:var(--border) }
 .lade-rij .tekst{ min-width:0 }
-.lade-rij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:18px;
+.lade-rij .naam{ font-family:var(--font-kop); font-weight:600; font-size:18px;
   line-height:1.1; letter-spacing:-.05em; display:block;
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .lade-rij .waarom{ color:var(--text-subtle); font-size:14px; line-height:1.2;
@@ -71,9 +71,9 @@ button{ font:inherit; color:inherit }
 .ik{ display:flex; align-items:center; gap:10px }
 .ik-bol{ width:40px; height:40px; border-radius:50%; flex:none; display:grid; place-items:center;
   background:var(--accent); color:#fff9f5;
-  font-family:"Baloo 2",system-ui,sans-serif; font-weight:700; font-size:1rem }
+  font-family:var(--font-kop); font-weight:700; font-size:1rem }
 .ik-tekst{ line-height:1.2 }
-.ik-naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:.95rem; display:block }
+.ik-naam{ font-family:var(--font-kop); font-weight:600; font-size:.95rem; display:block }
 .ik-rol{ color:var(--text-subtle); font-size:.78rem; display:block }
 .ik-uit{ border:0; background:none; padding:0; cursor:pointer; color:var(--accent);
   font-size:.8rem; text-decoration:underline; text-underline-offset:2px }
@@ -89,7 +89,7 @@ body:not(.alleen-kijken) .kijkbalk{ display:none }
 /* aanmelden */
 .aanmelden{ max-width:460px; margin:48px auto; background:var(--surface);
   border:1px solid var(--border); border-radius:var(--radius-md,12px); padding:24px; box-shadow:var(--shadow) }
-.aanmelden h1{ font-family:"Baloo 2",system-ui,sans-serif; color:var(--heading-2);
+.aanmelden h1{ font-family:var(--font-kop); color:var(--heading-2);
   margin:0 0 4px; font-size:1.5rem }
 .aanmelden .veld{ margin-top:16px }
 .uitleg{ color:var(--text-subtle); font-size:.84rem; margin:6px 0 0 }
@@ -105,9 +105,9 @@ body:not(.alleen-kijken) .kijkbalk{ display:none }
 button.cel{ background:var(--surface); cursor:pointer; border:0;
   border-left:1px solid var(--border); border-radius:0; color:inherit }
 button.cel:hover{ background:var(--accent-soft) }
-.cel-kop{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:21px;
+.cel-kop{ font-family:var(--font-kop); font-weight:600; font-size:21px;
   line-height:1.15; color:var(--heading-2); margin:0 0 4px; min-height:2.3em }
-.cel-getal{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:72px;
+.cel-getal{ font-family:var(--font-kop); font-weight:600; font-size:72px;
   line-height:1; letter-spacing:-.03em; color:var(--heading-3); margin:0 0 12px }
 .cel.actie .cel-getal{ color:var(--accent) }
 .cel-onder{ font-size:14px; color:var(--text-subtle); line-height:1.4; margin:auto 0 0 }
@@ -117,7 +117,7 @@ button.cel:hover{ background:var(--accent-soft) }
 /* tabs */
 .tabs{ display:flex; border-bottom:1px solid var(--border); margin:0 0 20px }
 .tab{ border:0; background:none; cursor:pointer; padding:10px 20px 12px;
-  font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:18px;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
   color:var(--heading-3); border-bottom:3px solid transparent; margin-bottom:-1px }
 .tab .mee{ color:var(--text-subtle); font-weight:400; font-size:15px; margin-left:6px }
 .tab[aria-selected="true"]{ color:var(--accent); border-bottom-color:var(--accent) }
@@ -132,10 +132,10 @@ button.cel:hover{ background:var(--accent-soft) }
 .rij:first-child{ border-top:0 }
 .rij:hover{ background:var(--accent-soft) }
 .rij.werk{ background:var(--rij-werk); box-shadow:inset 4px 0 0 var(--accent) }
-.rij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:18px;
+.rij .naam{ font-family:var(--font-kop); font-weight:600; font-size:18px;
   color:var(--heading-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .paar{ display:flex; align-items:baseline; gap:8px; min-width:0 }
-.paar b{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:16px;
+.paar b{ font-family:var(--font-kop); font-weight:600; font-size:16px;
   color:var(--heading-3); flex:none }
 .paar span{ font-size:14px; color:var(--text-subtle); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .rij .pijl{ color:var(--text-subtle); width:20px; height:20px; justify-self:end }
@@ -150,21 +150,21 @@ button.cel:hover{ background:var(--accent-soft) }
 /* detail op dezelfde pagina */
 .terug{ border:0; background:none; cursor:pointer; padding:0; margin:0 0 16px;
   color:var(--accent); font-size:.9rem; text-decoration:underline; text-underline-offset:3px }
-h1.titelgroot{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:2rem;
+h1.titelgroot{ font-family:var(--font-kop); font-weight:600; font-size:2rem;
   line-height:1.1; letter-spacing:-.03em; color:var(--heading-3); margin:0 0 4px }
 .sub{ color:var(--text-subtle); margin:0 0 24px; font-size:.95rem }
 .blok{ background:var(--surface); border:1px solid var(--border);
   border-radius:var(--radius-md,12px); padding:20px; margin-bottom:16px }
-.blok h2{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.15rem;
+.blok h2{ font-family:var(--font-kop); font-weight:600; font-size:1.15rem;
   color:var(--heading-2); margin:0 0 2px; display:flex; align-items:center; gap:10px; flex-wrap:wrap }
-.teller{ font-family:"Open Sans",sans-serif; font-weight:700; font-size:.72rem;
+.teller{ font-family:var(--font-tekst); font-weight:700; font-size:.72rem;
   min-width:22px; height:22px; padding:0 8px; border-radius:11px;
   display:inline-grid; place-items:center; background:var(--accent); color:#fff9f5 }
 .blok .duiding{ color:var(--text-subtle); font-size:.88rem; margin:0 0 16px }
-.ref{ font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.76rem; color:var(--text-subtle) }
+.ref{ font-family:var(--font-mono); font-size:.76rem; color:var(--text-subtle) }
 .werkrij{ display:flex; align-items:center; gap:12px; flex-wrap:wrap;
   padding:12px 14px; border:1px solid var(--border); border-radius:var(--radius-md,12px); margin-bottom:8px }
-.werkrij .naam{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.02rem; flex:1 1 200px }
+.werkrij .naam{ font-family:var(--font-kop); font-weight:600; font-size:1.02rem; flex:1 1 200px }
 /* Een regel die te checken valt is zelf de knop — niet een knopje aan het
    eind van de regel. Klikken opent de controle in het zijpaneel. */
 button.werkrij{ width:100%; text-align:left; background:var(--surface); color:inherit;
@@ -207,7 +207,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   display:flex; flex-direction:column; gap:48px }
 .links-onder{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
   justify-content:space-between; gap:12px }
-.titel{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:32px;
+.titel{ font-family:var(--font-kop); font-weight:600; font-size:32px;
   line-height:1.5; letter-spacing:-.05em; margin:0; color:var(--heading-3); flex:none }
 /* De gegevens van de controle staan in dezelfde doosjes als de invoervelden
    (Figma 1586:6324, herzien 23 september), maar het zijn leesvelden: je kunt
@@ -239,7 +239,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
    verschil waar deze hele controle om draait. */
 .vaktitel{ width:100%; display:flex; align-items:center; justify-content:space-between;
   gap:8px; font-size:14px; color:var(--text-muted) }
-.vaktitel b{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:16px;
+.vaktitel b{ font-family:var(--font-kop); font-weight:600; font-size:16px;
   color:var(--heading-3) }
 /* Het lab laat zijn pagina niet inladen (Cloudflare), dus het rapport komt
    hier binnen via plakken: de afbeelding zelf, of het afbeeldingsadres.
@@ -270,7 +270,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 .vervolg{ margin-top:16px; padding:16px; border-radius:var(--radius-md,12px);
   background:var(--accent-soft); border:1px solid var(--accent) }
 .vervolg[hidden]{ display:none }
-.vervolg h3{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:1.05rem; margin:0 0 4px }
+.vervolg h3{ font-family:var(--font-kop); font-weight:600; font-size:1.05rem; margin:0 0 4px }
 .vervolg .waarom{ margin:0 0 12px; font-size:.86rem; color:var(--text-muted) }
 .keuzes{ display:flex; gap:10px; flex-wrap:wrap }
 .veldlijst{ display:flex; flex-direction:column; gap:10px; margin:0 0 12px }

@@ -5,14 +5,14 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
 <style>
   .wrap{max-width:1180px;margin:0 auto;padding:24px 16px 80px}
   .top{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
-  .top h1{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading);margin:0;font-size:1.6rem}
+  .top h1{font-family:var(--font-kop);color:var(--heading);margin:0;font-size:1.6rem}
   .top .sub{color:var(--text-muted);font-size:.9rem}
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg,24px);
     padding:20px;margin:16px 0;box-shadow:var(--shadow)}
@@ -29,7 +29,7 @@
   .tellers{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 0}
   .teller{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-md,14px);
     padding:10px 14px;min-width:120px}
-  .teller .n{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:1.35rem;font-weight:600;display:block;line-height:1.2}
+  .teller .n{font-family:var(--font-mono);font-size:1.35rem;font-weight:600;display:block;line-height:1.2}
   .teller .l{font-size:.75rem;color:var(--text-muted)}
   .teller.let .n{color:var(--accent)}
 
@@ -40,7 +40,7 @@
   tr.lev{cursor:pointer}
   tr.lev:hover td{background:var(--surface-2)}
   tr.lev.open td{background:var(--surface-2)}
-  .num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+  .num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
   .dom{font-weight:600}
   .labs{color:var(--text-muted);font-size:.8rem}
   .caret{display:inline-block;width:13px;color:var(--text-faint)}
@@ -50,7 +50,7 @@
 
   tr.detail > td{padding:0;background:var(--surface-2)}
   .detailbox{padding:16px 14px 20px}
-  .detailbox h3{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);margin:0 0 2px;font-size:1rem}
+  .detailbox h3{font-family:var(--font-kop);color:var(--heading-2);margin:0 0 2px;font-size:1rem}
   .detailbox .hint{color:var(--text-muted);font-size:.82rem;margin:0 0 12px}
   .ref{border:1px solid var(--border);border-radius:var(--radius-md,14px);background:var(--surface);
     padding:12px 14px;margin-bottom:10px}
@@ -58,7 +58,7 @@
   .ref .kop .prod{font-weight:600}
   .ref .kop .soort{font-size:.75rem;color:var(--text-muted);border:1px solid var(--border);
     border-radius:999px;padding:1px 8px}
-  .ref .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.78rem;color:var(--text-muted);
+  .ref .mono{font-family:var(--font-mono);font-size:.78rem;color:var(--text-muted);
     word-break:break-all}
   .ref dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:8px 0 0;font-size:.85rem}
   .ref dt{color:var(--text-muted)}

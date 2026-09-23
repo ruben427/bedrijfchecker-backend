@@ -5,7 +5,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
@@ -61,7 +61,7 @@
 
   .staf{ max-width:1180px; margin:0 auto; padding:60px 16px 80px; }
   .kop{ display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
-  .kop h1{ font-family:"Baloo 2",system-ui,sans-serif; color:var(--heading); margin:0; font-size:1.6rem; }
+  .kop h1{ font-family:var(--font-kop); color:var(--heading); margin:0; font-size:1.6rem; }
   .kop .terug{ color:var(--accent); font-size:.9rem; }
   .voorbeeld{
     margin:14px 0 28px; padding:10px 14px; border-radius:var(--radius-md,12px);
@@ -74,9 +74,9 @@
     background:var(--surface-2); border:1px solid var(--border);
     border-radius:var(--radius-md,16px); padding:14px 16px;
   }
-  .tegel .k{ font-family:"Open Sans",sans-serif; font-weight:700; font-size:.66rem; letter-spacing:.06em;
+  .tegel .k{ font-family:var(--font-tekst); font-weight:700; font-size:.66rem; letter-spacing:.06em;
     text-transform:uppercase; color:var(--text-subtle); display:block; }
-  .tegel .v{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:2rem; line-height:1.05;
+  .tegel .v{ font-family:var(--font-kop); font-weight:600; font-size:2rem; line-height:1.05;
     display:block; margin:4px 0 2px; font-variant-numeric:tabular-nums; }
   .tegel .n{ font-size:.78rem; color:var(--text-faint); line-height:1.35; display:block; }
   .tegel.aandacht .v{ color:var(--accent-strong); }
@@ -85,7 +85,7 @@
     background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg,24px);
     padding:22px 24px 18px; margin-bottom:20px;
   }
-  .kaart h2{ font-family:"Baloo 2",system-ui,sans-serif; font-size:1.15rem; margin:0 0 2px; color:var(--heading-2); }
+  .kaart h2{ font-family:var(--font-kop); font-size:1.15rem; margin:0 0 2px; color:var(--heading-2); }
   .kaart .waarom{ font-size:.86rem; color:var(--text-muted); margin:0 0 18px; line-height:1.45; max-width:62ch; }
   .duo{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
   @media (max-width:860px){ .duo{ grid-template-columns:1fr; } }
@@ -118,14 +118,14 @@
 
   svg .raster{ stroke:var(--raster); stroke-width:1; }
   svg .as{ stroke:var(--as); stroke-width:1; }
-  svg text{ fill:var(--text-muted); font-family:"Open Sans",sans-serif; font-size:11px; }
+  svg text{ fill:var(--text-muted); font-family:var(--font-tekst); font-size:11px; }
   svg text.waarde{ fill:var(--text); font-weight:700; font-variant-numeric:tabular-nums; }
   .tip{
     position:fixed; pointer-events:none; z-index:40; padding:8px 11px; border-radius:10px;
     background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow);
     font-size:.8rem; color:var(--text); opacity:0; transition:opacity .09s; max-width:250px; line-height:1.4;
   }
-  .tip b{ display:block; font-family:"Baloo 2",system-ui,sans-serif; font-size:.92rem; }
+  .tip b{ display:block; font-family:var(--font-kop); font-size:.92rem; }
 </style>
 
 <header class="site-header">

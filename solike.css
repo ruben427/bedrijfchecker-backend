@@ -112,6 +112,16 @@
   --radius-sm: 8px;    /* knoppen, inputs, kleine kaartjes */
   --radius-md: 12px;   /* standaardkaarten */
   --radius-lg: 24px;   /* hero-kaarten, grote containers */
+  /* Fonts. Alle drie Google Fonts, alle drie op elke pagina geladen via
+     dezelfde regel. Besluit Ruben, 23 september 2026: een token per rol, zodat
+     de terugvallijst niet op elke plek opnieuw wordt verzonnen.
+       kop   - titels, knoppen, grote getallen
+       tekst - lopende tekst
+       mono  - werkregels, datums, batchnummers en andere technische waarden */
+  --font-kop: "Baloo 2", system-ui, sans-serif;
+  --font-tekst: "Open Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
   --radius-pill: 999px; /* chips en pil-vormen - NIET voor knoppen */
   --radius-knop: 12px;  /* ALLE knoppen (besluit Ruben, 23 september 2026).
                            Staat los van --radius-sm, want dat geldt ook voor
@@ -130,18 +140,18 @@ html,body{ margin:0; padding:0; }
 body{
   background:var(--bg);
   color:var(--text);
-  font-family:"Open Sans", system-ui, sans-serif;
+  font-family:var(--font-tekst);
   line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
 h1,h2,h3{
-  font-family:"Baloo 2", system-ui, sans-serif;
+  font-family:var(--font-kop);
   font-weight:600;
   text-wrap:balance;
   margin:0;
   color:var(--text);
 }
-.mono{ font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+.mono{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 a{ color:var(--accent-strong); }
 
 /* ---------- basis-interactie ---------- */
@@ -191,7 +201,7 @@ input:focus, textarea:focus, button:focus-visible, a:focus-visible{
   height:var(--knop-hoog); padding:0 24px;
   display:inline-flex; align-items:center; justify-content:center; gap:12px;
   border-radius:var(--radius-knop,12px); cursor:pointer;
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
   line-height:1; letter-spacing:-.02em; white-space:nowrap; text-decoration:none;
   border:1px solid transparent; background:none; color:inherit;
   transition:background-color .12s, border-color .12s, color .12s;
@@ -233,7 +243,7 @@ input:focus, textarea:focus, button:focus-visible, a:focus-visible{
   height:var(--knop-hoog); padding:0; background:none; border:0;
   color:var(--accent); gap:12px;
   display:inline-flex; align-items:center; justify-content:center;
-  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
   line-height:1; cursor:pointer; text-decoration:none; border-radius:var(--radius-knop,12px);
 }
 .knop.link > span, .btn.ghost > span, .textlink > span{
@@ -311,7 +321,7 @@ input:focus, select:focus, textarea:focus{
    klein bovenin zodra er iets staat of het veld actief is */
 .veld > .veld-label{
   position:absolute; left:13px; top:16px; pointer-events:none;
-  font-family:"Open Sans", system-ui, sans-serif; font-size:18px; line-height:1;
+  font-family:var(--font-tekst); font-size:18px; line-height:1;
   color:var(--text-muted); transition:top .12s, font-size .12s;
 }
 .veld > input:focus ~ .veld-label,

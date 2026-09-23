@@ -5,17 +5,17 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="solike.css">
 <link rel="stylesheet" href="bedrijfchecker.css">
 
 <style>
   .wrap{max-width:960px;margin:0 auto;padding:24px 16px 80px}
   .top{display:flex;align-items:baseline;gap:12px;margin-bottom:8px}
-  .top h1{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading);margin:0;font-size:1.6rem}
+  .top h1{font-family:var(--font-kop);color:var(--heading);margin:0;font-size:1.6rem}
   .top .sub{color:var(--text-muted);font-size:.9rem}
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg,24px);padding:20px;margin:16px 0;box-shadow:var(--shadow)}
-  .panel > h2{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);margin:0 0 4px;font-size:1.15rem}
+  .panel > h2{font-family:var(--font-kop);color:var(--heading-2);margin:0 0 4px;font-size:1.15rem}
   .panel > .hint{color:var(--text-muted);font-size:.88rem;margin:0 0 14px}
   label{display:block;font-weight:600;font-size:.85rem;margin:10px 0 4px}
   input[type=text],input[type=password],input[type=file],select,textarea{
@@ -31,7 +31,7 @@
   button.ghost{background:transparent;color:var(--accent);border:1px solid var(--border)}
   button.ghost:hover{background:var(--accent-soft)}
   .actions{margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem}
+  .mono{font-family:var(--font-mono);font-size:.82rem}
   .doc{border:1px solid var(--border);border-radius:var(--radius-md,12px);background:var(--surface-2);margin:12px 0;overflow:hidden}
   .doc > summary{cursor:pointer;padding:14px 16px;list-style:none;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   .doc > summary::-webkit-details-marker{display:none}
@@ -45,7 +45,7 @@
   .pill.neutral{background:var(--grey-soft);color:var(--grey)}
   dl.velden{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin:0 0 4px;font-size:.88rem}
   dl.velden dt{color:var(--text-muted)}
-  dl.velden dd{margin:0;font-family:"IBM Plex Mono",ui-monospace,monospace}
+  dl.velden dd{margin:0;font-family:var(--font-mono)}
   .let-op{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 var(--radius-sm,8px) var(--radius-sm,8px) 0;font-size:.86rem;margin:12px 0}
   .let-op b{color:var(--accent-strong)}
   .melding{padding:10px 14px;border-radius:var(--radius-sm,8px);font-size:.88rem;margin-top:12px;display:none}
@@ -60,21 +60,21 @@
   table.kv th{text-align:left;font-size:.76rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text-subtle);
     border-bottom:1px solid var(--border);padding:6px 10px 6px 0;font-weight:700}
   table.kv td{padding:8px 10px 8px 0;border-bottom:1px solid var(--border);vertical-align:top}
-  table.kv td.num{font-family:"IBM Plex Mono",ui-monospace,monospace;text-align:right;padding-right:16px}
+  table.kv td.num{font-family:var(--font-mono);text-align:right;padding-right:16px}
   .shops{color:var(--text-muted);font-size:.82rem;line-height:1.5}
   .totalen{display:flex;gap:22px;flex-wrap:wrap;margin:4px 0 2px}
   .totalen div{font-size:.84rem;color:var(--text-muted)}
-  .totalen b{display:block;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:1.3rem;color:var(--text);font-weight:600}
+  .totalen b{display:block;font-family:var(--font-mono);font-size:1.3rem;color:var(--text);font-weight:600}
   .vondst{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:0 var(--radius-md,12px) var(--radius-md,12px) 0;
     background:var(--surface-2);padding:12px 16px;margin:10px 0}
-  .vondst h4{margin:0 0 4px;font-family:"Baloo 2",system-ui,sans-serif;font-size:.98rem;color:var(--heading-2)}
+  .vondst h4{margin:0 0 4px;font-family:var(--font-kop);font-size:.98rem;color:var(--heading-2)}
   details.vondst.ref{padding:0}
   details.vondst.ref > summary{cursor:pointer;list-style:none;padding:12px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   details.vondst.ref > summary::-webkit-details-marker{display:none}
   details.vondst.ref[open] > summary{border-bottom:1px solid var(--border)}
-  details.vondst.ref .titel{font-weight:700;flex:1 1 240px;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.82rem}
+  details.vondst.ref .titel{font-weight:700;flex:1 1 240px;font-family:var(--font-mono);font-size:.82rem}
   details.vondst.ref .body{padding:16px}
-  .sub-kop{font-family:"Baloo 2",system-ui,sans-serif;color:var(--heading-2);font-size:1rem;margin:22px 0 2px}
+  .sub-kop{font-family:var(--font-kop);color:var(--heading-2);font-size:1rem;margin:22px 0 2px}
   .ook-bij{margin:0 0 12px;font-size:.86rem}
 </style>
 
@@ -284,7 +284,7 @@
 
           '<hr class="sep">' +
 
-          '<h3 style="font-family:\'Baloo 2\',sans-serif;color:var(--heading-2);font-size:1rem;margin:0 0 4px">Uitslag vastleggen</h3>' +
+          '<h3 style="font-family:var(--font-kop);color:var(--heading-2);font-size:1rem;margin:0 0 4px">Uitslag vastleggen</h3>' +
           '<p class="hint" style="margin:0 0 10px">Vul dit pas in nadat je de controlepagina zelf in je browser hebt geopend en bekeken.</p>' +
 
           '<label>Uitkomst</label>' +
