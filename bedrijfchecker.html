@@ -60,6 +60,13 @@
     naderhandCoaUrl: '',
     naderhandCoaFiles: [],
     naderhandCoaError: null,
+    // En nog een derde keer hetzelfde veld, nu MIDDEN IN de lopende check:
+    // zodra de COA-stap klaar is en niets heeft gevonden staat het paneel
+    // tussen die stap en het laboratorium (Figma 1686-8812, 23 september).
+    // Weer apart, om dezelfde reden: drie momenten, drie invullingen.
+    tussenCoaUrl: '',
+    tussenCoaFiles: [],
+    tussenCoaError: null,
     runningCaseIds: {},      // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
     runningStepKeys: {}      // caseId -> key van de stap die nu via "opnieuw" wordt herdraaid (voor renderProgress)
   };
@@ -438,8 +445,18 @@
   var ICON_CARET = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
   var ICON_SEARCH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
   var ICON_UPLOAD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="12" y2="19"/><line x1="9" y1="16" x2="15" y2="16"/></svg>';
+  // Zelfde maat als ICON_STEP_DONE, rood met een kruis: de stap is gedraaid
+  // en heeft niets opgeleverd. Dat is iets anders dan een mislukte stap, en
+  // ook iets anders dan een oordeel over de leverancier - zie de tekst van
+  // het paneel eronder.
+  var ICON_STEP_LEEG = '<svg viewBox="0 0 21 21" width="21" height="21"><circle cx="10.5" cy="10.5" r="10.5" fill="var(--ds-rood)"/><path d="M7.3 7.3l6.4 6.4M13.7 7.3l-6.4 6.4" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></svg>';
   var ICON_CHEVRON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>';
   var ICON_CHEVRON_LEFT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 6 9 12 15 18"/></svg>';
+  // Hoeveel eigen certificaten er in een keer mee mogen. Staat ook letterlijk
+  // in de tekst van het paneel, dus de twee horen hier bij elkaar te staan.
+  // De server heeft dezelfde grens (uploadFields in src/server.js).
+  var TUSSEN_COA_MAX = 5;
+
   var ICON_STEP_DONE = '<svg viewBox="0 0 21 21" width="21" height="21"><circle cx="10.5" cy="10.5" r="10.5" fill="var(--ok)"/><path d="M6 10.7l3 3 6-6.8" stroke="#fff" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   // ---------- dashboard (landingspagina: direct starten + eerder gedraaide audits) ----------
@@ -726,9 +743,26 @@
       // detail-head/chip + retry-bare renderProgress()-lijst + losse terug-
       // en stop-knoppen hieronder; die blijven ongewijzigd voor fout/
       // gestopt/klaar.
+      // De poller hertekent deze kaart elke vier seconden. Staat de cursor op
+      // dat moment in het certificaatveld, dan springt hij eruit - midden in
+      // een woord, zonder dat iemand iets fout deed. De waarde overleeft wel
+      // (die staat in state), de cursor niet. Dus onthouden en terugzetten.
+      var cursor = null;
+      var nu = document.activeElement;
+      if (nu && nu.id === 'f-tussen-url'){
+        cursor = { start: nu.selectionStart, eind: nu.selectionEnd };
+      }
       app.innerHTML = '<button type="button" class="stop-link" id="stop-audit"><span class="chev">' + ICON_CHEVRON_LEFT + '</span><span class="lbl">' + (c.tier === 'deep' ? 'Stop de Deepdive' : 'Stop de check') + '</span></button>' +
         renderRunningCard(c);
       wireDetailStopButton(c);
+      wireTussenCoa(c);
+      if (cursor){
+        var terug = app.querySelector('#f-tussen-url');
+        if (terug){
+          terug.focus();
+          try { terug.setSelectionRange(cursor.start, cursor.eind); } catch (e) {}
+        }
+      }
       return;
     }
 
@@ -938,6 +972,114 @@
       '</summary><div class="stap-log-body">' + regels + '</div></details>';
   }
 
+  // Heeft de COA-stap gedraaid en niets gevonden?
+  //
+  // Dit is het enige signaal dat MIDDEN in de run te krijgen is. De gate
+  // (NO_COA_FOUND) komt uit de scoring, en die draait pas na categorize -
+  // twee stappen verderop. coaRecords is wat de COA-stap zelf wegschrijft, en
+  // dat staat er zodra die stap klaar is. Daarom toetsen we daarop en niet op
+  // de gate, ook al zegt de gate later hetzelfde.
+  //
+  // LET OP wat hier NIET staat: leeg betekent "wij vonden niets", langs de
+  // bronnen die wij doorzochten. Niet "er is niets" en niet "er deugt iets
+  // niet". Dat onderscheid moet in de tekst van het paneel blijven staan.
+  function geenCoaGevonden(c){
+    if (!c || !Array.isArray(c.progress)) return false;
+    var gedraaid = c.progress.some(function(p){ return p && p.key === 'coaDataset'; });
+    if (!gedraaid) return false;
+    var data = c.phaseData && c.phaseData.coaDataset && c.phaseData.coaDataset.data;
+    if (!data || !Array.isArray(data.coaRecords)) return false;
+    return data.coaRecords.length === 0;
+  }
+
+  // Het paneel zelf (Figma "URL check - desktop", node 1686-8812). Het hangt
+  // in de stappenlijst tussen de COA-stap en het laboratorium, want dat is
+  // het moment waarop de vraag ergens over gaat: de check loopt gewoon door.
+  function tussenCoaPaneel(c){
+    var namen = state.tussenCoaFiles.map(function(f){ return f.name; }).join(', ');
+    var bezig = !!state.runningCaseIds['__tussen__'];
+    return '<div class="coa-tussen">' +
+      '<h3 class="coa-tussen-kop">Wij hebben geen COA kunnen vinden op de website</h3>' +
+      '<p class="coa-tussen-tekst">Heb je misschien zelf een COA van een aangeschafde batch of heb je ' +
+      'een link waar lab testen staan van deze leverancier? Plaats de link hieronder of kies een bestand ' +
+      'om met ons te delen. Je kan er max ' + TUSSEN_COA_MAX + ' met ons delen.</p>' +
+      '<div class="coa-tussen-veld' + (state.tussenCoaError ? ' has-error' : '') + '">' +
+        '<input type="text" id="f-tussen-url" value="' + escapeHtml(state.tussenCoaUrl) + '" placeholder="Link naar de certificaten">' +
+        '<label class="coa-tussen-kies" for="f-tussen-file">Bestand kiezen</label>' +
+        '<input type="file" id="f-tussen-file" accept="image/*,application/pdf" multiple hidden>' +
+      '</div>' +
+      (namen ? '<span class="coa-bestand">' + escapeHtml(namen) +
+        ' <button type="button" class="coa-wis" id="tussen-wis" aria-label="Verwijderen">&times;</button></span>' : '') +
+      (state.tussenCoaError ? '<div class="field-error">' + escapeHtml(state.tussenCoaError) + '</div>' : '') +
+      '<button type="button" class="btn-cta" id="tussen-start"' + (bezig ? ' disabled' : '') + '>' +
+        (bezig ? 'Bezig\u2026' : 'Check voortzetten') + '</button>' +
+      '</div>';
+  }
+
+  // Wat "Check voortzetten" doet, en waarom het geen hervatten is.
+  //
+  // De lopende check heeft de site al gelezen. Een certificaat dat NU
+  // binnenkomt kan hij niet meer meenemen: de COA-stap is voorbij en de
+  // stappen erna rekenen op wat die stap heeft opgeleverd. We starten dus
+  // dezelfde check opnieuw, met het certificaat erbij, en stoppen de oude.
+  //
+  // Volgorde is hier geen detail: eerst de nieuwe aanmaken, dan pas de oude
+  // stoppen. Andersom staat de bezoeker bij een mislukte start met een
+  // gestopte check en zonder paneel om de fout in te lezen.
+  function wireTussenCoa(c){
+    var url = app.querySelector('#f-tussen-url');
+    if (url){
+      url.addEventListener('input', function(){
+        state.tussenCoaUrl = url.value;
+        if (state.tussenCoaError) state.tussenCoaError = null;
+      });
+    }
+    var best = app.querySelector('#f-tussen-file');
+    if (best){
+      best.addEventListener('change', function(){
+        state.tussenCoaFiles = Array.prototype.slice.call(best.files || []).slice(0, TUSSEN_COA_MAX);
+        render();
+      });
+    }
+    var wis = app.querySelector('#tussen-wis');
+    if (wis) wis.addEventListener('click', function(){ state.tussenCoaFiles = []; render(); });
+
+    var start = app.querySelector('#tussen-start');
+    if (!start) return;
+    start.addEventListener('click', function(){
+      var link = (state.tussenCoaUrl || '').trim();
+      if (!link && !state.tussenCoaFiles.length){
+        state.tussenCoaError = 'Plak een link naar je certificaat of kies een bestand.';
+        render();
+        return;
+      }
+      if (state.runningCaseIds['__tussen__']) return;
+      state.runningCaseIds['__tussen__'] = true;
+      render();
+      apiCreateCase(
+        { naam: c.naam || domainOf(c.website), website: c.website },
+        [], null,
+        { url: link, files: state.tussenCoaFiles }
+      ).then(function(nieuw){
+        // De oude mag nu weg. Lukt dat niet, dan draait hij zichzelf af; dat
+        // is vervelend maar geen reden om de nieuwe niet te tonen.
+        return apiStopCase(c.id).catch(function(){}).then(function(){ return nieuw; });
+      }).then(function(nieuw){
+        delete state.runningCaseIds['__tussen__'];
+        state.tussenCoaUrl = ''; state.tussenCoaFiles = []; state.tussenCoaError = null;
+        stopCasePoller();
+        state.cases.unshift(nieuw);
+        goDetail(nieuw.id);
+      }).catch(function(e){
+        delete state.runningCaseIds['__tussen__'];
+        state.tussenCoaError = (e && e.code === 'invalid_coa_url')
+          ? (e.message || 'Die link kunnen we niet lezen.')
+          : ('Voortzetten is mislukt: ' + ((e && e.message) || 'onbekende fout'));
+        render();
+      });
+    });
+  }
+
   function renderRunningCard(c){
     var progress = c.progress || [];
     var doneMap = {};
@@ -985,9 +1127,18 @@
       }
       var sep = (idx === deepStart && deepStart > 0) ? '<div class="run-step-sep"></div>' : '';
       if (done){
-        return sep + '<div class="run-step done"><span class="step-icon">' + ICON_STEP_DONE + '</span>' +
+        // De COA-stap die niets vond krijgt een rood kruis in plaats van een
+        // groen vinkje: hij is wel gedraaid, maar er kwam niets uit.
+        var leeg = (rij.key === 'coaDataset') && geenCoaGevonden(c);
+        // Het paneel hoort bij de gratis run. Draait de Deep Dive, dan staat
+        // die COA-regel er alleen nog als afgeronde geschiedenis en is de
+        // vraag al eerder gesteld.
+        var vraag = leeg && rij.fase !== 'deep' && c.tier !== 'deep';
+        return sep + '<div class="run-step done' + (leeg ? ' leeg' : '') + '"><span class="step-icon">' +
+          (leeg ? ICON_STEP_LEEG : ICON_STEP_DONE) + '</span>' +
           '<span class="run-step-label">' + escapeHtml(rij.label) + '</span>' +
-          '<span class="run-step-dur">' + (entry ? fmtDuration(entry.durationMs) : '') + '</span></div>';
+          '<span class="run-step-dur">' + (entry ? fmtDuration(entry.durationMs) : '') + '</span></div>' +
+          (vraag ? tussenCoaPaneel(c) : '');
       }
       if (isCurrent){
         return sep + '<div class="run-step active"><span class="step-icon active"></span>' +

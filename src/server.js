@@ -32,7 +32,11 @@ app.set('trust proxy', 1);
 // max 10) en een los 'kvkDocument'-veld (max 1) voor het KvK-uittreksel. Geen
 // mimetype-filter meer op multer-niveau — een PDF komt nu ook door; voorheen
 // werd elk niet-image-bestand verderop in de route stilletjes weggegooid.
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 11 } });
+// LET OP: 'files' hieronder is het TOTAAL over alle velden samen. Staat dat
+// lager dan de som van de maxCounts, dan weigert multer een combinatie die
+// volgens de velden wel mag - met een melding die daar niet naar wijst.
+// 10 + 1 + 5 = 16.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024, files: 16 } });
 // 'eigenCoa' is nieuw (22 september, testvariant): het certificaat dat de
 // KOPER zelf bij zijn bestelling kreeg. Dat is iets anders dan wat de shop
 // publiceert - het gaat over zijn eigen batch - en het wordt daarom apart
@@ -40,7 +44,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 
 const uploadFields = upload.fields([
   { name: 'files', maxCount: 10 },
   { name: 'kvkDocument', maxCount: 1 },
-  { name: 'eigenCoa', maxCount: 3 }
+  // Vijf, niet drie: het paneel dat tijdens de check verschijnt als we niets
+  // op de site vonden belooft er letterlijk vijf (Figma 1686-8812). De tekst
+  // en deze grens horen gelijk te blijven; zie TUSSEN_COA_MAX in de frontend.
+  { name: 'eigenCoa', maxCount: 5 }
 ]);
 
 // CORS is hier geen autorisatiegrens (dat is het owner token), maar beperkt wel

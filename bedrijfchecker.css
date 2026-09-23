@@ -1327,6 +1327,65 @@ body.sheet-open{ overflow:hidden; }
 }
 .coa-klein{ margin:0; font-size:.85rem; color:var(--text-faint); }
 
+/* ---------- Geen COA op de site: het paneel midden in de lopende check ----
+   Figma "URL check - desktop", node 1686-8812 (23 september). Het staat in de
+   stappenlijst tussen de COA-stap en het laboratorium, en de check loopt er
+   gewoon onderdoor verder.
+
+   Maten letterlijk uit het ontwerp: padding 24, gap 12, radius 12, vulling
+   --ds-oranje-50 (#fff8ef), rand neutrals/100 (#e2e0de, bij ons --surface-2).
+   Het veld is 56 hoog met radius 8; de streep voor "Bestand kiezen" is
+   #d9d9d9 en loopt over de volle hoogte. De knop is een gewone .btn-cta. */
+.coa-tussen{
+  display:flex; flex-direction:column; align-items:flex-start; gap:12px;
+  width:100%; padding:24px;
+  background:var(--ds-oranje-50);
+  border:1px solid var(--surface-2); border-radius:12px;
+}
+.coa-tussen-kop{
+  margin:0; font-family:var(--font-kop); font-weight:600;
+  font-size:24px; line-height:1; letter-spacing:-.02em; color:var(--heading-2);
+}
+.coa-tussen-tekst{
+  margin:0; font-size:18px; line-height:1.5;
+  letter-spacing:-0.36px; color:var(--text);
+}
+.coa-tussen-veld{
+  display:flex; align-items:stretch;
+  width:100%; height:56px;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+}
+.coa-tussen-veld:focus-within{ border-color:var(--accent); }
+.coa-tussen-veld.has-error{ border-color:var(--danger); }
+.coa-tussen-veld input[type=text]{
+  flex:1 1 0; min-width:0; height:100%;
+  border:0; background:none; padding:0 16px; border-radius:0;
+  font-size:18px; color:var(--text);
+}
+/* Zelfde reden als bij .check-form .veld: het designsysteem laat een input
+   binnen een veld uitgroeien bij focus, en hier moet hij stil blijven staan -
+   anders steekt hij onder de rand door. */
+.coa-tussen-veld input[type=text]:focus{ outline:none; width:auto; margin:0; height:100%; }
+.coa-tussen-veld input[type=text]::placeholder{ color:var(--text-muted); opacity:1; }
+.coa-tussen-kies{
+  display:flex; align-items:center; flex:0 0 auto;
+  padding:0 20px; cursor:pointer; white-space:nowrap;
+  border-left:1px solid #d9d9d9;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
+  letter-spacing:-0.36px; color:var(--accent);
+}
+.coa-tussen-kies:hover{ color:var(--accent-strong); }
+.coa-tussen .btn-cta{ margin-top:0; }
+
+@media (max-width:640px){
+  .coa-tussen{ padding:20px; }
+  .coa-tussen-kop{ font-size:21px; line-height:1.15; }
+  .coa-tussen-tekst{ font-size:16px; }
+  .coa-tussen-veld input[type=text]{ font-size:16px; padding:0 12px; }
+  .coa-tussen-kies{ padding:0 14px; font-size:16px; }
+  .coa-tussen .btn-cta{ width:100%; }
+}
+
 @media (max-width:640px){
   .check-form .veld{ height:auto; min-height:56px; flex-wrap:wrap; padding:10px 12px; }
   .check-form .veld:focus-within{ height:auto; min-height:64px; }
