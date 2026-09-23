@@ -87,9 +87,9 @@
 
   <section class="panel">
     <h2>1. Toegang</h2>
-    <p class="hint">Plak het beheerderstoken. Het blijft alleen in dit tabblad staan en is na verversen weg.</p>
-    <label for="token">Beheerderstoken</label>
-    <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="ADMIN_TOKEN">
+    <p class="hint">Plak je eigen sleutel: het beheerderstoken, of de sleutel van een beoordelaar. Hij blijft alleen in dit tabblad staan en is na verversen weg.</p>
+    <label for="token">Jouw sleutel</label>
+    <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="ADMIN_TOKEN of COA_REDACTIE_TOKEN">
   </section>
 
   <section class="panel">
@@ -166,6 +166,16 @@
     }
   }
 
+  // Wie ben ik volgens de server? Wordt gevuld zodra een aanroep lukt, en
+  // gebruikt om bij een 403 te kunnen zeggen welke rol je dan wel hebt.
+  var huidigeRol = null;
+
+  function haalRolOp() {
+    return api('/api/admin/wie-ben-ik')
+      .then(function (d) { huidigeRol = d || null; return d; })
+      .catch(function () { return null; });
+  }
+
   function api(pad, opties) {
     var o = opties || {};
     var headers = Object.assign({}, o.headers || {}, { 'X-Owner-Token': token() });
@@ -175,7 +185,23 @@
         try { data = tekst ? JSON.parse(tekst) : null; } catch (e) { data = null; }
         if (!r.ok) {
           var m = (data && data.message) || (data && data.error) || ('Server gaf status ' + r.status + '.');
-          if (r.status === 401 || r.status === 403) m = 'Geen toegang. Controleer het beheerderstoken bovenaan.';
+          // 401 en 403 zijn twee verschillende problemen met twee verschillende
+          // uitwegen, en ze kregen tot 23 september dezelfde tekst. Gevolg: een
+          // GELDIGE sleutel op een route die je rol niet toelaat las als een
+          // FOUTE sleutel, en de melding stuurde je je token controleren dat
+          // niets mankeerde. Dat heeft een ochtend gekost.
+          //
+          // Opnieuw proberen helpt bij geen van beide - het antwoord is morgen
+          // identiek. Daarom staat er nu bij allebei wat de volgende stap wel is.
+          if (r.status === 401) {
+            m = 'Deze sleutel wordt niet herkend. Controleer de sleutel bovenaan; opnieuw proberen met dezelfde sleutel geeft hetzelfde.';
+          } else if (r.status === 403) {
+            var rol = (huidigeRol && huidigeRol.rol) ? huidigeRol.rol : null;
+            m = rol
+              ? ('Je sleutel klopt en je bent ' + rol + '. Deze handeling mag jouw rol niet - vraag een beheerder.')
+              : 'Je sleutel klopt, maar deze handeling mag jouw rol niet - vraag een beheerder.';
+            if (data && data.message) m += ' (' + data.message + ')';
+          }
           throw new Error(m);
         }
         return data;
@@ -333,7 +359,7 @@
 
   function ophalen() {
     var key = supplierKeyVan(el('leverancier').value);
-    if (!token()) { melding('zoek-melding', 'Vul eerst het beheerderstoken in.', 'fout'); return; }
+    if (!token()) { melding('zoek-melding', 'Vul eerst je sleutel in.', 'fout'); return; }
     if (!key) { melding('zoek-melding', 'Vul een website of domein in.', 'fout'); return; }
     melding('zoek-melding', 'Bezig met ophalen…', 'bezig');
     api('/api/admin/coa/' + encodeURIComponent(key))
@@ -347,7 +373,7 @@
   function uploaden() {
     var key = supplierKeyVan(el('up-leverancier').value);
     var bestand = el('up-bestand').files[0];
-    if (!token()) { melding('upload-melding', 'Vul eerst het beheerderstoken in.', 'fout'); return; }
+    if (!token()) { melding('upload-melding', 'Vul eerst je sleutel in.', 'fout'); return; }
     if (!key) { melding('upload-melding', 'Vul de website of het domein van de leverancier in.', 'fout'); return; }
     if (!bestand) { melding('upload-melding', 'Kies een bestand.', 'fout'); return; }
 
@@ -578,7 +604,7 @@
   }
 
   function kruisverband() {
-    if (!token()) { melding('kv-melding', 'Vul eerst het beheerderstoken in.', 'fout'); return; }
+    if (!token()) { melding('kv-melding', 'Vul eerst je sleutel in.', 'fout'); return; }
     melding('kv-melding', 'Bezig met ophalen\u2026', 'bezig');
     el('kv-knop').disabled = true;
     api('/api/admin/coa/kruisverband')
@@ -642,6 +668,10 @@
   });
 
   el('kv-knop').addEventListener('click', kruisverband);
+
+  // Zodra er een sleutel staat: eenmalig ophalen wie je bent. Puur om een
+  // 403 te kunnen laten zeggen welke rol je dan wel hebt.
+  el('token').addEventListener('blur', function () { if (token() && !huidigeRol) haalRolOp(); });
 
   el('zoek').addEventListener('click', ophalen);
   el('leverancier').addEventListener('keydown', function (e) { if (e.key === 'Enter') ophalen(); });
