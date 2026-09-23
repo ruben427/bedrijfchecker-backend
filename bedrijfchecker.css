@@ -84,6 +84,9 @@ header.top{
 @media (max-width:640px){ .consent-label{ font-size:.875rem; } }
 
 .signup-input{ height:56px; padding:0 14px; font-size:1rem; }
+/* Actief 8px hoger, net als de andere invulvelden; de padding blijft 0
+   omdat de hoogte de tekst al centreert. */
+.signup-input:focus{ height:64px; padding-top:0; padding-bottom:0; }
 
 .signup-btn{
   appearance:none; border:1px solid var(--accent-strong);
@@ -150,6 +153,7 @@ header.top{
 .audit-form{ display:flex; gap:12px; width:100%; align-items:flex-start; }
 .audit-form-row{ display:flex; gap:12px; width:100%; }
 .audit-form input[type=text]{ flex:1; height:56px; border-radius:8px; padding:0 14px; font-size:1rem; }
+.audit-form input[type=text]:focus{ height:64px; padding-top:0; padding-bottom:0; }
 .field-error{ color:var(--danger); font-size:.82rem; }
 input.has-error{ border-color:var(--danger); }
 @media (max-width:640px){
@@ -216,11 +220,11 @@ input.has-error{ border-color:var(--danger); }
 
 .completed-checks{ margin-top:56px; }
 .completed-checks h2{ font-size:1.7rem; color:var(--heading-3); letter-spacing:-.02em; margin:0 0 8px; }
-/* .textlink staat nu in solike.css (zelfde vorm, plus hover/actief/uit).
-   Eén ding is anders: de lijn hoort daar om een <span> in de link, niet om
-   de hele link, zodat een icoon ernaast niet onderstreept raakt. Links
-   zonder die span krijgen hier nog de oude onderlijn. */
-.textlink:not(:has(> span)){ border-bottom:1px solid var(--accent); padding-bottom:1px; }
+/* .textlink staat in solike.css. De lijn hoort daar om een <span> in de link
+   en niet om de link zelf, zodat een icoon ernaast niet onderstreept raakt.
+   Sinds 23 september staat de tekst van elke textlink in zo'n span; de
+   uitzonderingsregel die hier stond voor links zonder span is daarmee
+   overbodig geworden en weggehaald. */
 
 /* Invoervelden staan nu in solike.css, met alle acht de standen. */
 textarea{ min-height:80px; resize:vertical; }
@@ -474,21 +478,22 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
    11 + 80 - 41 = 50px overhang, plus lucht. */
 .wrap{ padding-top:60px; }
 
-/* Beta-label naast het logo. Staat hier en niet in een van de paginas: hij
-   hangt op bedrijfchecker.html en bedrijfchecker-test.html, en twee plekken
-   waar hetzelfde wordt geregeld is precies hoe de dubbele .site-logo img is
-   ontstaan.
-   De margin-top lijnt hem uit op het midden van de pill: 41px paginatop, min
-   de eigen halve hoogte, min de 11px padding-top van .site-header-inner. */
-.betavlag{
-  margin:15px 0 0 16px; align-self:flex-start; white-space:nowrap;
-  font-family:var(--font-kop); font-weight:600; font-size:.85rem;
-  letter-spacing:.06em; color:var(--accent-strong);
-  background:var(--accent-soft); border:1px solid var(--accent);
-  border-radius:999px; padding:4px 14px;
+/* Tekst naast het logo. "BETA 1.0" staat sinds 23 september in het logo zelf,
+   dus die pill is weg. Deze plek blijft staan voor als er ooit iets anders
+   naast moet: links uitgelijnd, 12px van het logo af, gewone tekst en geen
+   label meer. Het staat hier en niet in een van de paginas - twee plekken waar
+   hetzelfde wordt geregeld is precies hoe de dubbele .site-logo img ontstond.
+
+   De margin-top zet hem op de hoogte van de bovenrand van het logotype: 41px
+   paginatop, min de halve eigen hoogte, min de 11px padding-top van
+   .site-header-inner. */
+.kop-tekst{
+  margin:15px 0 0 12px; align-self:flex-start; white-space:nowrap;
+  font-family:var(--font-kop); font-weight:600; font-size:.95rem;
+  letter-spacing:-.02em; color:var(--text-muted);
 }
 @media (max-width:640px){
-  .betavlag{ margin:19px 0 0 10px; font-size:.75rem; padding:3px 10px; }
+  .kop-tekst{ margin:19px 0 0 12px; font-size:.85rem; }
 }
 
 .detail-head-slim{ margin:14px 0 4px; }
@@ -711,13 +716,15 @@ details.raw summary{ cursor:pointer; color:var(--text-muted); }
 .deepdive-actions{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:36px; margin-top:24px; }
 
 /* .textlink is in het designsysteem een span; als knop moet de
-   browser-eigen knopstijl eraf. */
+   browser-eigen knopstijl eraf.
+
+   GEEN border-bottom hier. Die hoort om de <span> met de tekst erin en niet
+   om de knop, anders loopt de streep ook onder het icoon en - in een kolom -
+   door tot aan de rand. Dat was de reden voor de width:fit-content hieronder;
+   die blijft staan omdat een knop die meerekt ook de klikruimte oprekt. */
 button.textlink{
-  background:none; border:0; border-bottom:1px solid var(--accent);
+  background:none; border:0;
   font-size:1.125rem; line-height:1; padding:0 0 2px; cursor:pointer;
-  /* In een kolom rekt een knop mee met de breedte; dan loopt de streep door
-     tot aan de rand in plaats van onder het woord. fit-content lost dat op
-     zonder de uitlijning te verstoren als de knop naast een andere staat. */
   width:fit-content;
 }
 
