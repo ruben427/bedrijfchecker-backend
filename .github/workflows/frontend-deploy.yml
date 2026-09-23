@@ -37,6 +37,8 @@ on:
       - 'admin-laboratoria.html'
       - 'admin-analytics.html'
       - 'PEPPROOF-LOGO.svg'
+      - 'PEPPROOF-ADMIN-LOGO.svg'
+      - 'PEPPROOF-BETA-LOGO.svg'
       - 'frontend/index.html'
       - 'frontend/admin-coa.html'
       - 'frontend/admin-leveranciers.html'
@@ -80,6 +82,11 @@ jobs:
           cp admin-laboratoria.html     uitrol/admin-laboratoria.html
           cp admin-analytics.html       uitrol/admin-analytics.html
           cp PEPPROOF-LOGO.svg          uitrol/PEPPROOF-LOGO.svg
+          # 23 september: deze twee stonden wel in de repo en werden wel
+          # door de pagina's opgevraagd, maar gingen niet mee. Gevonden door
+          # elke src/href in de uitgerolde pagina's langs deze lijst te halen.
+          cp PEPPROOF-ADMIN-LOGO.svg   uitrol/PEPPROOF-ADMIN-LOGO.svg
+          cp PEPPROOF-BETA-LOGO.svg    uitrol/PEPPROOF-BETA-LOGO.svg
           cp frontend/index.html        uitrol/index.html
           cp frontend/admin-coa.html    uitrol/admin-coa.html
           cp frontend/admin-leveranciers.html uitrol/admin-leveranciers.html
