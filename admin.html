@@ -181,26 +181,37 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   display:none; align-items:flex-start; justify-content:center; padding:48px 24px; overflow:auto; z-index:50 }
 .laag.open{ display:flex }
 .kaart{ background:var(--surface); border-radius:var(--radius-lg,24px); padding:36px;
-  width:100%; max-width:1200px; box-shadow:var(--shadow) }
+  width:100%; max-width:1280px; box-shadow:var(--shadow) }
 .kaart-in{ display:flex; gap:24px; align-items:stretch }
 .links{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:24px }
 .titel{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:32px;
   line-height:1.5; letter-spacing:-.05em; margin:0 0 12px; color:var(--heading-3) }
-.velden{ display:flex; gap:12px; font-size:16px; letter-spacing:-.02em }
-.velden .kol-label{ width:189px; flex:none }
-.velden .kol-waarde{ flex:1 1 0; min-width:0 }
-.velden p{ margin:0 0 12px; line-height:1.5 }
-.velden p:last-child{ margin-bottom:0 }
-.velden .niet{ color:var(--text-faint) }
-.acties{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap }
-.acties-groep{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+/* De gegevens van de controle staan in dezelfde doosjes als de invoervelden
+   (Figma 1586:6324, herzien 23 september), maar het zijn leesvelden: je kunt
+   er niets in typen. Wat het lab zegt verander je niet in dit scherm. */
+.veldenraster{ display:flex; flex-direction:column; gap:12px }
+.veldpaar{ display:grid; grid-template-columns:1fr 1fr; gap:24px }
+.leesveld{ border:1px solid var(--border); border-radius:var(--radius-sm,8px);
+  background:var(--surface); padding:6px 12px; min-height:56px;
+  display:flex; flex-direction:column; justify-content:center }
+.leesveld .op{ font-size:12px; line-height:1; color:var(--text-muted) }
+.leesveld .waarde{ font-size:18px; line-height:1.5; color:var(--text);
+  overflow-wrap:anywhere }
+.leesveld .waarde.niet{ color:var(--text-faint) }
+.leesveld.notitie{ min-height:174px; justify-content:flex-start; padding:8px 12px }
+.leesveld.notitie .waarde{ font-size:16px; letter-spacing:-.02em }
+/* De drie knoppen links, het pijltje uiterst rechts. Past de drie niet op
+   een regel, dan breken die onderling af — het pijltje blijft rechts staan. */
+.acties{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+  flex-wrap:nowrap; margin-top:24px }
+.acties-groep{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-width:0 }
 .volgende{ width:56px; height:56px; flex:none; border-radius:var(--radius-knop,12px); cursor:pointer;
   border:1px solid var(--accent); background:transparent; color:var(--accent); display:grid; place-items:center }
 .volgende svg{ width:18px; height:18px; display:block }
-.rechts{ flex:0 0 430px; display:flex; flex-direction:column; gap:12px; align-items:center }
-.labverwijzing{ font-size:14px; color:var(--accent); text-decoration:underline;
-  text-underline-offset:3px; word-break:break-all; text-align:center }
-.kopievak{ width:430px; max-width:100%; height:588px; border:1px solid var(--border);
+.rechts{ flex:0 0 496px; display:flex; flex-direction:column; gap:14px; align-items:center }
+.labverwijzing{ font-size:16px; color:var(--accent); text-decoration:underline;
+  text-underline-offset:3px; word-break:break-all; text-align:center; letter-spacing:-.02em }
+.kopievak{ width:496px; max-width:100%; height:678px; border:1px solid var(--border);
   border-radius:8px; overflow:hidden; background:var(--surface-2) }
 .kopievak img, .kopievak iframe{ width:100%; height:100%; border:0; display:block;
   object-fit:contain; background:#fff }
@@ -219,6 +230,21 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text) }
 .veldregel input[type=text][hidden]{ display:none }
 
+/* Het logo is 398 breed. Op een telefoon duwt dat samen met de bel en het
+   bolletje de pagina uit beeld, dus daar wordt het kleiner en verdwijnt de
+   naam naast het bolletje — uitloggen blijft staan. */
+@media (max-width:760px){
+  .merk img{ height:44px }
+  .merk{ min-width:0 }
+  .ik-naam, .ik-rol{ display:none }
+}
+@media (max-width:420px){
+  .merk img{ height:34px }
+  .kop-rechts{ gap:10px }
+  .ik{ gap:6px }
+  .kop-in{ gap:8px }
+}
+
 @media (max-width:900px){
   .cijfers{ grid-template-columns:repeat(2,1fr) }
   .cel{ border-left:1px solid var(--border); border-top:1px solid var(--border) }
@@ -236,9 +262,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   .rechts{ flex:1 1 auto; width:100% }
   .kopievak{ width:100%; height:420px }
   .titel{ font-size:26px }
-  .velden{ flex-direction:column; gap:0 }
-  .velden .kol-label{ width:auto; color:var(--text-muted); font-size:.82rem }
-  .velden .kol-label p{ margin:0 }
+  .veldpaar{ grid-template-columns:1fr; gap:12px }
   .acties, .acties-groep{ flex-direction:column; align-items:stretch }
   .knop, .volgende{ width:100% }
   .veldregel{ grid-template-columns:auto 1fr; }
@@ -338,10 +362,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       <div class="links">
         <div>
           <h2 class="titel" id="mTitel"></h2>
-          <div class="velden">
-            <div class="kol-label" id="mLabels"></div>
-            <div class="kol-waarde" id="mWaarden"></div>
-          </div>
+          <div class="veldenraster" id="mVelden"></div>
 
           <div class="vervolg" id="vGeen" hidden>
             <h3>Wat zag je op die pagina?</h3>
@@ -402,9 +423,6 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   function bewaar(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function lees(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function wis(k) { try { localStorage.removeItem(k); } catch (e) {} }
-  function of(v, leeg) {
-    return v == null || v === '' ? '<span class="niet">' + esc(leeg || 'niet gemeten') + '</span>' : esc(v);
-  }
 
   var token = '', naam = '', rol = '';
   var data = { leveranciers: [], labs: [], statussen: [], signalen: null, naamkoppelingen: [], tekstoordelen: [] };
@@ -869,15 +887,33 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   function toonModal() {
     var r = werk[index], c = r.controle || {}, k = r.kopie || {};
     el('mTitel').textContent = k.product || c.product || r.referentie;
-    var labels = ['Opdrachtgever', 'Fabrikant', 'Batch', 'Zuiverheid', 'Vulling',
-                  'Lost op bij het lab', 'Klasse', 'Gecontroleerd door', 'Notitie'];
-    el('mLabels').innerHTML = labels.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('');
-    el('mWaarden').innerHTML = [
-      of(c.client), of(c.manufacturer), of(c.batchnummer), of(c.zuiverheid),
-      of(c.vulling, 'niet berekend'),
-      c.resolvet === true ? 'ja' : (c.resolvet === false ? 'nee' : '<span class="niet">nog niet gecontroleerd</span>'),
-      of(c.klasse, 'nog niet toegekend'), of(c.checkedBy, 'nog niemand'), of(c.notitie, '—')
-    ].map(function (w) { return '<p>' + w + '</p>'; }).join('');
+
+    // let op: 'lees' is hierboven al de naam van de localStorage-functie
+    function veldje(op, waarde, extra) {
+      return '<div class="leesveld' + (extra || '') + '">' +
+        '<span class="op">' + esc(op) + '</span>' +
+        '<span class="waarde' + (waarde.leeg ? ' niet' : '') + '">' + esc(waarde.tekst) + '</span></div>';
+    }
+    function w(v, leeg) {
+      return (v == null || v === '') ? { tekst: leeg || 'niet gemeten', leeg: true }
+                                     : { tekst: String(v), leeg: false };
+    }
+    el('mVelden').innerHTML =
+      veldje('Opdrachtgever', w(c.client)) +
+      veldje('Fabrikant', w(c.manufacturer)) +
+      veldje('Batch', w(c.batchnummer)) +
+      '<div class="veldpaar">' +
+        veldje('Zuiverheid', w(c.zuiverheid)) +
+        veldje('Vulling', w(c.vulling, 'niet berekend')) +
+      '</div>' +
+      '<div class="veldpaar">' +
+        veldje('Opgelost bij het lab', c.resolvet === true ? { tekst: 'ja', leeg: false }
+             : (c.resolvet === false ? { tekst: 'nee', leeg: false }
+                                     : { tekst: 'nog niet gecontroleerd', leeg: true })) +
+        veldje('Klasse', w(c.klasse, 'geen')) +
+      '</div>' +
+      veldje('Gecontroleerd door', w(c.checkedBy, 'nog niemand')) +
+      veldje('Notitie', w(c.notitie, '—'), ' notitie');
 
     el('mLink').href = r.url || '#';
     el('mLink').textContent = r.url || 'geen verificatie-URL';
