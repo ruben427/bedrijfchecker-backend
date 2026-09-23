@@ -1190,19 +1190,28 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   }
 
   // De vulling rekenen wij uit: gemeten tegen wat het etiket belooft. Dat
-  // getal zit in de productnaam ("Tirzepatide 60mg"), dus dat splitsen we
-  // eraf - maar alleen als er precies EEN hoeveelheid in staat.
+  // getal zit in de productnaam die het lab opschrijft ("Tirzepatide 60mg"),
+  // dus die splitsen we in twee velden: de naam en de hoeveelheid. Zo staat
+  // de belofte als een eigen, te corrigeren getal in beeld in plaats van
+  // verstopt in een stuk tekst.
   //
-  // Bij "Wolverine Blend (TB-500 + BPC-157) 10 mg" of bij een metaalcomplex
-  // staat er meer dan een getal, of slaat het getal op iets anders. Dan laten
-  // we het veld leeg: liever niets dan een verzonnen etiketwaarde, want daar
-  // rolt een vullingspercentage uit dat nergens op slaat.
-  function etiketUitNaam(naamVanProduct) {
-    var t = String(naamVanProduct || '');
+  // Alleen als er precies EEN hoeveelheid in staat. Bij "Wolverine Blend
+  // (TB-500 + BPC-157) 10 mg" of bij een metaalcomplex staan er meer getallen
+  // of slaat het getal op iets anders. Dan splitsen we niet: liever de naam
+  // ongemoeid dan een verzonnen etiketwaarde, want daar rolt een
+  // vullingspercentage uit dat nergens op rust.
+  function splitsProduct(naamVanProduct) {
+    var t = String(naamVanProduct || '').trim();
     var treffers = t.match(/(\d+(?:[.,]\d+)?)\s*mg\b/gi) || [];
     if (treffers.length !== 1) return null;
     var n = parseFloat(String(treffers[0]).replace(/\s*mg\b/i, '').replace(',', '.'));
-    return isNaN(n) ? null : n;
+    if (isNaN(n)) return null;
+    var naam = t.replace(treffers[0], ' ')
+      // Lege haakjes opruimen: "KPV (30 mg)" moet "KPV" worden en niet "KPV ( )".
+      .replace(/\(\s*\)/g, ' ').replace(/\[\s*\]/g, ' ')
+      .replace(/\s{2,}/g, ' ').replace(/^[\s,;-]+|[\s,;-]+$/g, '').trim();
+    if (!naam) return null;             // alleen een hoeveelheid, geen naam
+    return { naam: naam, etiketMg: n };
   }
 
   function tekenVelden(c) {
@@ -1556,14 +1565,18 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       gevuld++;
     });
 
-    // Etiketwaarde afleiden uit de productnaam, zodat de server de vulling kan
-    // uitrekenen. Staat als gewoon veld in beeld en is dus te corrigeren.
-    if (!staat.etiketMg) {
-      var uitNaam = etiketUitNaam(staat.product);
-      if (uitNaam != null) {
-        staat.etiketMg = uitNaam;
+    // De productnaam splitsen in naam en etikethoeveelheid, zodat de server de
+    // vulling kan uitrekenen. Beide velden staan in de foutstand met de reden
+    // erbij: een splitsing is een bewerking van wat het lab opschreef, en dat
+    // hoort zichtbaar te zijn en niet stilletjes te gebeuren.
+    if (!staat.etiketMg && staat.product) {
+      var gesplitst = splitsProduct(staat.product);
+      if (gesplitst) {
+        staat.product = gesplitst.naam;
+        staat.etiketMg = gesplitst.etiketMg;
         if (zichtbaar.indexOf('fEtiket') === -1) zichtbaar.push('fEtiket');
-        foutBij.fEtiket = 'Afgeleid uit de productnaam, niet van het rapport gelezen. Klopt dit?';
+        foutBij.fProduct = 'De hoeveelheid is hieruit gehaald en staat als etiket apart. Klopt dat?';
+        foutBij.fEtiket = 'Gesplitst uit de productnaam, niet apart van het rapport gelezen.';
       }
     }
 
