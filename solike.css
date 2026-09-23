@@ -149,3 +149,206 @@ input:focus, textarea:focus, button:focus-visible, a:focus-visible{
   outline:2px solid var(--accent); outline-offset:2px;
 }
 [hidden]{ display:none !important; }
+
+/* ============================================================
+   Componenten: knoppen en invoervelden
+   ============================================================
+   Overgenomen uit Anne's designsysteem, Figma "Buttons en Formfields"
+   (node 1589:6706), 23 september 2026. Alle vijf de knopstanden en alle
+   acht de veldstanden staan hier, zodat een knop op elke pagina
+   hetzelfde doet en we hem op één plek veranderen.
+
+   Dit is bewust het enige component-blok in solike.css: knoppen en
+   velden zijn geen product maar de basis waar elk product op leunt.
+*/
+
+:root{
+  /* neutrals/300 en /100 uit Figma. Alleen de uit-stand gebruikt ze. */
+  --uit-vlak:#b6b2ad;
+  --uit-tekst:#e2e0de;
+  --uit-rand:#b6b2ad;
+  /* messaging-kleuren van de velden. Feller dan --ok/--danger, die voor
+     tekst en chips bedoeld zijn; deze staan alleen om een veldrand. */
+  --melding-ok:#299f72;
+  --melding-fout:#cf2443;
+  --knop-hoog:56px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --uit-vlak:#3d2f22; --uit-tekst:#8a7a6c; --uit-rand:#3d2f22;
+    --melding-ok:#4cbf80; --melding-fout:#e07468;
+  }
+}
+:root[data-theme="dark"]{
+  --uit-vlak:#3d2f22; --uit-tekst:#8a7a6c; --uit-rand:#3d2f22;
+  --melding-ok:#4cbf80; --melding-fout:#e07468;
+}
+
+/* ---------- knoppen ---------- */
+/* .knop is de naam; .btn blijft werken voor de pagina's die er al staan. */
+.knop, .btn{
+  appearance:none; box-sizing:border-box;
+  height:var(--knop-hoog); padding:0 24px;
+  display:inline-flex; align-items:center; justify-content:center; gap:12px;
+  border-radius:var(--radius-knop,12px); cursor:pointer;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
+  line-height:1; letter-spacing:-.02em; white-space:nowrap; text-decoration:none;
+  border:1px solid transparent; background:none; color:inherit;
+  transition:background-color .12s, border-color .12s, color .12s;
+}
+.knop svg, .btn svg{ width:20px; height:20px; flex:none }
+
+/* primair — het verloop is de default-, hover- en focusstand; ingedrukt is vlak */
+.knop.prim, .btn:not(.secondary):not(.ghost):not(.sec):not(.link){
+  border-color:var(--accent-strong); color:#fff9f5;
+  background-image:linear-gradient(67deg, var(--accent) 50%, var(--accent-light) 100%);
+}
+.knop.prim:hover, .btn:not(.secondary):not(.ghost):not(.sec):not(.link):hover{
+  border-color:var(--accent-light);
+}
+.knop.prim:active, .btn:not(.secondary):not(.ghost):not(.sec):not(.link):active{
+  background-image:none; background-color:var(--accent); border-color:var(--accent);
+}
+.knop.prim:focus-visible, .btn:not(.secondary):not(.ghost):not(.sec):not(.link):focus-visible{
+  outline:none; border-color:var(--surface); box-shadow:0 0 0 2px var(--accent);
+}
+
+/* secundair — omlijnd; hover en ingedrukt verdikken de rand naar binnen,
+   zodat de knop niet verspringt */
+.knop.sec, .btn.secondary{
+  background:var(--surface); border-color:var(--accent); color:var(--accent);
+}
+.knop.sec:hover, .btn.secondary:hover{
+  background:var(--surface); box-shadow:inset 0 0 0 1px var(--accent);
+}
+.knop.sec:active, .btn.secondary:active{
+  background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent);
+}
+.knop.sec:focus-visible, .btn.secondary:focus-visible{
+  outline:none; box-shadow:0 0 0 2px var(--accent);
+}
+
+/* textlink — tekst met een lijn eronder, geen vlak */
+.knop.link, .btn.ghost, .textlink{
+  height:var(--knop-hoog); padding:0; background:none; border:0;
+  color:var(--accent); gap:12px;
+  display:inline-flex; align-items:center; justify-content:center;
+  font-family:"Baloo 2", system-ui, sans-serif; font-weight:600; font-size:18px;
+  line-height:1; cursor:pointer; text-decoration:none; border-radius:var(--radius-knop,12px);
+}
+.knop.link > span, .btn.ghost > span, .textlink > span{
+  border-bottom:1px solid var(--accent); padding-bottom:2px;
+}
+.knop.link:hover > span, .btn.ghost:hover > span, .textlink:hover > span,
+.knop.link:active > span, .btn.ghost:active > span, .textlink:active > span{
+  border-bottom-width:2px;
+}
+.knop.link:focus-visible, .btn.ghost:focus-visible, .textlink:focus-visible{
+  outline:none; box-shadow:0 0 0 2px var(--accent);
+}
+.textlink svg{ width:14px; height:14px }
+
+/* rond — zelfde standen, alleen een cirkel met een icoon erin */
+.knop.rond{
+  width:var(--knop-hoog); height:var(--knop-hoog); padding:0; border-radius:999px;
+  border-color:var(--accent-strong); color:#fff9f5;
+  background-image:linear-gradient(80deg, var(--accent) 50%, var(--accent-light) 100%);
+}
+.knop.rond:hover{ border-color:var(--accent-light) }
+.knop.rond:active{ background-image:none; background-color:var(--accent); border-color:var(--accent) }
+.knop.rond:focus-visible{ outline:none; border-color:var(--surface); box-shadow:0 0 0 2px var(--accent) }
+
+/* kleiner, voor dichte rijen. Geen aparte stand in Figma; alleen de maat. */
+.knop.klein, .btn.klein{ height:40px; padding:0 16px; font-size:15px }
+.knop.klein.rond{ width:40px; padding:0 }
+
+/* uit — één stand voor alle soorten */
+.knop:disabled, .knop[disabled], .knop[aria-disabled="true"],
+.btn:disabled, .btn[disabled]{
+  background-image:none; background-color:var(--uit-vlak);
+  border-color:var(--uit-rand); color:var(--uit-tekst);
+  cursor:not-allowed; box-shadow:none; opacity:1;
+}
+.knop.sec:disabled, .knop.sec[disabled], .btn.secondary:disabled{
+  background:var(--surface); border-color:var(--uit-rand); color:var(--uit-vlak);
+}
+.knop.link:disabled, .btn.ghost:disabled{
+  background:none; border:0; color:var(--uit-vlak);
+}
+.knop.link:disabled > span, .btn.ghost:disabled > span{
+  border-bottom:2px solid var(--uit-vlak);
+}
+
+/* ---------- invoervelden ---------- */
+/* .veld is een label om het invoerveld heen; het opschrift staat in de
+   HTML ná het veld, zodat CSS kan zien of er al iets is ingevuld. */
+.veld{
+  position:relative; display:block; width:100%;
+  margin:0 0 14px;
+}
+.veld > input, .veld > select, .veld > textarea,
+input[type=text], input[type=url], input[type=email], input[type=password],
+input[type=search], input[type=number], select, textarea{
+  width:100%; box-sizing:border-box; font:inherit; font-size:18px;
+  color:var(--text); background:var(--surface);
+  border:1px solid var(--border); border-radius:var(--radius-sm,8px);
+  padding:10px 12px;
+}
+.veld > input, .veld > select{ height:56px }
+.veld > textarea{ min-height:96px; resize:vertical; padding-top:26px }
+.veld > input:not([type=search]), .veld > select{ padding:22px 12px 8px }
+
+.veld > input:hover, .veld > select:hover, .veld > textarea:hover,
+input:hover, select:hover, textarea:hover{ background:var(--surface) }
+
+/* actief: het veld vult zich en de rand verdwijnt in het vlak */
+.veld > input:focus, .veld > select:focus, .veld > textarea:focus,
+input:focus, select:focus, textarea:focus{
+  outline:none; background:var(--surface-2); border-color:var(--surface-2);
+}
+
+/* het opschrift: groot en in het midden zolang er niets staat,
+   klein bovenin zodra er iets staat of het veld actief is */
+.veld > .veld-label{
+  position:absolute; left:13px; top:16px; pointer-events:none;
+  font-family:"Open Sans", system-ui, sans-serif; font-size:18px; line-height:1;
+  color:var(--text-muted); transition:top .12s, font-size .12s;
+}
+.veld > input:focus ~ .veld-label,
+.veld > input:not(:placeholder-shown) ~ .veld-label,
+.veld > select ~ .veld-label,
+.veld > textarea ~ .veld-label{
+  top:9px; font-size:12px;
+}
+.veld > textarea ~ .veld-label{ top:10px }
+
+.veld-hulp{ margin:4px 0 0; padding:0 12px; font-size:12px; color:var(--text-muted) }
+
+/* fout en goed: alleen de rand en de regel eronder veranderen */
+.veld.fout > input, .veld.fout > select, .veld.fout > textarea{ border-color:var(--melding-fout) }
+.veld.fout .veld-hulp{ color:var(--melding-fout) }
+.veld.goed > input, .veld.goed > select, .veld.goed > textarea{ border-color:var(--melding-ok) }
+
+/* uit / alleen-lezen */
+.veld > input:disabled, .veld > select:disabled, .veld > textarea:disabled,
+.veld > input[readonly], input:disabled, select:disabled, textarea:disabled{
+  color:var(--text-faint); background:var(--surface); border-color:var(--border);
+  cursor:not-allowed;
+}
+
+/* bezig: een draaiend streepje rechts in het veld */
+.veld.bezig::after{
+  content:""; position:absolute; right:14px; top:50%; width:18px; height:18px;
+  margin-top:-9px; border-radius:50%; border:2px solid var(--border);
+  border-top-color:var(--accent); animation:veld-draai .7s linear infinite;
+}
+@keyframes veld-draai{ to{ transform:rotate(360deg) } }
+@media (prefers-reduced-motion: reduce){ .veld.bezig::after{ animation:none } }
+
+/* keuzeveld: zelfde doos, met een pijltje erin */
+.veld.keuze > select{
+  appearance:none; -webkit-appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6862' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 12px center; background-size:18px;
+  padding-right:40px;
+}

@@ -23,17 +23,9 @@ header.top{
   font-family:"Baloo 2", system-ui, sans-serif; font-weight:700; font-size:1.05rem; color:var(--heading);
 }
 .brand-link:hover{ color:var(--accent); }
-.btn{
-  appearance:none; border:1px solid var(--accent-strong); background:var(--accent); color:#fff9f5;
-  font:inherit; font-weight:600; font-size:.92rem;
-  padding:10px 16px; border-radius:var(--radius-knop,12px); cursor:pointer;
-  display:inline-flex; align-items:center; gap:8px;
-}
-.btn:hover{ background:var(--accent-strong); border-color:var(--accent-strong); }
-.btn:disabled{ opacity:.5; cursor:not-allowed; }
-.btn.secondary{ background:transparent; color:var(--text); border-color:var(--border); }
-.btn.secondary:hover{ background:var(--surface-2); }
-.btn.ghost{ background:transparent; color:var(--accent-strong); border-color:transparent; padding-inline:4px; }
+/* .btn, .btn.secondary en .btn.ghost staan nu in solike.css, met alle vijf
+   de standen uit Anne's designsysteem. Hier stond een eigen, afwijkende
+   versie; die is weg zodat een knop overal hetzelfde is. */
 
 /* hero (Anne's designsysteem v2, Figma "Checker design", 14 sep) — de hero
    staat los op de paginaondergrond, geen kaartwrapper meer eromheen. */
@@ -224,18 +216,13 @@ input.has-error{ border-color:var(--danger); }
 
 .completed-checks{ margin-top:56px; }
 .completed-checks h2{ font-size:1.7rem; color:var(--heading-3); letter-spacing:-.02em; margin:0 0 8px; }
-.textlink{
-  display:inline-flex; align-items:center; gap:6px; color:var(--accent); font-weight:600;
-  font-family:"Baloo 2", sans-serif; font-size:1.125rem; border-bottom:1px solid var(--accent); padding-bottom:1px;
-  white-space:nowrap; flex-shrink:0; text-decoration:none;
-}
-.textlink svg{ width:12px; height:12px; }
+/* .textlink staat nu in solike.css (zelfde vorm, plus hover/actief/uit).
+   Eén ding is anders: de lijn hoort daar om een <span> in de link, niet om
+   de hele link, zodat een icoon ernaast niet onderstreept raakt. Links
+   zonder die span krijgen hier nog de oude onderlijn. */
+.textlink:not(:has(> span)){ border-bottom:1px solid var(--accent); padding-bottom:1px; }
 
-input[type=text], input[type=url], input[type=email], textarea{
-  font:inherit; font-size:.96rem; color:var(--text);
-  background:var(--surface); border:1px solid var(--border); border-radius:8px;
-  padding:10px 12px; width:100%;
-}
+/* Invoervelden staan nu in solike.css, met alle acht de standen. */
 textarea{ min-height:80px; resize:vertical; }
 
 .card{
