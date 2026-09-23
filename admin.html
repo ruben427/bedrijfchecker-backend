@@ -241,7 +241,19 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 /* Geen recht om een test vast te leggen: dan ook geen knoppen die op een 403
    uitlopen. De server blijft de echte poort; dit voorkomt alleen dat iemand
    het hele formulier invult en pas bij de laatste klik hoort dat het niet mag. */
-body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
+body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan,
+body.geen-testrecht .portret-schrijf{ display:none }
+
+/* Het portret: de vaste kop van een leverancier. Leest als een stuk tekst,
+   niet als een veld - daarom ruimere regelafstand en geen kader eromheen. */
+.portret-tekst p{ margin:0 0 10px; line-height:1.6; color:var(--text) }
+.portret-tekst p:last-child{ margin-bottom:0 }
+.portret-bronnen{ margin:12px 0 0; padding:0; list-style:none;
+  font-size:.82rem; color:var(--text-subtle) }
+.portret-bronnen li{ margin:2px 0; word-break:break-all }
+.portret-wie{ margin:12px 0 0; font-size:.8rem; color:var(--text-faint) }
+.portret-waarschuwing{ margin:8px 0 0; font-size:.82rem; color:var(--accent-strong) }
+.portret-waarschuwing[hidden]{ display:none }
 .rij:focus-visible, .tab:focus-visible, .bel:focus-visible{
   outline:2px solid var(--accent); outline-offset:2px }
 
@@ -1282,12 +1294,146 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
           esc(j.laboordeel.status) + '</strong>. Bewijs dat alleen op dit lab rust telt navenant mee.</p></div>';
       }
 
+      h += portretBlok(j.portret);
+
       h += '<div class="blok" id="lBlok"></div>';
 
       el('lInhoud').innerHTML = h;
+      wirePortret(key, j.portret);
       toonWerklijst();
     }).catch(function (e) {
       el('lInhoud').innerHTML = '<p class="fout">Ophalen mislukt: ' + esc(e.message) + '</p>';
+    });
+  }
+
+  // --- het portret ---------------------------------------------------------
+  //
+  // Het geschreven stuk over een leverancier: wie het is, waar het vandaan
+  // komt, hoe het zich presenteert. Dit is de VASTE KOP. Je schrijft het een
+  // keer en daarna niet meer - het verandert niet als er morgen een rapport
+  // bij komt.
+  //
+  // Daarom staan er geen getallen in. Tellingen, percentages, zuiverheid, een
+  // score of een kleur horen in het variabele lijf: die komen per run uit de
+  // database en staan in de tegels en de lijst. Een geschreven tekst die ze
+  // noemt is binnen een week onwaar zonder dat iemand het merkt.
+  //
+  // Wie mag schrijven: een beoordelaar. Dit is redactiewerk. Een lezer ziet
+  // het portret wel maar krijgt de knop niet (.portret-schrijf).
+  //
+  // Voorlopig is dit ALLEEN voor de admin. Of het portret ook in het publieke
+  // rapport mag, en wat er gebeurt als een leverancier bezwaar maakt, liggen
+  // nog bij Annemarie.
+  function alineas(tekst) {
+    return String(tekst || '').split(/\n\s*\n/).map(function (a) {
+      return a.trim();
+    }).filter(function (a) { return a; }).map(function (a) {
+      return '<p>' + esc(a).replace(/\n/g, '<br>') + '</p>';
+    }).join('');
+  }
+
+  // Wat lijkt er op een getal dat morgen anders is? Dit WEIGERT niets - een
+  // jaartal of een huisnummer is prima. Het wijst alleen aan wat er staat,
+  // zodat je zelf ziet of het in de tekst thuishoort.
+  function cijfersIn(tekst) {
+    var gevonden = [];
+    var t = String(tekst || '');
+    (t.match(/\d+(?:[.,]\d+)?\s*%/g) || []).forEach(function (m) { gevonden.push(m.trim()); });
+    (t.match(/\b\d+\s*(?:rapporten|referenties|labverwijzingen|documenten|controles|tests?|coa'?s)\b/gi) || [])
+      .forEach(function (m) { gevonden.push(m.trim()); });
+    return gevonden.filter(function (m, i, a) { return a.indexOf(m) === i; });
+  }
+
+  function portretBlok(p) {
+    var h = '<div class="blok" id="pBlok">' +
+      '<h2>Portret</h2>';
+    if (p && p.tekst) {
+      h += '<div class="portret-tekst">' + alineas(p.tekst) + '</div>';
+      if (p.bronnen && p.bronnen.length) {
+        h += '<ul class="portret-bronnen">' + p.bronnen.map(function (b) {
+          return '<li>' + esc(b) + '</li>';
+        }).join('') + '</ul>';
+      }
+      h += '<p class="portret-wie">Geschreven door ' + esc(p.vastgelegdDoor || '?') +
+        (p.gewijzigdDoor ? ', laatst herschreven door ' + esc(p.gewijzigdDoor) : '') + '.</p>' +
+        '<p class="portret-schrijf" style="margin-top:12px">' +
+        '<button type="button" class="knop sec klein" id="pBewerk">Herschrijven</button></p>';
+    } else {
+      h += '<p class="duiding">Nog geen portret. Dit is het stuk dat je een keer ' +
+        'schrijft en daarna laat staan: wie deze partij is, waar ze vandaan komt, ' +
+        'hoe ze zich presenteert.</p>' +
+        '<p class="portret-schrijf">' +
+        '<button type="button" class="knop sec klein" id="pBewerk">Schrijven</button></p>';
+    }
+    return h + '</div>';
+  }
+
+  function wirePortret(key, p) {
+    var blok = el('pBlok'); if (!blok) return;
+    var knop = el('pBewerk');
+    if (knop) knop.addEventListener('click', function () { portretFormulier(key, p); });
+  }
+
+  function portretFormulier(key, p) {
+    var blok = el('pBlok'); if (!blok) return;
+    blok.innerHTML = '<h2>Portret</h2>' +
+      '<p class="duiding">Schrijf wie deze leverancier is. <strong>Geen getallen</strong> — ' +
+      'tellingen, percentages, zuiverheid en scores staan elders en veranderen per run; ' +
+      'in een geschreven tekst zijn ze binnen een week onwaar. Dit stuk hoef je daarna ' +
+      'niet meer aan te passen.</p>' +
+      '<form id="pForm">' +
+      '<label class="veld"><textarea id="pTekst" rows="9" placeholder=" ">' +
+        esc((p && p.tekst) || '') + '</textarea>' +
+        '<span class="veld-label">Het portret</span></label>' +
+      '<p class="portret-waarschuwing" id="pLet" hidden></p>' +
+      '<label class="veld"><textarea id="pBronnen" rows="3" placeholder=" ">' +
+        esc((p && p.bronnen) ? [].concat(p.bronnen).join('\n') : '') + '</textarea>' +
+        '<span class="veld-label">Bronnen — één per regel</span></label>' +
+      '<p class="veld-hulp">Waar heb je dit vandaan? Een portret zonder bron is over ' +
+      'een half jaar niet na te gaan.</p>' +
+      '<p style="margin-top:8px">' +
+        '<button type="submit" class="knop prim">Vastleggen</button> ' +
+        '<button type="button" class="knop sec klein" id="pTerug">Annuleren</button></p>' +
+      '<p class="melding" id="pMelding" hidden></p>' +
+      '</form>';
+
+    function let_op() {
+      var g = cijfersIn(el('pTekst').value);
+      var r = el('pLet');
+      if (!g.length) { r.hidden = true; return; }
+      r.hidden = false;
+      r.textContent = 'Let op, hier staan getallen in: ' + g.join(', ') +
+        '. Die veranderen per run. Opslaan mag, maar de tekst veroudert dan mee.';
+    }
+    el('pTekst').addEventListener('input', let_op);
+    let_op();
+
+    el('pTerug').addEventListener('click', function () {
+      blok.outerHTML = portretBlok(p);
+      wirePortret(key, p);
+    });
+
+    el('pForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var tekst = el('pTekst').value.trim();
+      if (tekst.length < 40) {
+        melding('pMelding', 'Schrijf een portret van minstens een paar zinnen.');
+        return;
+      }
+      haal('/api/admin/leveranciers/portret', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplierKey: key,
+          tekst: tekst,
+          bronnen: el('pBronnen').value.split('\n').map(function (x) { return x.trim(); })
+            .filter(function (x) { return x; }),
+          vastgelegdDoor: naam
+        })
+      }).then(function (j) {
+        var nieuw = (j && j.portret) || null;
+        blok.outerHTML = portretBlok(nieuw);
+        wirePortret(key, nieuw);
+      }).catch(function (err) { melding('pMelding', 'Mislukt: ' + err.message); });
     });
   }
 

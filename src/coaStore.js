@@ -302,6 +302,27 @@ async function initCoaSchema() {
       PRIMARY KEY (soort, sleutel)
     );
   `);
+  // HET PORTRET. Een geschreven stuk over de leverancier zelf: wie het is,
+  // waar het vandaan komt, hoe het zich presenteert. BESLUIT RUBEN 23
+  // september: dit hoort bij een leverancier vast te liggen en niet telkens
+  // opnieuw geschreven te worden.
+  //
+  // WAT HIER NIET IN HOORT: getallen. Geen tellingen, geen percentages, geen
+  // zuiverheid, geen score en geen kleur. Die staan elders en veranderen bij
+  // elke run; zodra ze in een geschreven tekst staan is die tekst binnen een
+  // week onwaar zonder dat iemand het merkt. Het portret is de vaste kop, de
+  // cijfers zijn het variabele lijf.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leverancier_portret (
+      supplier_key TEXT PRIMARY KEY,
+      tekst TEXT NOT NULL,
+      bronnen JSONB,
+      vastgelegd_door TEXT NOT NULL,
+      vastgelegd_op BIGINT NOT NULL,
+      gewijzigd_door TEXT,
+      gewijzigd_op BIGINT
+    );
+  `);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -1158,6 +1179,62 @@ async function saveVestiging(soort, sleutel, gegevens) {
     } : null;
   } catch (e) {
     console.error('coaStore.saveVestiging:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Het portret van een leverancier ophalen. Geen rij betekent: nog niet
+// geschreven. Dat is een taak, geen fout.
+async function portret(supplierKey) {
+  if (!supplierKey) return null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT supplier_key, tekst, bronnen, vastgelegd_door, vastgelegd_op,
+              gewijzigd_door, gewijzigd_op
+         FROM leverancier_portret WHERE supplier_key = $1`, [supplierKey]
+    );
+    const r = rows[0];
+    return r ? {
+      supplierKey: r.supplier_key, tekst: r.tekst, bronnen: r.bronnen || [],
+      vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op),
+      gewijzigdDoor: r.gewijzigd_door || null,
+      gewijzigdOp: r.gewijzigd_op == null ? null : Number(r.gewijzigd_op)
+    } : null;
+  } catch (e) {
+    console.error('coaStore.portret:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Het portret vastleggen. Zelfde opzet als saveVestiging: zonder naam van
+// degene die het schreef gaat er niets in. Wie het de eerste keer vastlegde
+// blijft staan; een herschrijving komt in gewijzigd_door te staan, zodat je
+// achteraf ziet wie wat heeft gedaan.
+async function savePortret(supplierKey, gegevens) {
+  const g = gegevens || {};
+  const tekst = String(g.tekst || '').trim();
+  const door = String(g.vastgelegdDoor || '').trim();
+  if (!supplierKey || !tekst || !door) return null;
+  try {
+    const nu = Date.now();
+    const { rows } = await pool.query(
+      `INSERT INTO leverancier_portret (supplier_key, tekst, bronnen, vastgelegd_door, vastgelegd_op)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (supplier_key) DO UPDATE SET
+         tekst = EXCLUDED.tekst, bronnen = EXCLUDED.bronnen,
+         gewijzigd_door = EXCLUDED.vastgelegd_door, gewijzigd_op = EXCLUDED.vastgelegd_op
+       RETURNING *`,
+      [supplierKey, tekst, JSON.stringify(Array.isArray(g.bronnen) ? g.bronnen : []), door, nu]
+    );
+    const r = rows[0];
+    return r ? {
+      supplierKey: r.supplier_key, tekst: r.tekst, bronnen: r.bronnen || [],
+      vastgelegdDoor: r.vastgelegd_door, vastgelegdOp: Number(r.vastgelegd_op),
+      gewijzigdDoor: r.gewijzigd_door || null,
+      gewijzigdOp: r.gewijzigd_op == null ? null : Number(r.gewijzigd_op)
+    } : null;
+  } catch (e) {
+    console.error('coaStore.savePortret:', (e && e.message) || e);
     return null;
   }
 }
@@ -3144,6 +3221,7 @@ module.exports = {
   vialSpreidingUit,
   bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,
   vestigingen, saveVestiging, labBriefhoofden,
+  portret, savePortret,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,

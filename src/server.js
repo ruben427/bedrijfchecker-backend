@@ -671,6 +671,36 @@ app.post('/api/admin/tekstoordelen', rl.caseAction, auth.requireOwnerToken, requ
   }
 });
 
+// Het portret van een leverancier vastleggen: het geschreven stuk over wie
+// deze partij is. Lezen mag een lezer, schrijven vraagt een beoordelaar -
+// dit is redactiewerk en dat is Annemarie's werk, niet dat van het systeem.
+//
+// HIER ZITTEN GEEN GETALLEN IN. Geen tellingen, geen percentages, geen
+// zuiverheid, geen score. Die komen uit de database en veranderen per run;
+// een tekst die ze noemt is binnen een week onwaar zonder dat iemand het
+// merkt. Het systeem weigert een portret daar niet om - dat zou een
+// jaartal of een postcode ook treffen - maar de admin waarschuwt erop.
+app.post('/api/admin/leveranciers/portret', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const key = coaStore.supplierKeyFromUrl(String(b.supplierKey || '').trim());
+    if (!key) return res.status(400).json({ error: 'geen_leverancier', message: 'Geef mee om welke leverancier het gaat.' });
+    const tekst = String(b.tekst || '').trim();
+    if (tekst.length < 40) {
+      return res.status(400).json({ error: 'geen_tekst', message: 'Schrijf een portret van minstens een paar zinnen.' });
+    }
+    const vastgelegdDoor = String(b.vastgelegdDoor || '').trim();
+    if (!vastgelegdDoor) return res.status(400).json({ error: 'geen_schrijver', message: 'Vul in wie dit heeft geschreven.' });
+    const bronnen = Array.isArray(b.bronnen) ? b.bronnen.filter((x) => String(x || '').trim()) : [];
+
+    const opgeslagen = await coaStore.savePortret(key, { tekst, bronnen, vastgelegdDoor });
+    if (!opgeslagen) return res.status(500).json({ error: 'niet_opgeslagen', message: 'Opslaan is niet gelukt.' });
+    res.json({ ok: true, portret: opgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Vestigingsland vastleggen, voor een lab of een leverancier. BESLUIT RUBEN
 // 22 september: "EU" gaat over de juridische vestiging, niet het verzendland.
 //
@@ -804,10 +834,11 @@ app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireLezer
 app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const key = coaStore.supplierKeyFromUrl(req.params.supplierKey);
-    const [referenties, documenten, laboordeel] = await Promise.all([
+    const [referenties, documenten, laboordeel, portret] = await Promise.all([
       coaStore.referentiesVanLeverancier(key, 500),
       coaStore.getDocumentsBySupplier(key),
-      coaStore.laboordeelVoorLeverancier(key)
+      coaStore.laboordeelVoorLeverancier(key),
+      coaStore.portret(key)
     ]);
     referenties.forEach((r) => {
       r.wieBesteldeDeTest = (r.controle && r.controle.client)
@@ -816,6 +847,10 @@ app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken,
     });
     res.json({
       supplierKey: key,
+      // Het geschreven stuk over deze leverancier. Null betekent: nog niet
+      // geschreven. Het staat hier los van alles wat geteld wordt, want het
+      // verandert niet mee met een run.
+      portret,
       // Zwaarste bevinding die we kennen: verwijst deze leverancier naar een
       // laboratorium waarvan een mens heeft vastgesteld dat het niet bestaat?
       laboordeel,
