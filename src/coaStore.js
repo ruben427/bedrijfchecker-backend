@@ -2442,9 +2442,21 @@ async function leveranciersOverzicht() {
       b.laatstGezien = r.laatstgezien ? Number(r.laatstgezien) : null;
     });
 
-    // lab:-sleutels zijn geen leveranciers maar een bijproduct van de resolver.
+    // Waar zit deze leverancier? Zelfde machinerie als bij de labs: een
+    // vastgestelde vestiging gaat voor, anders leiden we af uit het domein.
+    // LET OP dat een generiek domein (.com) NIETS oplevert - dat is geen
+    // gebrek maar het juiste antwoord. Wie daar OW van maakt, verzint een
+    // vaststelling.
+    const vastgesteldeVestiging = await vestigingen('leverancier');
+
     return Object.values(perKey)
       .filter((b) => !/^lab:/i.test(b.supplierKey))
+      .map((b) => Object.assign({}, b, {
+        vestiging: vestiging.stand(
+          vestiging.leidAf({ url: 'https://' + b.supplierKey }),
+          vastgesteldeVestiging[b.supplierKey] || null
+        )
+      }))
       .sort((a, b) => (b.referenties + b.documenten) - (a.referenties + a.documenten));
   } catch (e) {
     console.error('coaStore.leveranciersOverzicht:', (e && e.message) || e);

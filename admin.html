@@ -151,7 +151,45 @@ button.cel:hover{ background:var(--accent-soft) }
   background:var(--surface); cursor:pointer }
 .rij:first-child{ border-top:0 }
 .rij:hover{ background:var(--accent-soft) }
-.rij.werk{ background:var(--rij-werk); box-shadow:inset 4px 0 0 var(--accent) }
+/* BESLUIT RUBEN 23 september: waar nog werk ligt alleen een streep aan de
+   voorkant, geen gekleurde balk. Een vlak achter elke onafgemaakte regel
+   maakt de halve lijst oranje en dan zegt de kleur niets meer. De streep
+   wijst; het vlak is voor hover, en die twee moeten niet om dezelfde plek
+   vechten. */
+.rij.werk{ box-shadow:inset 3px 0 0 var(--accent) }
+
+/* ---- leverancierstabel, naar Figma 1502:4078 -------------------------- */
+.tabelvak{ background:var(--purple-50); border:1px solid var(--border);
+  border-radius:12px; overflow:hidden }
+.tabelkop{ display:grid; grid-template-columns:1fr 120px 126px 126px 126px 24px;
+  align-items:center; gap:12px; padding:0 24px; height:64px;
+  font-family:var(--font-kop); font-size:16px; letter-spacing:-.8px; color:var(--text) }
+.tabelkop .sorteer{ background:none; border:0; padding:0; cursor:pointer; display:inline-flex;
+  align-items:center; gap:6px; font:inherit; color:inherit; letter-spacing:inherit;
+  white-space:nowrap }
+.tabelkop .sorteer:hover{ color:var(--accent) }
+.tabelkop .pijltje{ font-size:11px; opacity:.45 }
+.tabelkop .sorteer[aria-sort]:not([aria-sort="none"]) .pijltje{ opacity:1; color:var(--accent) }
+.tabelkop .mid{ text-align:center; justify-content:center }
+.tabelkop .rechts{ text-align:right; justify-content:flex-end }
+
+.rij.lev{ grid-template-columns:1fr 120px 126px 126px 126px 24px;
+  height:52px; padding:0 24px; border-top:0; border-bottom:1px solid var(--purple-300) }
+.rij.lev:last-child{ border-bottom:0 }
+.rij.lev .getal{ text-align:center; font-family:var(--font-kop); font-weight:400;
+  font-size:18px; letter-spacing:-.9px; color:var(--heading-3) }
+.rij.lev .entvak{ display:flex; justify-content:flex-end }
+
+/* Entiteit. NB = niet bepaald: grijze outline, geen vulling. Dat is met
+   opzet het enige label zonder kleurvlak - wij weten het niet, en dan hoort
+   er ook geen stellige badge te staan. */
+.ent{ display:inline-flex; align-items:center; justify-content:center;
+  padding:4px 12px; border-radius:4px; font-family:var(--font-kop); font-weight:400;
+  font-size:18px; line-height:1; letter-spacing:-.9px; color:#fff; border:1px solid transparent }
+.ent.nl{ background:var(--accent-light) }
+.ent.eu{ background:var(--purple-600) }
+.ent.ow{ background:var(--text-subtle) }
+.ent.nb{ background:none; border-color:var(--border); color:var(--text-faint) }
 .rij .naam{ font-family:var(--font-kop); font-weight:600; font-size:18px;
   color:var(--heading-3); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .paar{ display:flex; align-items:baseline; gap:8px; min-width:0 }
@@ -575,7 +613,17 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
 
       <section id="paneelLev">
         <input class="zoek" id="zoekLev" type="search" placeholder="Zoek een leverancier">
-        <div class="lijst" id="lijstLev"><p class="leeg">Laden…</p></div>
+        <div class="tabelvak">
+          <div class="tabelkop" id="kopLev">
+            <button type="button" class="sorteer" data-sort="url" aria-sort="none">URL leverancier <span class="pijltje">&#9660;</span></button>
+            <button type="button" class="sorteer rechts" data-sort="entiteit" aria-sort="none">entiteit <span class="pijltje">&#9660;</span></button>
+            <span class="mid">verwijzingen</span>
+            <span class="mid">gecontroleerd</span>
+            <button type="button" class="sorteer mid" data-sort="taken" aria-sort="none">taken <span class="pijltje">&#9660;</span></button>
+            <span></span>
+          </div>
+          <div class="lijst" id="lijstLev"><p class="leeg">Laden…</p></div>
+        </div>
       </section>
 
       <section id="paneelLab" class="verborgen">
@@ -912,12 +960,13 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     var pct = verw ? Math.round(gec / verw * 100) : 0;
     var wacht = data.naamkoppelingen.filter(function (o) { return o.status === 'wacht op beoordeling'; }).length;
 
+    // Vier tegels (ontwerp 1502:4078). Vullingen zijn wat we nu hebben; welke
+    // getallen er uiteindelijk horen te staan is nog niet vastgesteld.
     var cellen = [
       { kop: 'Leveranciers', getal: data.leveranciers.length, onder: verw + ' labverwijzingen bekend' },
       { kop: 'Handmatig gecontroleerd', getal: gec, onder: pct + '% van de verwijzingen' },
-      { kop: 'Labs zonder stand', getal: zonderStand, onder: 'van de ' + data.labs.length + ' laboratoria' },
-      { kop: 'Wacht op een oordeel', getal: wacht, onder: 'naamkoppelingen', actie: true },
-      { kop: 'Nog niet gecontroleerd', getal: Math.max(0, verw - gec), onder: 'labverwijzingen' }
+      { kop: 'Nog niet gecontroleerd', getal: Math.max(0, verw - gec), onder: 'labverwijzingen' },
+      { kop: 'Wacht op een oordeel', getal: wacht + zonderStand, onder: wacht + ' naamkoppelingen, ' + zonderStand + ' labs', actie: true }
     ];
     el('cijfers').innerHTML = cellen.map(function (c) {
       return '<div class="cel' + (c.actie ? ' actie' : '') + '">' +
@@ -1014,21 +1063,62 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     'geen lab - databron/testplatform': 'warn', 'afgekeurd - kwaliteitsborging': 'danger'
   };
 
+  // Waar zit deze leverancier? NL, EU, OW - of NB als wij het niet weten.
+  // Dat laatste is geen gebrek: een .com zegt niets over het land, en daar
+  // een categorie van maken zou een vaststelling verzinnen.
+  function entiteit(v) {
+    if (!v || v.herkomst === 'onbekend') {
+      return { code: 'NB', klas: 'nb', rang: 3, uitleg: (v && v.reden) || 'niet vast te stellen' };
+    }
+    var uit = v.herkomst === 'vastgesteld' ? 'vastgesteld' : 'afgeleid';
+    var waar = v.land ? v.land + ', ' + uit : uit;
+    if (String(v.landcode || '').toLowerCase() === 'nl') return { code:'NL', klas:'nl', rang:0, uitleg:waar };
+    if (v.eu === true) return { code:'EU', klas:'eu', rang:1, uitleg:waar };
+    if (v.eu === false) return { code:'OW', klas:'ow', rang:2, uitleg:waar };
+    return { code:'NB', klas:'nb', rang:3, uitleg:(v.reden || 'niet vast te stellen') };
+  }
+
+  var levSort = { kolom: 'taken', om: false };
+
+  function sorteerLev(kolom) {
+    levSort = { kolom: kolom, om: levSort.kolom === kolom ? !levSort.om : false };
+    toonLev();
+  }
+
   function toonLev() {
     var q = el('zoekLev').value.trim().toLowerCase();
     var r = data.leveranciers.filter(function (x) {
       return !q || String(x.supplierKey || '').toLowerCase().indexOf(q) !== -1;
     });
+    var open = function (x) { return Math.max(0, (x.referenties || 0) - (x.gecontroleerd || 0)); };
+    r = r.slice().sort(function (a, b) {
+      var d = 0;
+      if (levSort.kolom === 'url') d = String(a.supplierKey).localeCompare(String(b.supplierKey));
+      else if (levSort.kolom === 'entiteit') d = entiteit(a.vestiging).rang - entiteit(b.vestiging).rang
+        || String(a.supplierKey).localeCompare(String(b.supplierKey));
+      else d = open(b) - open(a) || String(a.supplierKey).localeCompare(String(b.supplierKey));
+      return levSort.om ? -d : d;
+    });
     el('telLev').textContent = '(' + r.length + ')';
     el('lijstLev').innerHTML = r.length ? r.map(function (x) {
-      var open = Math.max(0, (x.referenties || 0) - (x.gecontroleerd || 0));
-      return '<button class="rij' + (open ? ' werk' : '') + '" data-lev="' + esc(x.supplierKey) + '">' +
+      var o = open(x), e = entiteit(x.vestiging);
+      return '<button class="rij lev' + (o ? ' werk' : '') + '" data-lev="' + esc(x.supplierKey) + '">' +
         '<span class="naam">' + esc(x.supplierKey || '?') + '</span>' +
-        '<span class="paar"><b>' + (x.referenties || 0) + '</b><span>verwijzingen</span></span>' +
-        '<span class="paar"><b>' + (x.gecontroleerd || 0) + '</b><span>gecontroleerd</span></span>' +
-        '<span class="paar">' + (open ? '<b>' + open + '</b><span>nog open</span>' : '<span>alles gecontroleerd</span>') + '</span>' +
+        '<span class="entvak"><span class="ent ' + e.klas + '" title="' + esc(e.uitleg) + '">' + e.code + '</span></span>' +
+        '<span class="getal">' + (x.referenties || 0) + '</span>' +
+        '<span class="getal">' + (x.gecontroleerd || 0) + '</span>' +
+        '<span class="getal">' + o + '</span>' +
         PIJL + '</button>';
     }).join('') : '<p class="leeg">Geen leveranciers gevonden.</p>';
+    var kop = el('kopLev');
+    if (kop) {
+      Array.prototype.forEach.call(kop.querySelectorAll('[data-sort]'), function (b) {
+        var aan = b.getAttribute('data-sort') === levSort.kolom;
+        b.setAttribute('aria-sort', aan ? (levSort.om ? 'ascending' : 'descending') : 'none');
+        var pij = b.querySelector('.pijltje');
+        if (pij) pij.textContent = aan && levSort.om ? '\u25b2' : '\u25bc';
+      });
+    }
     Array.prototype.forEach.call(el('lijstLev').querySelectorAll('[data-lev]'), function (b) {
       b.addEventListener('click', function () { openLeverancier(b.getAttribute('data-lev')); });
     });
@@ -1060,6 +1150,9 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   }
 
   el('zoekLev').addEventListener('input', toonLev);
+  Array.prototype.forEach.call(document.querySelectorAll('#kopLev [data-sort]'), function (b) {
+    b.addEventListener('click', function () { sorteerLev(b.getAttribute('data-sort')); });
+  });
   el('zoekLab').addEventListener('input', toonLab);
   el('tabLev').addEventListener('click', function () {
     el('tabLev').setAttribute('aria-selected', 'true'); el('tabLab').setAttribute('aria-selected', 'false');
