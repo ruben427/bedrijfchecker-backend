@@ -456,6 +456,36 @@ function requireBeoordelaar(req, res, next) {
   });
 }
 
+// Wie mag een TESTRESULTAAT vastleggen?
+//
+// 23 september. Dit stond op requireAdmin en dat was precies verkeerd om:
+// Ruben kon accepteren, Annemarie niet — terwijl zij de enige is die het
+// oordeel mag geven. Zij deed het hele voorwerk (rapport ophalen, uitlezen,
+// velden nalopen) en kreeg bij de laatste klik een 403.
+//
+// Waarom een EIGEN functie en niet gewoon requireBeoordelaar, dat vandaag
+// hetzelfde teruggeeft: het zijn twee verschillende handelingen. Een
+// redacteur verandert hoe iets leest; wie een test accepteert zet een stempel
+// die naar buiten gaat. Voorlopig gedekt door dezelfde sleutel — maar als
+// aparte functie, zodat het later te splitsen is zonder de routes opnieuw aan
+// te raken. De grens staat dan in de code en niet alleen in een afspraak.
+//
+// LET OP wat hier NIET bij zit, bewust: upload, herlees en resolve. Dat is
+// zwaarder werk en blijft aan de beheerder hangen.
+function magTestenAccepteren(req) {
+  return !!(req.isAdmin || req.isBeoordelaar);
+}
+
+function requireTestbeoordelaar(req, res, next) {
+  if (magTestenAccepteren(req)) return next();
+  return res.status(403).json({
+    error: 'forbidden',
+    message: req.isLezer
+      ? 'Je kijkt mee met een leestoken. Daarmee kun je geen test accepteren.'
+      : 'Alleen toegankelijk voor beheerders en beoordelaars.'
+  });
+}
+
 // Alle laboratoria die we tegenkomen, met wat we erover weten en twee
 // signalen die geen mens hoeft te bedenken: komt dit lab maar bij een
 // leverancier voor, en is er ook maar een verwijzing die een buitenstaander
@@ -530,6 +560,7 @@ app.get('/api/admin/wie-ben-ik', rl.read, auth.requireOwnerToken, requireLezer, 
   res.json({
     rol: req.rol || 'lezer',
     magBeoordelen: !!(req.isAdmin || req.isBeoordelaar),
+    magTestenAccepteren: magTestenAccepteren(req),
     magUploaden: !!req.isAdmin,
     // Zodat de pagina niet zelf hoeft te weten wat er bestaat.
     labStatussen: coaStore.LAB_STATUSSEN,
@@ -749,7 +780,7 @@ app.get('/api/admin/coa/kruisverband', rl.read, auth.requireOwnerToken, requireL
 // bestaat en wie de opdrachtgever is, verandert niet per shop. Een controle
 // telt dus meteen voor elke shop die naar datzelfde rapport verwijst.
 // Staat bewust boven /api/admin/coa/:supplierKey.
-app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerToken, requireTestbeoordelaar, async (req, res) => {
   try {
     const b = req.body || {};
     const lab = (b.lab || 'Janoshik').trim();
@@ -1307,7 +1338,7 @@ app.post('/api/admin/cases/herbereken', rl.caseAction, auth.requireOwnerToken, r
 // Overzicht van alle bekende documenten (crawl/auto-fetch/handmatig) en hun
 // eventuele verificatiestatus voor één leverancier. De leverancier-ID is de
 // genormaliseerde hostnaam, zie coaStore.supplierKeyFromUrl.
-app.get('/api/admin/coa/:supplierKey', rl.read, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+app.get('/api/admin/coa/:supplierKey', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const documents = await coaStore.getDocumentsBySupplier(req.params.supplierKey);
     // Bij welke andere shops staat hetzelfde bestand nog meer? Dat is precies
@@ -1380,7 +1411,7 @@ app.post('/api/admin/coa/:supplierKey/upload', rl.caseAction, auth.requireOwnerT
 // Resultaat van de handmatige labverificatie vastleggen. Alleen een mens (deze
 // route) mag klasse D zetten (referentie aanwezig, resolvet niet) — het
 // AI-model in extractCoaFromUpload zet zelf nooit een authenticiteitsklasse.
-app.post('/api/admin/coa/:supplierKey/documents/:sha256/verify', rl.caseAction, auth.requireOwnerToken, requireAdmin, async (req, res) => {
+app.post('/api/admin/coa/:supplierKey/documents/:sha256/verify', rl.caseAction, auth.requireOwnerToken, requireTestbeoordelaar, async (req, res) => {
   try {
     const { class: klasse, method, lab, task, sample, key, resolvedUrl, note, checkedBy } = req.body || {};
     if (!['A', 'B', 'C', 'D'].includes(klasse)) {
