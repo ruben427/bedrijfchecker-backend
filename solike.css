@@ -112,7 +112,10 @@
   --radius-sm: 8px;    /* knoppen, inputs, kleine kaartjes */
   --radius-md: 12px;   /* standaardkaarten */
   --radius-lg: 24px;   /* hero-kaarten, grote containers */
-  --radius-pill: 999px; /* chips, pil-knoppen */
+  --radius-pill: 999px; /* chips en pil-vormen - NIET voor knoppen */
+  --radius-knop: 12px;  /* ALLE knoppen (besluit Ruben, 23 september 2026).
+                           Staat los van --radius-sm, want dat geldt ook voor
+                           invoervelden; een knop verandert nu op een plek. */
 }
 
 /* ---------- basisreset ---------- */
