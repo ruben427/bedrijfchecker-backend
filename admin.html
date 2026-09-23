@@ -242,16 +242,26 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 .vaktitel b{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:16px;
   color:var(--heading-3) }
 /* Het lab laat zijn pagina niet inladen (Cloudflare), dus het rapport komt
-   hier binnen via plakken: de afbeelding zelf, of het afbeeldingsadres. */
-.plakvak{ width:100%; border:1px dashed var(--border); border-radius:var(--radius-sm,8px);
-  padding:12px; font-size:13px; color:var(--text-muted); cursor:text; background:var(--bg) }
-.plakvak:focus-within, .plakvak:hover{ border-color:var(--accent) }
-.plakvak p{ margin:0 0 8px }
-.plakvak .stap{ color:var(--text); font-weight:600 }
-.plakvak input{ width:100%; height:40px; font-size:14px; padding:8px 10px;
+   hier binnen via plakken: de afbeelding zelf, of het afbeeldingsadres.
+   Twee standen (Figma 1607:7231): het rapport is er, of de weg ernaartoe. */
+.papier{ position:relative; width:100%; display:flex; justify-content:center }
+.papier[hidden]{ display:none }
+/* Weggooien is zeldzaam en onomkeerbaar: die knop hoort niet permanent in
+   beeld te staan. Op een aanraakscherm is er geen hover, dus daar staat hij
+   er wel - anders is hij onbereikbaar. */
+.wisknop{ position:absolute; top:20px; right:20px; opacity:0; transition:opacity .12s }
+.papier:hover .wisknop, .wisknop:focus-visible{ opacity:1 }
+@media (hover:none){ .wisknop{ opacity:1 } }
+
+.ophalen{ width:100%; display:flex; flex-direction:column; gap:14px; padding:24px;
   border:1px solid var(--border); border-radius:var(--radius-sm,8px); background:var(--surface) }
-.plakvak .gelukt{ color:var(--ok); margin:8px 0 0 }
-.plakvak .mis{ color:var(--danger); margin:8px 0 0 }
+.ophalen[hidden]{ display:none }
+.ophalen-uitleg{ margin:0; font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--text) }
+.ophalen .stap{ font-weight:600 }
+.ophalen .veld{ margin:0 }
+.knop.breed{ width:100% }
+.ophalen .gelukt{ color:var(--ok); margin:0; font-size:14px }
+.ophalen .mis{ color:var(--danger); margin:0; font-size:14px }
 .kopievak{ width:496px; max-width:100%; height:678px; border:1px solid var(--border);
   border-radius:8px; overflow:hidden; background:var(--surface-2) }
 .kopievak img, .kopievak iframe{ width:100%; height:100%; border:0; display:block;
@@ -474,13 +484,34 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
       <div class="rechts">
         <div class="vaktitel"><b id="mVakTitel">Rapport</b><span id="mVakBron"></span></div>
-        <div class="kopievak" id="mKopie"></div>
-        <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
-        <div class="plakvak" id="mPlak" tabindex="0">
-          <p><span class="stap">Rapport erbij halen:</span> open de link hierboven, klik rechts op het
-            rapport → <em>Afbeeldingsadres kopiëren</em>, en plak dat hier. Dat adres blijft bewaard, ook voor
-            Anne. Plak je de afbeelding zelf, dan zie alleen jij hem, tot je ververst.</p>
-          <input id="mPlakVeld" type="text" placeholder="plak hier het afbeeldingsadres (of Ctrl+V de afbeelding)">
+
+        <!-- Stand 1: het rapport is er. Weggooien kan, en die knop komt pas
+             tevoorschijn als je er met de muis overheen gaat. -->
+        <div class="papier" id="mPapier" hidden>
+          <div class="kopievak" id="mKopie"></div>
+          <button class="knop sec klein wisknop" id="mWis">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                 style="width:18px;height:18px"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+            <span>Verwijderen</span>
+          </button>
+        </div>
+
+        <!-- Stand 2: het rapport is er niet. Dan alleen de weg ernaartoe. -->
+        <div class="ophalen" id="mPlak" hidden tabindex="0">
+          <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
+          <p class="ophalen-uitleg"><span class="stap">Rapport erbij halen:</span><br>
+            Klik hieronder op open het rapport. Kopieer de afbeelding door met de rechter muisknop
+            op het rapport te klikken en te kiezen voor Kopieer afbeelding (Ctrl + c | Cmd + c)<br>
+            Plak de afbeelding in onderstaand veld</p>
+          <a class="knop link breed" id="mOpen" href="#" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+                 style="width:16px;height:16px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            <span>open het rapport</span>
+          </a>
+          <label class="veld altijd">
+            <input id="mPlakVeld" type="text" placeholder="Plak de afbeelding hier (Ctrl + v | Cmd + v)">
+            <span class="veld-label">Afbeelding URL of Image</span>
+          </label>
           <p id="mPlakMelding" hidden></p>
         </div>
       </div>
@@ -1053,6 +1084,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
     el('mLink').href = r.url || '#';
     el('mLink').textContent = r.url || 'geen verificatie-URL';
+    el('mOpen').href = r.url || '#';
     el('mPlakVeld').value = '';
     el('mPlakMelding').hidden = true;
     toonPapier();
@@ -1084,31 +1116,74 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   // het adres van de rapportafbeelding op staat, en de pagina zelf mag je niet
   // vanuit onze site ophalen (CORS). De afbeelding zélf laadt wel gewoon.
   // Daarom komt het adres er via jou in: een keer plakken en hij blijft staan.
-  var geplakteAfbeeldingen = {};   // alleen deze sessie: een geplakte afbeelding
-                                   // is een blob en overleeft de pagina niet
+  var blobPerRef = {};      // object-URLs van afbeeldingen die wij ophaalden
+  var bezigMetOphalen = {};
+
+  function haalBlob(pad) {
+    return fetch(API_BASE + pad, { headers: { 'X-Owner-Token': token } }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.blob();
+    });
+  }
+
+  function zetBeeld(titel, bron, src, wisbaar) {
+    el('mVakTitel').textContent = titel;
+    el('mVakBron').textContent = bron || '';
+    el('mKopie').innerHTML = src
+      ? '<img src="' + esc(src) + '" alt="' + esc(titel) + '">'
+      : '<div class="geenkopie">Bezig met ophalen…</div>';
+    el('mPapier').hidden = false;
+    el('mWis').hidden = !wisbaar;
+  }
 
   function toonPapier() {
     var r = werk[index] || {}, k = r.kopie || {};
-    var labUrl = r.rapportAfbeelding || geplakteAfbeeldingen[r.referentie] || null;
-    var vak = el('mKopie');
+    var labUrl = r.rapportAfbeelding || blobPerRef[r.referentie] || null;
+
+    // Stand 1: het rapport bij het lab is er.
     if (labUrl) {
-      el('mVakTitel').textContent = 'Rapport bij het lab';
-      el('mVakBron').textContent = r.rapportDoor ? 'adres erbij gezet door ' + r.rapportDoor : '';
-      vak.innerHTML = '<img src="' + esc(labUrl) + '" alt="Rapport bij het laboratorium">';
+      zetBeeld('Rapport bij het lab', r.rapportDoor ? 'erbij gezet door ' + r.rapportDoor : '', labUrl, true);
+      el('mPlak').hidden = true;
       return;
     }
+    // Wij bewaren het bestand wel, maar hebben het nog niet opgehaald.
+    if (r.rapportBestand && !bezigMetOphalen[r.referentie]) {
+      bezigMetOphalen[r.referentie] = true;
+      zetBeeld('Rapport bij het lab', '', null, false);
+      el('mPlak').hidden = true;
+      haalBlob('/api/admin/coa/references/rapport/afbeelding?referentie=' + encodeURIComponent(r.referentie))
+        .then(function (b) {
+          blobPerRef[r.referentie] = URL.createObjectURL(b);
+          bezigMetOphalen[r.referentie] = false;
+          if (werk[index] && werk[index].referentie === r.referentie) toonPapier();
+        })
+        .catch(function () {
+          bezigMetOphalen[r.referentie] = false;
+          r.rapportBestand = false;
+          if (werk[index] && werk[index].referentie === r.referentie) toonPapier();
+        });
+      return;
+    }
+
+    // Stand 2: geen rapport bij het lab. Alleen de weg ernaartoe.
+    el('mPlak').hidden = false;
     if (k.url) {
-      el('mVakTitel').textContent = 'Kopie bij de shop';
-      el('mVakBron').textContent = 'niet het rapport bij het lab';
-      if (/pdf/i.test(k.mimetype || '') || /\.pdf($|\?)/i.test(k.url))
-        vak.innerHTML = '<iframe src="' + esc(k.url) + '#toolbar=0" title="Kopie bij de shop"></iframe>';
-      else vak.innerHTML = '<img src="' + esc(k.url) + '" alt="Kopie van het rapport bij de shop">';
+      // De kopie van de shop is er wel. Die blijft staan - zonder hem valt er
+      // niets te vergelijken - maar met het opschrift erboven dat dit niet
+      // het rapport bij het lab is.
+      if (/pdf/i.test(k.mimetype || '') || /\.pdf($|\?)/i.test(k.url)) {
+        el('mVakTitel').textContent = 'Kopie bij de shop';
+        el('mVakBron').textContent = 'niet het rapport bij het lab';
+        el('mKopie').innerHTML = '<iframe src="' + esc(k.url) + '#toolbar=0" title="Kopie bij de shop"></iframe>';
+        el('mPapier').hidden = false; el('mWis').hidden = true;
+      } else {
+        zetBeeld('Kopie bij de shop', 'niet het rapport bij het lab', k.url, false);
+      }
       return;
     }
     el('mVakTitel').textContent = 'Nog geen rapport';
     el('mVakBron').textContent = '';
-    vak.innerHTML = '<div class="geenkopie">Geen kopie bij de shop, en het rapport bij het lab ' +
-      'is hier nog niet bij gezet.</div>';
+    el('mPapier').hidden = true;
   }
 
   function plakMelding(tekst, fout) {
@@ -1123,7 +1198,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     var r = werk[index]; if (!r) return;
     var url = String(tekst || '').trim();
     if (!/^https:\/\//i.test(url)) {
-      plakMelding('Dat is geen https-adres. Klik rechts op het rapport en kies "Afbeeldingsadres kopiëren".', true);
+      plakMelding('Dat is geen https-adres. Plak de afbeelding zelf, of het afbeeldingsadres.', true);
       return;
     }
     plakMelding('Bezig met opslaan…', false);
@@ -1133,9 +1208,52 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     }).then(function () {
       r.rapportAfbeelding = url; r.rapportDoor = naam;
       toonPapier();
-      plakMelding('Rapport staat erbij. Iedereen die deze referentie opent ziet hem nu.', false);
+      plakMelding('Rapport staat erbij.', false);
     }).catch(function (e) {
-      // Niet stilletjes toch tonen: dan denk je dat het bewaard is.
+      plakMelding('Niet bewaard: ' + e.message, true);
+    });
+  }
+
+  // Een geplakte afbeelding gaat als data-URL naar de server. Groot beeld
+  // eerst terugschalen: een rapportscan is vaak 1600 breed en dat hoeft niet
+  // groter, maar tekst moet leesbaar blijven - vandaar 1600 en geen 800.
+  function kleinerMaken(bestand) {
+    return new Promise(function (klaar, mis) {
+      var lezer = new FileReader();
+      lezer.onerror = function () { mis(new Error('kon de afbeelding niet lezen')); };
+      lezer.onload = function () {
+        var d = String(lezer.result);
+        if (d.length < 1200000) return klaar(d);
+        var beeld = new Image();
+        beeld.onerror = function () { mis(new Error('kon de afbeelding niet openen')); };
+        beeld.onload = function () {
+          var breed = Math.min(beeld.naturalWidth, 1600);
+          var hoog = Math.round(beeld.naturalHeight * (breed / beeld.naturalWidth));
+          var c = document.createElement('canvas');
+          c.width = breed; c.height = hoog;
+          c.getContext('2d').drawImage(beeld, 0, 0, breed, hoog);
+          klaar(c.toDataURL('image/jpeg', 0.85));
+        };
+        beeld.src = d;
+      };
+      lezer.readAsDataURL(bestand);
+    });
+  }
+
+  function neemRapportAfbeelding(bestand) {
+    var r = werk[index]; if (!r) return;
+    plakMelding('Bezig met opslaan…', false);
+    kleinerMaken(bestand).then(function (dataUrl) {
+      return haal('/api/admin/coa/references/rapport/afbeelding', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ referentie: r.referentie, dataUrl: dataUrl, door: naam })
+      }).then(function () {
+        if (blobPerRef[r.referentie]) URL.revokeObjectURL(blobPerRef[r.referentie]);
+        blobPerRef[r.referentie] = dataUrl;
+        r.rapportBestand = true; r.rapportDoor = naam;
+        toonPapier();
+      });
+    }).catch(function (e) {
       plakMelding('Niet bewaard: ' + e.message, true);
     });
   }
@@ -1149,11 +1267,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
         var bestand = items[i].getAsFile();
         if (!bestand) continue;
         e.preventDefault();
-        var r = werk[index]; if (!r) return;
-        geplakteAfbeeldingen[r.referentie] = URL.createObjectURL(bestand);
-        toonPapier();
-        plakMelding('Afbeelding geplakt. Alleen voor jou, en weg zodra je ververst — plak het ' +
-                    'afbeeldingsadres als hij moet blijven staan.', false);
+        neemRapportAfbeelding(bestand);
         return;
       }
     }
@@ -1163,6 +1277,19 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       el('mPlakVeld').value = tekst.trim();
       neemRapportUrl(tekst);
     }
+  });
+
+  el('mWis').addEventListener('click', function () {
+    var r = werk[index]; if (!r) return;
+    haal('/api/admin/coa/references/rapport?referentie=' + encodeURIComponent(r.referentie), { method: 'DELETE' })
+      .then(function () {
+        if (blobPerRef[r.referentie]) { URL.revokeObjectURL(blobPerRef[r.referentie]); delete blobPerRef[r.referentie]; }
+        r.rapportAfbeelding = null; r.rapportBestand = false; r.rapportDoor = null;
+        el('mPlakVeld').value = '';
+        el('mPlakMelding').hidden = true;
+        toonPapier();
+      })
+      .catch(function (e) { plakMelding('Weghalen mislukt: ' + e.message, true); });
   });
 
   function verberg() { el('vGeen').hidden = true; el('vKlopt').hidden = true; el('mMelding').hidden = true; }
