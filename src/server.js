@@ -792,6 +792,92 @@ app.post('/api/admin/coa/references/verify', rl.caseAction, auth.requireOwnerTok
   }
 });
 
+// Het adres van de rapportafbeelding bij het lab vastleggen.
+//
+// Waarom een mens dit moet plakken: de verificatiepagina van Janoshik zit
+// achter Cloudflare. Onze server komt er niet in, en de adminpagina mag hem
+// niet ophalen (CORS). De AFBEELDING laadt wel gewoon; alleen haar adres is
+// niet te vinden zonder die pagina. Een mens die hem toch opent kopieert het
+// adres. Daarna staat het rapport er voor iedereen bij.
+//
+// Dit is geen controle en het zet geen klasse. Het legt alleen vast waar het
+// papier te zien is.
+app.post('/api/admin/coa/references/rapport', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const referentie = (b.referentie || '').trim();
+    const url = (b.url || '').trim();
+    const door = b.door || b.toegevoegdDoor || null;
+    if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee.' });
+    if (!/^https:\/\//i.test(url)) {
+      return res.status(400).json({ error: 'geen_https', message: 'Het adres moet met https:// beginnen.' });
+    }
+    const bekend = await coaStore.referentieMetRapport(null, referentie);
+    if (!bekend) return res.status(404).json({ error: 'onbekende_referentie', message: 'Deze referentie kennen wij niet.' });
+
+    // Het adres moet van het lab komen. Zou de kopie van de shop hier mogen
+    // staan, dan poetst dit precies het verschil weg dat de controle meet.
+    const domein = (h) => String(h || '').toLowerCase().split('.').slice(-2).join('.');
+    let labHost = '', plakHost = '';
+    try { labHost = new URL(bekend.url || '').hostname; } catch (e) {}
+    try { plakHost = new URL(url).hostname; } catch (e) {}
+    if (!plakHost) return res.status(400).json({ error: 'geen_adres', message: 'Dat is geen geldig webadres.' });
+    if (labHost && domein(labHost) !== domein(plakHost)) {
+      return res.status(400).json({
+        error: 'ander_domein',
+        message: 'Dit adres komt van ' + plakHost + ', en de referentie hoort bij ' + labHost +
+          '. Alleen het rapport bij het lab hoort hier; de kopie van de shop staat al elders.'
+      });
+    }
+    const opgeslagen = await coaStore.saveReferenceRapport(bekend.lab, bekend.referentie, url, door);
+    if (!opgeslagen) return res.status(500).json({ error: 'opslaan_mislukt', message: 'Het adres kon niet worden opgeslagen.' });
+    res.json({ ok: true, rapport: opgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Meten of onze server die afbeelding zelf kan ophalen. Alleen een meting:
+// hij slaat niets op en geeft de afbeelding niet door. Nodig om te weten of
+// we het rapport ooit machinaal kunnen uitlezen, of dat dat alleen in de
+// browser kan.
+//
+// Het adres komt NIET uit de vraag maar uit wat wij al hebben opgeslagen.
+// Anders is dit een open deur om onze server willekeurige adressen te laten
+// ophalen - ook interne.
+app.get('/api/admin/coa/references/rapport/proef', rl.read, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const referentie = (req.query.referentie || '').trim();
+    if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee.' });
+    const bekend = await coaStore.referentieMetRapport(null, referentie);
+    if (!bekend || !bekend.afbeeldingUrl) {
+      return res.status(404).json({ error: 'geen_rapport', message: 'Voor deze referentie is nog geen rapportadres vastgelegd.' });
+    }
+    const begin = Date.now();
+    const af = new AbortController();
+    const klok = setTimeout(() => af.abort(), 15000);
+    try {
+      const r = await fetch(bekend.afbeeldingUrl, { redirect: 'follow', signal: af.signal });
+      const buf = Buffer.from(await r.arrayBuffer());
+      clearTimeout(klok);
+      res.json({
+        ok: r.ok, status: r.status,
+        contentType: r.headers.get('content-type') || null,
+        bytes: buf.length,
+        ms: Date.now() - begin,
+        // De eerste bytes verraden of het echt een plaatje is of een
+        // Cloudflare-pagina met de status 200 erop.
+        begintMet: buf.slice(0, 8).toString('hex')
+      });
+    } catch (e) {
+      clearTimeout(klok);
+      res.json({ ok: false, fout: (e && e.message) || String(e), ms: Date.now() - begin });
+    }
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Alle referenties van een lab met hun controle. Nodig omdat het kruisverband
 // alleen GEDEELDE referenties toont, en een lab met een enkele shop die per
 // definitie niet heeft - de 45 opgeloste Bridge-rapporten waren daardoor

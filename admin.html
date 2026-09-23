@@ -234,6 +234,24 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 .rechts{ flex:0 0 496px; display:flex; flex-direction:column; gap:14px; align-items:center }
 .labverwijzing{ font-size:16px; color:var(--accent); text-decoration:underline;
   text-underline-offset:3px; word-break:break-all; text-align:center; letter-spacing:-.02em }
+/* Wélk papier je aankijkt. Zonder dit opschrift is de kopie van de shop niet
+   te onderscheiden van het rapport bij het lab, en dat is nu juist het
+   verschil waar deze hele controle om draait. */
+.vaktitel{ width:100%; display:flex; align-items:center; justify-content:space-between;
+  gap:8px; font-size:14px; color:var(--text-muted) }
+.vaktitel b{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:16px;
+  color:var(--heading-3) }
+/* Het lab laat zijn pagina niet inladen (Cloudflare), dus het rapport komt
+   hier binnen via plakken: de afbeelding zelf, of het afbeeldingsadres. */
+.plakvak{ width:100%; border:1px dashed var(--border); border-radius:var(--radius-sm,8px);
+  padding:12px; font-size:13px; color:var(--text-muted); cursor:text; background:var(--bg) }
+.plakvak:focus-within, .plakvak:hover{ border-color:var(--accent) }
+.plakvak p{ margin:0 0 8px }
+.plakvak .stap{ color:var(--text); font-weight:600 }
+.plakvak input{ width:100%; height:40px; font-size:14px; padding:8px 10px;
+  border:1px solid var(--border); border-radius:var(--radius-sm,8px); background:var(--surface) }
+.plakvak .gelukt{ color:var(--ok); margin:8px 0 0 }
+.plakvak .mis{ color:var(--danger); margin:8px 0 0 }
 .kopievak{ width:496px; max-width:100%; height:678px; border:1px solid var(--border);
   border-radius:8px; overflow:hidden; background:var(--surface-2) }
 .kopievak img, .kopievak iframe{ width:100%; height:100%; border:0; display:block;
@@ -455,8 +473,16 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       </div>
 
       <div class="rechts">
+        <div class="vaktitel"><b id="mVakTitel">Rapport</b><span id="mVakBron"></span></div>
         <div class="kopievak" id="mKopie"></div>
         <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
+        <div class="plakvak" id="mPlak" tabindex="0">
+          <p><span class="stap">Rapport erbij halen:</span> open de link hierboven, klik rechts op het
+            rapport → <em>Afbeeldingsadres kopiëren</em>, en plak dat hier. Plak je de afbeelding zelf,
+            dan zie je hem nu wel maar is hij morgen weg.</p>
+          <input id="mPlakVeld" type="text" placeholder="plak hier het afbeeldingsadres (of Ctrl+V de afbeelding)">
+          <p id="mPlakMelding" hidden></p>
+        </div>
       </div>
     </div>
   </div>
@@ -1015,12 +1041,9 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
     el('mLink').href = r.url || '#';
     el('mLink').textContent = r.url || 'geen verificatie-URL';
-
-    var vak = el('mKopie');
-    if (!k.url) vak.innerHTML = '<div class="geenkopie">Geen kopie bij de shop gevonden.</div>';
-    else if (/pdf/i.test(k.mimetype || '') || /\.pdf($|\?)/i.test(k.url))
-      vak.innerHTML = '<iframe src="' + esc(k.url) + '#toolbar=0" title="Kopie bij de shop"></iframe>';
-    else vak.innerHTML = '<img src="' + esc(k.url) + '" alt="Kopie van het rapport bij de shop">';
+    el('mPlakVeld').value = '';
+    el('mPlakMelding').hidden = true;
+    toonPapier();
 
     el('vVelden').innerHTML = VELDEN.map(function (v) {
       var w = shopWaarde(r, v.s);
@@ -1037,6 +1060,95 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 
     verberg();
   }
+
+  // --- het papier rechts ---------------------------------------------------
+  // Janoshik zit achter een botmuur: onze server komt niet bij de pagina waar
+  // het adres van de rapportafbeelding op staat, en de pagina zelf mag je niet
+  // vanuit onze site ophalen (CORS). De afbeelding zélf laadt wel gewoon.
+  // Daarom komt het adres er via jou in: een keer plakken en hij blijft staan.
+  var SLEUTEL_RAPPORT = 'bedrijfchecker.labrapport';
+  var geplakteAfbeeldingen = {};   // alleen deze sessie; een geplakte afbeelding
+                                   // is een blob en overleeft de pagina niet
+
+  function rapporten() { try { return JSON.parse(lees(SLEUTEL_RAPPORT) || '{}'); } catch (e) { return {}; } }
+  function bewaarRapport(ref, url) {
+    var a = rapporten(); a[ref] = url; bewaar(SLEUTEL_RAPPORT, JSON.stringify(a));
+  }
+
+  function toonPapier() {
+    var r = werk[index] || {}, k = r.kopie || {};
+    var labUrl = rapporten()[r.referentie] || geplakteAfbeeldingen[r.referentie] || null;
+    var vak = el('mKopie');
+    if (labUrl) {
+      el('mVakTitel').textContent = 'Rapport bij het lab';
+      el('mVakBron').textContent = k.url ? 'de kopie van de shop staat in het veld ernaast' : '';
+      vak.innerHTML = '<img src="' + esc(labUrl) + '" alt="Rapport bij het laboratorium">';
+      return;
+    }
+    if (k.url) {
+      el('mVakTitel').textContent = 'Kopie bij de shop';
+      el('mVakBron').textContent = 'niet het rapport bij het lab';
+      if (/pdf/i.test(k.mimetype || '') || /\.pdf($|\?)/i.test(k.url))
+        vak.innerHTML = '<iframe src="' + esc(k.url) + '#toolbar=0" title="Kopie bij de shop"></iframe>';
+      else vak.innerHTML = '<img src="' + esc(k.url) + '" alt="Kopie van het rapport bij de shop">';
+      return;
+    }
+    el('mVakTitel').textContent = 'Nog geen rapport';
+    el('mVakBron').textContent = '';
+    vak.innerHTML = '<div class="geenkopie">Geen kopie bij de shop, en het rapport bij het lab ' +
+      'is hier nog niet ingeplakt.</div>';
+  }
+
+  function plakMelding(tekst, fout) {
+    var p = el('mPlakMelding');
+    p.textContent = tekst; p.className = fout ? 'mis' : 'gelukt'; p.hidden = false;
+  }
+
+  function neemRapportUrl(tekst) {
+    var r = werk[index]; if (!r) return;
+    var url = String(tekst || '').trim();
+    if (!/^https:\/\//i.test(url)) {
+      plakMelding('Dat is geen https-adres. Klik rechts op het rapport en kies "Afbeeldingsadres kopiëren".', true);
+      return;
+    }
+    // Waarschuwen als het adres niet bij het lab vandaan komt: de kopie van de
+    // shop hier inplakken zou precies het verschil wegpoetsen dat we meten.
+    var labHost = ''; try { labHost = new URL(r.url || '').hostname; } catch (e) {}
+    var plakHost = ''; try { plakHost = new URL(url).hostname; } catch (e) {}
+    bewaarRapport(r.referentie, url);
+    toonPapier();
+    if (labHost && plakHost && plakHost.split('.').slice(-2).join('.') !== labHost.split('.').slice(-2).join('.')) {
+      plakMelding('Bewaard, maar let op: dit adres komt van ' + plakHost + ' en niet van ' + labHost +
+        '. Weet je zeker dat dit het rapport bij het lab is en niet de kopie van de shop?', true);
+    } else {
+      plakMelding('Rapport staat erbij. Blijft bewaard op deze computer.', false);
+    }
+  }
+
+  el('mPlakVeld').addEventListener('change', function () { neemRapportUrl(el('mPlakVeld').value); });
+  el('mPlak').addEventListener('paste', function (e) {
+    var d = e.clipboardData; if (!d) return;
+    var items = d.items || [];
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image/') === 0) {
+        var bestand = items[i].getAsFile();
+        if (!bestand) continue;
+        e.preventDefault();
+        var r = werk[index]; if (!r) return;
+        geplakteAfbeeldingen[r.referentie] = URL.createObjectURL(bestand);
+        toonPapier();
+        plakMelding('Afbeelding geplakt. Die is weg zodra je de pagina ververst — plak het ' +
+                    'afbeeldingsadres als je hem wilt bewaren.', false);
+        return;
+      }
+    }
+    var tekst = d.getData('text');
+    if (tekst && /^https:\/\//i.test(tekst.trim())) {
+      e.preventDefault();
+      el('mPlakVeld').value = tekst.trim();
+      neemRapportUrl(tekst);
+    }
+  });
 
   function verberg() { el('vGeen').hidden = true; el('vKlopt').hidden = true; el('mMelding').hidden = true; }
   function meld(t) { el('mMelding').textContent = t; el('mMelding').hidden = false; }

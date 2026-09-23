@@ -174,6 +174,30 @@ async function initCoaSchema() {
   // shop, of het sha256 van het document. Zonder dit is later niet na te
   // gaan waar een A op rust.
   await pool.query(`ALTER TABLE coa_reference_checks ADD COLUMN IF NOT EXISTS vergeleken_met TEXT;`);
+
+  // Waar het rapport van het lab als afbeelding te zien is.
+  //
+  // Janoshik zet zijn rapport als PNG op verify.janoshik.com. Die afbeelding
+  // laadt gewoon in een browser - gemeten: 1600x2360, geen hotlinkblokkade.
+  // Het ADRES van die afbeelding staat alleen op de verificatiepagina, en die
+  // zit achter Cloudflare: onze server komt er niet in, en onze eigen pagina
+  // mag hem niet ophalen (CORS). Een mens die de pagina toch opent kan het
+  // adres wel kopieren. Eenmaal geplakt staat het rapport er voor iedereen.
+  //
+  // Bewust een EIGEN tabel, niet een kolom bij coa_reference_checks. Een
+  // rapport erbij zoeken is geen controle: zou het in die tabel staan, dan
+  // telde een geplakte afbeelding mee als 'gecontroleerd' terwijl niemand
+  // ergens naar gekeken heeft.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS coa_reference_rapporten (
+      lab TEXT NOT NULL,
+      referentie TEXT NOT NULL,
+      afbeelding_url TEXT NOT NULL,
+      toegevoegd_door TEXT,
+      toegevoegd_op BIGINT NOT NULL,
+      PRIMARY KEY (lab, referentie)
+    );
+  `);
   // De veldvergelijking gestructureerd, niet in proza. Een regelset kan niets
   // met 'Client wijkt af' in een notitie; hiermee kan Annemarie haar besluit
   // (A15) straks over alles heen draaien in plaats van 200 notities lezen.
@@ -1609,6 +1633,50 @@ function afleidingsnotitieVoor(c, vul) {
   return regels.length ? regels.join(' | ') : null;
 }
 
+// Het adres van de rapportafbeelding bij het lab vastleggen. Geen oordeel,
+// geen controle - alleen waar het papier te zien is.
+async function saveReferenceRapport(lab, referentie, afbeeldingUrl, door) {
+  if (!lab || !referentie || !afbeeldingUrl) return null;
+  const labNet = normaliseerLab(lab).naam;
+  try {
+    await pool.query(
+      `INSERT INTO coa_reference_rapporten (lab, referentie, afbeelding_url, toegevoegd_door, toegevoegd_op)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (lab, referentie) DO UPDATE SET
+         afbeelding_url = EXCLUDED.afbeelding_url,
+         toegevoegd_door = EXCLUDED.toegevoegd_door,
+         toegevoegd_op = EXCLUDED.toegevoegd_op`,
+      [labNet, referentie, afbeeldingUrl, door || null, Date.now()]
+    );
+    return { lab: labNet, referentie, afbeeldingUrl, toegevoegdDoor: door || null };
+  } catch (e) {
+    console.error('coaStore.saveReferenceRapport:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// Eén referentie opzoeken, met het adres van het lab erbij. Nodig om te
+// bepalen welk domein een geplakt adres mag hebben.
+async function referentieMetRapport(lab, referentie) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT r.lab, r.referentie, r.url, p.afbeelding_url
+       FROM coa_references r
+       LEFT JOIN coa_reference_rapporten p
+         ON p.lab = r.lab AND p.referentie = r.referentie
+       WHERE r.referentie = $1
+       LIMIT 1`,
+      [referentie]
+    );
+    if (!rows.length) return null;
+    const r = rows[0];
+    return { lab: r.lab, referentie: r.referentie, url: r.url, afbeeldingUrl: r.afbeelding_url || null };
+  } catch (e) {
+    console.error('coaStore.referentieMetRapport:', (e && e.message) || e);
+    return null;
+  }
+}
+
 async function saveReferenceCheck(lab, referentie, check) {
   if (!lab || !referentie || !check) return null;
   const c = check;
@@ -2336,9 +2404,11 @@ async function referentiesVanLeverancier(supplierKey, max) {
               c.testnaam, c.testsoorten,
               c.veldvergelijking, c.velden_vergeleken, c.velden_afwijkend,
               c.vergeleken_met, c.afleidingsnotitie, c.notitie,
-              c.checked_by, c.methode, c.checked_at
+              c.checked_by, c.methode, c.checked_at,
+              p.afbeelding_url, p.toegevoegd_door
        FROM coa_references r
        LEFT JOIN coa_reference_checks c ON c.lab = r.lab AND c.referentie = r.referentie
+       LEFT JOIN coa_reference_rapporten p ON p.lab = r.lab AND p.referentie = r.referentie
        WHERE r.supplier_key = $1
        ORDER BY c.checked_at DESC NULLS LAST, r.referentie
        LIMIT $2`,
@@ -2347,6 +2417,10 @@ async function referentiesVanLeverancier(supplierKey, max) {
     return rows.map((r) => ({
       lab: normaliseerLab(r.lab).naam, referentie: r.referentie, url: r.url,
       testsoort: r.testsoort, context: r.context, relatie: r.relatie || 'toont',
+      // Waar het rapport bij het lab te zien is. Staat los van de controle:
+      // een rapport erbij hebben is nog geen oordeel erover.
+      rapportAfbeelding: r.afbeelding_url || null,
+      rapportDoor: r.toegevoegd_door || null,
       controle: r.checked_at ? {
         resolvet: r.resolvet, klasse: r.klasse, client: r.client, manufacturer: r.manufacturer,
         product: r.product, batchnummer: r.batchnummer,
@@ -2987,6 +3061,8 @@ async function andereLeveranciersVoor(shaList) {
 }
 
 module.exports = {
+  saveReferenceRapport,
+  referentieMetRapport,
   vialSpreidingUit,
   bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,
   vestigingen, saveVestiging, labBriefhoofden,
