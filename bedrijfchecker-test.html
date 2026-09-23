@@ -28,15 +28,30 @@
     display:flex; align-items:center; gap:12px;
     height:56px; width:100%; padding:0 12px;
     background:var(--surface); border:1px solid var(--border); border-radius:8px;
+    /* Expliciet, want .veld erft anders de marge van het designsysteem en dan
+       is niet te zien waar de ruimte onder het veld vandaan komt. */
+    margin:0 0 14px;
   }
-  .veld:focus-within{ border-color:var(--accent); }
+  /* Actief groeit het veld 4px naar alle kanten buiten zijn eigen ruimte:
+     8px hoger en 8px breder, net als de velden in het designsysteem
+     (besluit Ruben, 23 september). Hier groeit het DOOSJE en niet de input:
+     de rand die je ziet is die van .veld, de input erin is randloos.
+     Negatieve marges, zodat de knop eronder niet verschuift. */
+  .veld:focus-within{
+    border-color:var(--accent);
+    width:calc(100% + 8px); margin:-4px -4px 10px; height:64px;
+    position:relative; z-index:1;
+  }
   .veld.has-error{ border-color:var(--danger); }
   .veld input[type=text]{
     flex:1 1 0; min-width:0; height:100%;
     border:0; background:none; padding:0; border-radius:0;
     font-size:18px; color:var(--text);
   }
-  .veld input[type=text]:focus{ outline:none; }
+  /* Het designsysteem laat een input in een .veld zelf uitgroeien. Binnen dit
+     doosje moet hij juist stil blijven staan - anders steekt hij onder de rand
+     door. Hier groeit het doosje, daar de input. */
+  .veld input[type=text]:focus{ outline:none; width:auto; margin:0; height:100%; }
   .veld input[type=text]::placeholder{ color:var(--text-muted); opacity:1; }
 
   /* De uitklapper is in het ontwerp een tekstlink met een onderlijn en een
@@ -78,6 +93,7 @@
 
   @media (max-width:640px){
     .veld{ height:auto; min-height:56px; flex-wrap:wrap; padding:10px 12px; }
+    .veld:focus-within{ height:auto; min-height:64px; }
     .veld input[type=text]{ height:auto; flex-basis:100%; font-size:16px; }
     .coa-bestandsknop{ margin-left:auto; }
     .coa-uitleg{ font-size:16px; }
@@ -91,7 +107,6 @@
     <button type="button" class="site-logo" id="brand-home" aria-label="Naar de startpagina">
       <img src="PEPPROOF-BETA-LOGO.svg" alt="Pep Proof — beta 1.0" width="398" height="80">
     </button>
-    <span class="betavlag">BETA 1.0</span>
   </div>
 </header>
 
@@ -577,7 +592,7 @@
               '<p class="ladder-punch">Laat zien óf het productbewijs standhoudt — niet wie erachter zit.</p>' +
             '</div>' +
           '</div>' +
-          '<div class="ladder-footer"><span class="textlink">Details ' + ICON_CHEVRON + '</span></div>' +
+          '<div class="ladder-footer"><span class="textlink"><span>Details</span> ' + ICON_CHEVRON + '</span></div>' +
         '</div>' +
         '<div class="ladder-card featured">' +
           '<div class="ladder-top">' +
@@ -592,7 +607,7 @@
               '<p class="ladder-punch">Bevestigt of ontkracht precies de vlaggen uit stap 1.</p>' +
             '</div>' +
           '</div>' +
-          '<div class="ladder-footer"><span class="textlink">Details ' + ICON_CHEVRON + '</span></div>' +
+          '<div class="ladder-footer"><span class="textlink"><span>Details</span> ' + ICON_CHEVRON + '</span></div>' +
         '</div>' +
         '<div class="ladder-card">' +
           '<div class="ladder-top">' +
@@ -607,7 +622,7 @@
               '<p class="ladder-punch">De feiten plus het gevoel van iemand die dit al jaren doet.</p>' +
             '</div>' +
           '</div>' +
-          '<div class="ladder-footer"><span class="textlink">Details ' + ICON_CHEVRON + '</span></div>' +
+          '<div class="ladder-footer"><span class="textlink"><span>Details</span> ' + ICON_CHEVRON + '</span></div>' +
         '</div>' +
       '</div>';
 
@@ -1946,7 +1961,7 @@
       '</ul>' +
       '<div class="deepdive-actions">' +
         '<button type="button" class="btn-cta js-continue-deep" id="continue-deep">Ja, ik wil de verdieping</button>' +
-        '<button type="button" class="textlink js-deepdive-info">Meer weten over de Deepdive ' + ICON_CHEVRON + '</button>' +
+        '<button type="button" class="textlink js-deepdive-info"><span>Meer weten over de Deepdive</span> ' + ICON_CHEVRON + '</button>' +
       '</div></section>';
   }
 

@@ -306,6 +306,11 @@ input[type=search], input[type=number], select, textarea{
 }
 .veld > input, .veld > select{ height:56px }
 .veld > textarea{ min-height:96px; resize:vertical; padding-top:26px }
+/* Een textarea groeit niet mee op padding alleen - de browser rekent zijn
+   hoogte uit het aantal regels. Daarom een expliciete minimumhoogte, en
+   die 8px erbij als het veld actief is. Gemeten: 80px is precies wat een
+   textarea van twee regels nu al is, dus in rust verandert er niets. */
+textarea{ min-height:80px }
 .veld > input:not([type=search]), .veld > select{ padding:22px 12px 8px }
 
 .veld > input:hover, .veld > select:hover, .veld > textarea:hover,
@@ -317,10 +322,48 @@ input:focus, select:focus, textarea:focus{
   outline:none; background:var(--surface-2); border-color:var(--surface-2);
 }
 
+/* Actief groeit het veld 4px naar alle kanten buiten zijn eigen ruimte:
+   8px hoger en 8px breder, dus links en rechts buiten de .veld-div.
+   Besluit Ruben, 23 september 2026.
+
+   Waarom negatieve marges en geen groter formaat: zo blijft de ruimte die
+   .veld inneemt gelijk en verschuift de rest van het formulier niet. Het veld
+   groeit alleen naar buiten, gecentreerd op zijn eigen plek.
+
+   De padding en het opschrift schuiven 4px mee, zodat de tekst in het veld
+   op zijn plek blijft staan terwijl de rand eromheen uitzet. */
+.veld > input:focus, .veld > select:focus, .veld > textarea:focus,
+input[type=text]:focus, input[type=url]:focus, input[type=email]:focus,
+input[type=password]:focus, input[type=search]:focus, input[type=number]:focus,
+select:focus, textarea:focus{
+  width:calc(100% + 8px);
+  margin:-4px;
+  position:relative; z-index:1;
+}
+/* Velden zonder vaste hoogte groeien via de padding; velden met een vaste
+   hoogte krijgen die 8px erbij. */
+input[type=text]:focus, input[type=url]:focus, input[type=email]:focus,
+input[type=password]:focus, input[type=search]:focus, input[type=number]:focus,
+select:focus, textarea:focus{ padding-top:14px; padding-bottom:14px; }
+.veld > input:focus, .veld > select:focus{ height:64px; }
+.veld > input:not([type=search]):focus, .veld > select:focus{ padding:26px 12px 8px; }
+.veld > input[type=search]:focus, .veld > textarea:focus{ padding-left:16px; padding-right:16px; }
+.veld > textarea:focus{ padding-top:30px; padding-bottom:10px; min-height:104px; }
+textarea:focus{ min-height:88px; }
+
+/* Het opschrift hangt aan .veld, niet aan het veld zelf, dus het schuift niet
+   vanzelf mee. Deze regel staat na de regel hieronder die top op 9px zet. */
+.veld > input:focus ~ .veld-label,
+.veld > select:focus ~ .veld-label,
+.veld > textarea:focus ~ .veld-label{ left:9px; }
+
 /* het opschrift: groot en in het midden zolang er niets staat,
    klein bovenin zodra er iets staat of het veld actief is */
 .veld > .veld-label{
-  position:absolute; left:13px; top:16px; pointer-events:none;
+  /* z-index 2: het actieve veld staat op 1 en zou het opschrift anders
+     overschilderen. Gevonden door het te renderen - in de code was er niets
+     aan te zien. */
+  position:absolute; left:13px; top:16px; pointer-events:none; z-index:2;
   font-family:var(--font-tekst); font-size:18px; line-height:1;
   color:var(--text-muted); transition:top .12s, font-size .12s;
 }
@@ -331,6 +374,10 @@ input:focus, select:focus, textarea:focus{
   top:9px; font-size:12px;
 }
 .veld > textarea ~ .veld-label{ top:10px }
+/* 4px omhoog mee met het veld dat 4px naar boven uitgroeit. */
+.veld > input:focus ~ .veld-label,
+.veld > select:focus ~ .veld-label{ top:5px }
+.veld > textarea:focus ~ .veld-label{ top:6px }
 
 .veld-hulp{ margin:4px 0 0; padding:0 12px; font-size:12px; color:var(--text-muted) }
 
