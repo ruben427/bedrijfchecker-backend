@@ -1055,8 +1055,26 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
       alleRefs = refs;
 
       var gecontroleerd = refs.filter(function (r) { return r.controle; }).length;
-      el('lSub').textContent = 'Leverancier · ' + refs.length + ' labverwijzingen · ' +
-        gecontroleerd + ' gecontroleerd · ' + docs.length + ' eigen kopieën';
+
+      // TEL ALLEEN WAT EEN LABRAPPORT IS. 23 september: hier stond docs.length,
+      // en dat telde alles wat de crawler ooit heeft opgehaald. Bij
+      // lumopeptides.com gaf dat "29 eigen kopieen" terwijl het 20 productfoto's
+      // en 9 website-iconen waren - nul labrapporten. De regel eronder zei
+      // tegelijk "geen enkele referentie heeft een kopie bij de shop". Allebei
+      // uit dezelfde data, en maar een van de twee klopte.
+      //
+      // Een document telt als eigen kopie zodra er een lab EN een taaknummer
+      // uit gelezen is. Zonder die twee is het een plaatje, geen rapport.
+      var kopieen = docs.filter(function (d) { return d && d.lab && d.task_number; }).length;
+      var plaatjes = docs.length - kopieen;
+
+      var sub = 'Leverancier · ' + refs.length + ' labverwijzingen · ' +
+        gecontroleerd + ' gecontroleerd · ' + kopieen + ' eigen ' +
+        (kopieen === 1 ? 'kopie' : 'kopieen');
+      // Wat er verder is opgehaald noemen we apart, zodat het verschil tussen
+      // "niets gevonden" en "wel iets opgehaald, maar geen rapport" zichtbaar is.
+      if (plaatjes > 0) sub += ' · ' + plaatjes + ' overige ' + (plaatjes === 1 ? 'bestand' : 'bestanden');
+      el('lSub').textContent = sub;
 
       var h = '';
       if (j.laboordeel && j.laboordeel.status && j.laboordeel.status !== 'erkend') {
