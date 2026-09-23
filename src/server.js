@@ -11,6 +11,7 @@ const coaCrawler = require('./coaCrawler');
 const siteShot = require('./siteShot');
 const pipeline = require('./pipeline');
 const auth = require('./auth');
+const anthropicClient = require('./anthropicClient');
 const rl = require('./rateLimit');
 const { caseSummary, ownerCase, publicCase, sanitizeError } = require('./serialize');
 const { isValidWebUrl, normalizeUrl } = require('./validate');
@@ -878,6 +879,66 @@ app.get('/api/admin/coa/references/rapport/afbeelding', rl.read, auth.requireOwn
     res.set('Content-Type', bestand.mimetype);
     res.set('Cache-Control', 'private, max-age=600');
     res.send(bestand.bytes);
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Het rapport machinaal laten lezen.
+//
+// LET OP wat dit WEL en NIET is. Dit is een LEZING, geen vaststelling. Een
+// model leest de scan en zegt wat het denkt te zien; dat kan misgaan, en een
+// verkeerd gelezen zuiverheid die stilzwijgend als labwaarde wordt vastgelegd
+// is erger dan helemaal geen lezing. Daarom slaat deze route NIETS op. Wat
+// eruit komt gaat in de admin in een eigen kolom naast wat de shop zegt, en
+// pas als een mens per veld aanvinkt dat het klopt, belandt het in de
+// administratie via de gewone verify-route. Zie A14 en bewijs-boven-vermoeden.
+app.post('/api/admin/coa/references/rapport/uitlezen', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const referentie = ((req.body && req.body.referentie) || '').trim();
+    if (!referentie) return res.status(400).json({ error: 'geen_referentie', message: 'Geef de referentie mee.' });
+    const bestand = await coaStore.referenceRapportBestand(referentie);
+    if (!bestand) {
+      return res.status(404).json({
+        error: 'geen_afbeelding',
+        message: 'Er is voor deze referentie geen afbeelding bewaard. Plak eerst het rapport erbij; ' +
+                 'een adres alleen kunnen wij niet ophalen, want het lab laat onze server er niet in.'
+      });
+    }
+    const prompt = [
+      'Hieronder staat een scan van een labrapport. Schrijf over wat er letterlijk staat.',
+      '',
+      'Regels:',
+      '- Neem waarden LETTERLIJK over, inclusief eenheid en schrijfwijze. Niet afronden, niet herschrijven.',
+      '- Staat een veld er niet, of kun je het niet met zekerheid lezen, dan null. Niet gokken.',
+      '- Reken niets uit en leid niets af. Geen percentages berekenen, geen namen aanvullen,',
+      '  geen datum omzetten die er niet staat.',
+      '- Twijfel je over een teken (een 3 of een 8, een punt of een komma), zet het veld in',
+      '  onzeker en laat de waarde staan zoals je hem het meest waarschijnlijk leest.',
+      '',
+      'Geef ALLEEN dit JSON-object terug, zonder tekst eromheen:',
+      '{',
+      '  "client": string|null,           // Client / opdrachtgever',
+      '  "manufacturer": string|null,     // Manufacturer / fabrikant',
+      '  "product": string|null,          // Sample, zoals het er staat',
+      '  "batchnummer": string|null,      // Batch',
+      '  "taskNumber": string|null,       // Task Number, zonder het hekje',
+      '  "sleutel": string|null,          // de unique key onderaan',
+      '  "testnaam": string|null,         // Tests requested, letterlijk',
+      '  "zuiverheid": string|null,       // Purity zoals het er staat, bv "99.849%"',
+      '  "gemetenMg": number|null,        // het gemeten aantal mg, alleen het getal',
+      '  "datumAnalyse": string|null,     // Analysis conducted, als JJJJ-MM-DD',
+      '  "resultaatregels": [ { "wat": string, "waarde": string } ],  // de tabel onder Results, letterlijk',
+      '  "opmerkingen": string|null,      // Comments, letterlijk; leeg vak is null',
+      '  "onzeker": [string]              // namen van de velden hierboven waar je niet zeker van bent',
+      '}'
+    ].join('\n');
+    const gelezen = await anthropicClient.sampleJson(prompt, {
+      images: [{ data: Buffer.from(bestand.bytes).toString('base64'), mediaType: bestand.mimetype }],
+      maxTokens: 2048,
+      label: 'rapport-uitlezen'
+    });
+    res.json({ ok: true, gelezen, gelezenOp: Date.now() });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
