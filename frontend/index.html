@@ -256,9 +256,38 @@
     try { localStorage.setItem(OWNER_TOKEN_KEY, t); } catch(e){}
     return t;
   }
+  // ---------- staf ----------
+  // De lijst met eerder gedraaide checks is van ons, niet van een bezoeker
+  // (besluit Ruben, 23 september: "op de open variant nooit die lijst").
+  // Wie op de stafpagina is aangemeld draagt daar een sleutel voor in
+  // localStorage; is die er en erkent de server hem, dan komt de lijst terug.
+  //
+  // LET OP dat dit geen toegangscontrole is - het is een weergavekeuze. De
+  // server beslist wat een sleutel mag zien; zonder geldige sleutel krijgt
+  // deze pagina gewoon niets terug.
+  var SLEUTEL_STAF = 'pepproof.adminSleutel';
+  var stafRol = null;
+
+  function stafSleutel(){
+    try { return localStorage.getItem(SLEUTEL_STAF) || null; } catch(e){ return null; }
+  }
+
+  function haalStafRol(){
+    var t = stafSleutel();
+    if (!t) return Promise.resolve(null);
+    return fetch(API_BASE + '/api/admin/wie-ben-ik', { headers: { 'X-Owner-Token': t } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){ stafRol = (j && j.rol) || null; return stafRol; })
+      .catch(function(){ return null; });
+  }
+
   function apiFetch(path, opts){
     opts = opts || {};
-    var headers = Object.assign({}, opts.headers || {}, { "X-Owner-Token": ownerToken() });
+    // Met een stafsleutel halen we de lijst op zoals de staf hem hoort te
+    // zien: een beheerder krijgt van /api/audits alle cases terug, niet
+    // alleen die van deze browser.
+    var token = stafSleutel() || ownerToken();
+    var headers = Object.assign({}, opts.headers || {}, { "X-Owner-Token": token });
     return fetch(API_BASE + path, Object.assign({}, opts, { headers: headers }));
   }
 
@@ -345,6 +374,9 @@
 
   // ---------- init ----------
   async function initApp(){
+    // Eerst weten wie er kijkt: anders tekent het dashboard zonder lijst en
+    // springt hij er een tel later alsnog bij.
+    await haalStafRol();
     try {
       state.cases = await apiListCases();
       state.apiError = null;
@@ -701,7 +733,7 @@
       // owner-token, dus het was geen lek - maar een bezoeker die een check
       // doet heeft er niets te zoeken. De stafvariant krijgt hem terug.
       eerder = '';
-      var eerderUit = '<section class="report-block"><h3>Eerder gedraaide checks</h3>' +
+      eerder = !stafRol ? '' : '<section class="report-block"><h3>Eerder gedraaide checks</h3>' +
         '<div class="card"><div class="audit-list">' + rijen + '</div></div></section>';
     }
 
