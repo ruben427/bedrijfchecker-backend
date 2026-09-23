@@ -2038,6 +2038,10 @@ body.geen-testrecht .portret-schrijf{ display:none }
         blobPerRef[r.referentie] = dataUrl;
         r.rapportBestand = true; r.rapportDoor = naam;
         toonPapier();
+        // Het rapport is binnen, dus lezen kan meteen. Scheelt een klik en
+        // voorkomt dat iemand met de hand overtypt wat er al staat.
+        plakMelding('Opgeslagen. Bezig met uitlezen…', false);
+        return leesRapportUit(true);
       });
     }).catch(function (e) {
       plakMelding('Niet bewaard: ' + e.message, true);
@@ -2151,11 +2155,19 @@ body.geen-testrecht .portret-schrijf{ display:none }
     meld(tekst.join('; ') + '. Kijk ze na naast het rapport; ze staan pas vast als je hieronder vastlegt.');
   }
 
-  el('mUitlezen').addEventListener('click', function () {
-    var r = werk[index]; if (!r) return;
+  // Uitlezen zat alleen op een knop. Maar op het moment dat het rapport
+  // binnenkomt HEBBEN we het al - dan is er geen reden om eerst nog iets te
+  // laten klikken. 24 september: plakken leest nu meteen uit.
+  //
+  // Overschrijven gebeurt niet: vulUitLezing laat elk veld staan waar al iets
+  // anders in stond en meldt hoeveel dat er waren. Automatisch lezen kan dus
+  // niets kapotmaken wat je zelf hebt ingetypt.
+  function leesRapportUit(automatisch) {
+    var r = werk[index];
+    if (!r || alGelezen) return Promise.resolve();
     el('mUitlezen').disabled = true;
     el('mUitlezen').textContent = 'Bezig met lezen…';
-    haal('/api/admin/coa/references/rapport/uitlezen', {
+    return haal('/api/admin/coa/references/rapport/uitlezen', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ referentie: r.referentie })
     }).then(function (j) {
@@ -2166,12 +2178,19 @@ body.geen-testrecht .portret-schrijf{ display:none }
         meld(j.waarschuwingen.join(' ') + ' Kijk goed of dit het juiste rapport is.');
       }
     }).catch(function (e) {
-      meld('Uitlezen mislukt: ' + e.message);
+      // Bij automatisch lezen is mislukken geen ramp: het rapport staat er,
+      // de knop komt gewoon terug. Alleen zeggen dat het niet vanzelf ging.
+      meld(automatisch
+        ? ('Het rapport staat erbij, maar vanzelf uitlezen lukte niet: ' + e.message + ' Probeer het met de knop.')
+        : ('Uitlezen mislukt: ' + e.message));
     }).then(function () {
       el('mUitlezen').disabled = false;
       el('mUitlezen').textContent = 'Rapport uitlezen';
+      zetPaneelstand();
     });
-  });
+  }
+
+  el('mUitlezen').addEventListener('click', function () { leesRapportUit(false); });
 
   // Wat er in de velden staat op het moment dat je vastlegt. Een leeg veld
   // sturen we niet mee: leeg betekent "niet ingevuld", niet "leeg gemeten".
