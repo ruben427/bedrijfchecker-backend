@@ -50,6 +50,10 @@
     startUploadOpen: false,  // documenten-uploadvak: standaard ingeklapt, caret naar links
     startKvkFile: null,      // apart, want gaat naar de identiteitsstap i.p.v. de COA-stap
     startUrlError: null,
+    startEigenCoaUrl: '',    // link naar het certificaat dat de koper zelf kreeg
+    startEigenCoaFiles: [],  // idem, maar als bestand (PDF of foto)
+    startEigenCoaError: null,
+    startEigenCoaOpen: false,
     runningCaseIds: {},      // caseId (of '__new__') -> true terwijl er een create/retry-call onderweg is
     runningStepKeys: {}      // caseId -> key van de stap die nu via "opnieuw" wordt herdraaid (voor renderProgress)
   };
@@ -252,7 +256,7 @@
     var data = await res.json();
     return data.case || null;
   }
-  async function apiCreateCase(fields, files, kvkFile){
+  async function apiCreateCase(fields, files, kvkFile, eigenCoa){
     var fd = new FormData();
     fd.append('website', fields.website);
     if (fields.naam) fd.append('naam', fields.naam);
@@ -261,6 +265,12 @@
     if (fields.notities) fd.append('notities', fields.notities);
     (files||[]).forEach(function(f){ fd.append('files', f); });
     if (kvkFile) fd.append('kvkDocument', kvkFile);
+    // Het eigen certificaat van de koper. Apart veld, niet bij 'files': het
+    // gaat over zijn batch, niet over de openheid van de winkel.
+    if (eigenCoa){
+      if (eigenCoa.url) fd.append('eigenCoaUrl', eigenCoa.url);
+      (eigenCoa.files||[]).forEach(function(f){ fd.append('eigenCoa', f); });
+    }
     var res = await apiFetch('/api/audits', { method:'POST', body: fd });
     var data = await res.json().catch(function(){ return {}; });
     if (!res.ok){
@@ -411,18 +421,17 @@
     var hero = '<section class="hero">' +
       '<span class="eyebrow">Gratis Check</span>' +
       '<h1>Weet binnen twee minuten of het bewijs klopt.</h1>' +
-      '<p class="hero-tag">Geen account, geen upload. Je krijgt direct een eerlijk rapport over wat wél en niet te verifiëren is.</p>' +
+      '<p class="hero-tag">Geen account. Heb je zelf een certificaat bij je bestelling gekregen? Stuur het mee, dan kijken we ook naar jouw batch.</p>' +
       '</section>';
 
     var heroForm = '<div class="hero-form">' +
-      '<div class="audit-form">' +
-        '<div style="display:flex;flex-direction:column;gap:8px;width:100%;">' +
-          '<div class="audit-form-row">' +
-            '<input type="text" id="f-website" class="' + (state.startUrlError?'has-error':'') + '" value="' + escapeHtml(d.website) + '" placeholder="Website URL" autofocus>' +
-            '<button type="button" class="btn-cta" id="wiz-start" ' + (starting ? 'disabled' : '') + '>' + ICON_SEARCH + '<span>' + (starting ? 'Starten…' : 'Start gratis check') + '</span></button>' +
-          '</div>' +
-          (state.startUrlError ? '<div class="field-error">' + escapeHtml(state.startUrlError) + '</div>' : '') +
+      '<div class="check-form">' +
+        '<div class="veld' + (state.startUrlError?' has-error':'') + '">' +
+          '<input type="text" id="f-website" value="' + escapeHtml(d.website) + '" placeholder="Website URL" autofocus>' +
         '</div>' +
+        (state.startUrlError ? '<div class="field-error" style="margin-top:6px;">' + escapeHtml(state.startUrlError) + '</div>' : '') +
+        eigenCoaVak() +
+        '<button type="button" class="btn-cta" id="wiz-start" ' + (starting ? 'disabled' : '') + '>' + ICON_SEARCH + '<span>' + (starting ? 'Starten…' : 'Start gratis check') + '</span></button>' +
       '</div>' +
       '<p class="hero-form-note">Werkt op elke peptide leveranciers-website en duurt enkele minuten om te draaien.</p>' +
       '</div>';
@@ -523,6 +532,38 @@
     wireDashboardEvents();
   }
 
+  // Het eigen certificaat van de koper. Dichtgeklapt is het een tekstlink;
+  // open staat er een veld met de link en, binnen dezelfde omlijning,
+  // "Bestand kiezen" rechts.
+  //
+  // Twee manieren om hem aan te leveren, en dat is geen luxe: het ene deel van
+  // de kopers heeft een PDF in de mail, het andere een link van de verkoper.
+  function eigenCoaVak(){
+    var open = state.startEigenCoaOpen || !!state.startEigenCoaUrl || state.startEigenCoaFiles.length > 0;
+    var namen = state.startEigenCoaFiles.map(function(f){ return f.name; }).join(', ');
+
+    var knop = '<button type="button" class="coa-toggle" id="coa-toggle" aria-expanded="' + (open?'true':'false') + '" aria-controls="coa-blok">' +
+      '<span>Heb je zelf een certificaat van je batch?</span>' + ICON_CARET + '</button>';
+
+    if (!open) return knop;
+
+    return knop +
+      '<div class="coa-blok" id="coa-blok">' +
+        '<p class="coa-uitleg">Veel bestellingen komen met een eigen COA, met jouw batchnummer erop. ' +
+        'Dat kunnen wij nooit van de website halen. Stuur hem mee en we lezen hem mee in de controle.</p>' +
+        '<div class="veld">' +
+          '<input type="text" id="f-eigen-coa-url" value="' + escapeHtml(state.startEigenCoaUrl) + '" placeholder="Link naar je certificaat">' +
+          '<label class="coa-bestandsknop" for="f-eigen-coa-file">Bestand kiezen</label>' +
+          '<input type="file" id="f-eigen-coa-file" accept="image/*,application/pdf" multiple hidden>' +
+        '</div>' +
+        (namen ? '<span class="coa-bestand">' + escapeHtml(namen) +
+          ' <button type="button" class="coa-wis" id="eigen-coa-wis" aria-label="Verwijderen">&times;</button></span>' : '') +
+        (state.startEigenCoaError ? '<div class="field-error">' + escapeHtml(state.startEigenCoaError) + '</div>' : '') +
+        '<p class="coa-klein">Je certificaat telt apart van wat de winkel zelf publiceert. ' +
+        'De winkel krijgt er geen betere score door dat jij iets meestuurt.</p>' +
+      '</div>';
+  }
+
   function wireDashboardEvents(){
     var websiteInput = app.querySelector('#f-website');
     if (websiteInput){
@@ -542,6 +583,38 @@
     // renderDashboard(). apiCreateCase() krijgt hierdoor altijd een lege
     // files-lijst en geen kvkFile mee; dat is prima, want beide waren toch
     // al COA/Deep-Dive-scope.
+
+    var coaToggle = app.querySelector('#coa-toggle');
+    if (coaToggle){
+      coaToggle.addEventListener('click', function(){
+        state.startEigenCoaOpen = !(coaToggle.getAttribute('aria-expanded') === 'true');
+        renderDashboard();
+        if (state.startEigenCoaOpen){
+          var v = app.querySelector('#f-eigen-coa-url');
+          if (v) v.focus();
+        }
+      });
+    }
+
+    var coaUrl = app.querySelector('#f-eigen-coa-url');
+    if (coaUrl){
+      coaUrl.addEventListener('input', function(){
+        state.startEigenCoaUrl = coaUrl.value;
+        if (state.startEigenCoaError){ state.startEigenCoaError = null; }
+      });
+      coaUrl.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); startAudit(); } });
+    }
+    var coaFile = app.querySelector('#f-eigen-coa-file');
+    if (coaFile){
+      coaFile.addEventListener('change', function(){
+        state.startEigenCoaFiles = Array.prototype.slice.call(coaFile.files || []).slice(0, 3);
+        renderDashboard();
+      });
+    }
+    var coaWis = app.querySelector('#eigen-coa-wis');
+    if (coaWis){
+      coaWis.addEventListener('click', function(){ state.startEigenCoaFiles = []; renderDashboard(); });
+    }
 
     var start = app.querySelector('#wiz-start');
     if (start) start.addEventListener('click', startAudit);
@@ -566,7 +639,11 @@
     state.runningCaseIds['__new__'] = true;
     renderDashboard();
     try {
-      var created = await apiCreateCase({ naam: domainOf(website), website: website }, files, state.startKvkFile);
+      var created = await apiCreateCase(
+        { naam: domainOf(website), website: website },
+        files, state.startKvkFile,
+        { url: (state.startEigenCoaUrl || '').trim(), files: state.startEigenCoaFiles }
+      );
       delete state.runningCaseIds['__new__'];
       state.cases.unshift(created);
       goDetail(created.id);
@@ -583,6 +660,9 @@
         renderDashboard();
         var veld = app.querySelector('#f-website');
         if (veld) veld.focus();
+      } else if (e.code === 'invalid_coa_url'){
+        state.startEigenCoaError = e.message || 'Die link kunnen we niet lezen.';
+        renderDashboard();
       } else if (e.code === 'invalid_url' || e.code === 'not_peptide_supplier'){
         state.startUrlError = e.message || 'Vul een geldige web URL in.';
         renderDashboard();

@@ -1241,3 +1241,97 @@ body.sheet-open{ overflow:hidden; }
   color:var(--text-subtle); }
 .blok-lijnen{ display:flex; flex-direction:column; gap:2px; }
 .blok-lijn{ font-size:.95rem; color:var(--text); font-variant-numeric:tabular-nums; }
+
+/* ---------- Startformulier: URL-veld en eigen certificaat -----------------
+   Overgenomen uit bedrijfchecker-test.html (Figma "URL check - desktop",
+   1352:3893), 23 september. Daar stond het in een <style>-blok in de pagina
+   met de aantekening "hoort hier pas in als het blijft". Het blijft.
+
+   LET OP waarom alles onder .check-form hangt: .veld is een component uit
+   solike.css (invulveld met zwevend label) en dit is een ANDER doosje met
+   dezelfde naam. Zeven pagina's laden dit bestand, waaronder
+   frontend/admin-coa.html en frontend/admin-leveranciers.html, en die
+   gebruiken het echte .veld. Zonder deze afbakening haalt dit hun velden
+   overhoop. */
+
+.check-form{
+  display:flex; flex-direction:column; align-items:flex-start;
+  width:100%; max-width:744px; gap:0;
+}
+.check-form > .btn-cta{ margin-top:24px; }
+
+.check-form .veld{
+  display:flex; align-items:center; gap:12px;
+  height:56px; width:100%; padding:0 12px;
+  background:var(--surface); border:1px solid var(--border); border-radius:8px;
+  /* Expliciet, want .veld erft anders de marge van het designsysteem en dan
+     is niet te zien waar de ruimte onder het veld vandaan komt. */
+  margin:0 0 14px;
+}
+/* Actief groeit het veld 4px naar alle kanten buiten zijn eigen ruimte:
+   8px hoger en 8px breder, net als de velden in het designsysteem
+   (besluit Ruben, 23 september). Hier groeit het DOOSJE en niet de input:
+   de rand die je ziet is die van .veld, de input erin is randloos.
+   Negatieve marges, zodat de knop eronder niet verschuift. */
+.check-form .veld:focus-within{
+  border-color:var(--accent);
+  width:calc(100% + 8px); margin:-4px -4px 10px; height:64px;
+  position:relative; z-index:1;
+}
+.check-form .veld.has-error{ border-color:var(--danger); }
+.check-form .veld input[type=text]{
+  flex:1 1 0; min-width:0; height:100%;
+  border:0; background:none; padding:0; border-radius:0;
+  font-size:18px; color:var(--text);
+}
+/* Het designsysteem laat een input in een .veld zelf uitgroeien. Binnen dit
+   doosje moet hij juist stil blijven staan - anders steekt hij onder de rand
+   door. Hier groeit het doosje, daar de input. */
+.check-form .veld input[type=text]:focus{ outline:none; width:auto; margin:0; height:100%; }
+.check-form .veld input[type=text]::placeholder{ color:var(--text-muted); opacity:1; }
+
+/* De uitklapper is in het ontwerp een tekstlink met een onderlijn en een
+   chevron, niet een plus-teken. Hoogte 56px: dat geeft de ruimte tussen het
+   URL-veld en de uitleg eronder. */
+.coa-toggle{
+  appearance:none; border:0; background:none; cursor:pointer;
+  display:inline-flex; align-items:center; gap:12px;
+  height:56px; padding:0; color:var(--accent);
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
+  letter-spacing:-0.36px;
+}
+.coa-toggle > span:first-child{ border-bottom:1px solid var(--accent); }
+.coa-toggle svg{ width:18px; height:18px; transition:transform .15s ease; }
+.coa-toggle[aria-expanded="true"] svg{ transform:rotate(180deg); }
+
+.coa-blok{ display:flex; flex-direction:column; gap:12px; width:100%; }
+.coa-uitleg{
+  margin:0; font-size:18px; line-height:1.5;
+  color:var(--text); letter-spacing:-0.36px;
+}
+/* "Bestand kiezen" staat in het ontwerp BINNEN het veld, rechts. */
+.coa-bestandsknop{
+  flex:0 0 auto; cursor:pointer; white-space:nowrap;
+  font-family:var(--font-kop); font-weight:600; font-size:18px;
+  letter-spacing:-0.36px; color:var(--accent);
+}
+.coa-bestandsknop:hover{ color:var(--accent-strong); }
+.coa-bestand{
+  display:inline-flex; align-items:center; gap:8px;
+  font-family:var(--font-mono); font-size:.82rem;
+  color:var(--text-muted); word-break:break-all;
+}
+.coa-wis{
+  appearance:none; border:0; background:none; cursor:pointer;
+  color:var(--danger); font-size:1.1rem; line-height:1; padding:0 2px;
+}
+.coa-klein{ margin:0; font-size:.85rem; color:var(--text-faint); }
+
+@media (max-width:640px){
+  .check-form .veld{ height:auto; min-height:56px; flex-wrap:wrap; padding:10px 12px; }
+  .check-form .veld:focus-within{ height:auto; min-height:64px; }
+  .check-form .veld input[type=text]{ height:auto; flex-basis:100%; font-size:16px; }
+  .coa-bestandsknop{ margin-left:auto; }
+  .coa-uitleg{ font-size:16px; }
+  .check-form > .btn-cta{ width:100%; }
+}
