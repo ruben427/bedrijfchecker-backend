@@ -153,26 +153,36 @@ app.post('/api/admin/stand', rl.caseAction, auth.requireOwnerToken, async (req, 
 });
 
 const caseAccess = auth.requireCaseAccess(db);
+// Lezen mag de hele staf, doen niet. Zie requireCaseAccess in auth.js.
+const caseLezen = auth.requireCaseAccess(db, { staf: true });
 
-// Lijst eerder gedraaide audits — uitsluitend die van de aanvragende browser.
-// Voorheen gaf deze route iedereen de cases van iedereen terug.
+// Lijst eerder gedraaide audits — voor een bezoeker uitsluitend die van de
+// aanvragende browser. Voorheen gaf deze route iedereen de cases van iedereen
+// terug.
+//
+// De STAF krijgt ze allemaal. Dat was al zo voor een beheerder; sinds 23
+// september geldt het ook voor een beoordelaar en een lezer, zodat de lijst in
+// de admin voor Annemarie niet leeg is. Wat ze ermee mogen blijft gescheiden:
+// lezen mag, een run stoppen of opnieuw starten niet.
 app.get('/api/audits', rl.read, auth.requireOwnerToken, async (req, res) => {
   try {
-    const cases = req.isAdmin ? await db.listCases() : await db.listCasesByOwner(req.ownerTokenHash);
+    const cases = (req.isAdmin || req.isViewer)
+      ? await db.listCases()
+      : await db.listCasesByOwner(req.ownerTokenHash);
     res.json({ cases: cases.map(caseSummary) });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
 });
 
-app.get('/api/audits/:id', rl.read, auth.requireOwnerToken, caseAccess, (req, res) => {
+app.get('/api/audits/:id', rl.read, auth.requireOwnerToken, caseLezen, (req, res) => {
   res.json({ case: ownerCase(req.case) });
 });
 
 // Uitslag zonder methode — bedoeld voor een gedeelde weergave. Bewust dezelfde
 // eigenaarscontrole als hierboven; pas als er echte deellinks komen, krijgt
 // deze route een eigen, per-case deeltoken.
-app.get('/api/audits/:id/public', rl.read, auth.requireOwnerToken, caseAccess, (req, res) => {
+app.get('/api/audits/:id/public', rl.read, auth.requireOwnerToken, caseLezen, (req, res) => {
   res.json({ case: publicCase(req.case) });
 });
 
@@ -349,7 +359,7 @@ app.get('/api/sites/:host/screenshot', rl.read, async (req, res) => {
 
 // Metadata van geüploade documenten bij een case (voor een bijlagenlijstje
 // in de UI) — de bytes zelf komen pas via de download-route hieronder.
-app.get('/api/audits/:id/documents', rl.read, auth.requireOwnerToken, caseAccess, async (req, res) => {
+app.get('/api/audits/:id/documents', rl.read, auth.requireOwnerToken, caseLezen, async (req, res) => {
   try {
     res.json({ documents: await db.listDocuments(req.params.id) });
   } catch (e) {
@@ -360,7 +370,7 @@ app.get('/api/audits/:id/documents', rl.read, auth.requireOwnerToken, caseAccess
 // Deze route geeft de ruwe bytes van een geüpload bestand terug — bijvoorbeeld
 // een KvK-uittreksel met persoonsgegevens. Voorheen volstond het kennen van
 // case-id + doc-id; nu moet je ook eigenaar van de case zijn.
-app.get('/api/audits/:id/documents/:docId', rl.read, auth.requireOwnerToken, caseAccess, async (req, res) => {
+app.get('/api/audits/:id/documents/:docId', rl.read, auth.requireOwnerToken, caseLezen, async (req, res) => {
   try {
     const doc = await db.getDocument(req.params.docId);
     if (!doc || doc.caseId !== req.params.id) return res.status(404).json({ error: 'not_found' });

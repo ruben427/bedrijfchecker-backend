@@ -399,7 +399,35 @@
     }
     state.casesLoaded = true;
     renderBanner();
-    render();
+    // Staat er een rapport in het adres, dan gaan we daar meteen heen. Dit is
+    // wat een link vanuit de admin doet.
+    var uitAdres = caseUitAdres();
+    if (uitAdres) goDetail(uitAdres); else render();
+  }
+
+  // ---------- het adres van een rapport ------------------------------------
+  //
+  // Deze pagina was er een zonder adressen: goDetail zette alleen iets in het
+  // geheugen, dus een rapport had geen plek om naartoe te wijzen. Vanuit de
+  // admin viel er daardoor niet naar te linken, en je kon een uitkomst ook
+  // niet doorsturen zonder iemand te laten zoeken.
+  //
+  // ?case=<id> is het adres. replaceState en niet pushState: de terugknop van
+  // de browser hoort niet door een lijst van bekeken rapporten te lopen, die
+  // hoort de pagina te verlaten zoals hij altijd deed.
+  //
+  // LET OP dat dit geen toegang geeft. Wie het adres heeft maar de sleutel
+  // niet, krijgt van de server een 404 - precies zoals zonder adres.
+  function adresVoorCase(id){
+    try {
+      var u = new URL(window.location.href);
+      if (id) u.searchParams.set('case', id); else u.searchParams.delete('case');
+      window.history.replaceState(null, '', u.pathname + (u.search || '') + (u.hash || ''));
+    } catch(e){}
+  }
+  function caseUitAdres(){
+    try { return new URL(window.location.href).searchParams.get('case') || null; }
+    catch(e){ return null; }
   }
 
   // ---------- routing / render ----------
@@ -424,6 +452,7 @@
   }
   function goDashboard(){
     stopCasePoller();
+    adresVoorCase(null);
     state.view='dashboard'; state.currentCaseId=null; state.currentCase=null;
     state.eigenaarFout = false;
     state.startDraft = { website:'' };
@@ -439,6 +468,7 @@
   }
   function goDetail(id){
     state.view='detail'; state.currentCaseId=id;
+    adresVoorCase(id);
     state.currentCase = state.cases.find(function(c){ return c.id===id; }) || null;
     render();
     apiGetCase(id).then(function(c){

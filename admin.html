@@ -161,7 +161,7 @@ button.cel:hover{ background:var(--accent-soft) }
 /* ---- leverancierstabel, naar Figma 1502:4078 -------------------------- */
 .tabelvak{ background:var(--purple-50); border:1px solid var(--border);
   border-radius:12px; overflow:hidden }
-.tabelkop{ display:grid; grid-template-columns:1fr 120px 126px 126px 126px 24px;
+.tabelkop{ display:grid; grid-template-columns:1fr 120px 116px 116px 116px 104px 24px;
   align-items:center; gap:12px; padding:0 24px; height:64px;
   font-family:var(--font-kop); font-size:16px; letter-spacing:-.8px; color:var(--text) }
 .tabelkop .sorteer{ background:none; border:0; padding:0; cursor:pointer; display:inline-flex;
@@ -173,7 +173,7 @@ button.cel:hover{ background:var(--accent-soft) }
 .tabelkop .mid{ text-align:center; justify-content:center }
 .tabelkop .rechts{ text-align:right; justify-content:flex-end }
 
-.rij.lev{ grid-template-columns:1fr 120px 126px 126px 126px 24px;
+.rij.lev{ grid-template-columns:1fr 120px 116px 116px 116px 104px 24px;
   height:52px; padding:0 24px; border-top:0; border-bottom:1px solid var(--purple-300) }
 .rij.lev:last-child{ border-bottom:0 }
 .rij.lev .getal{ text-align:center; font-family:var(--font-kop); font-weight:400;
@@ -256,6 +256,21 @@ body.geen-testrecht .portret-schrijf{ display:none }
 .portret-waarschuwing[hidden]{ display:none }
 .rij:focus-visible, .tab:focus-visible, .bel:focus-visible{
   outline:2px solid var(--accent); outline-offset:2px }
+
+/* De link naar het gedraaide rapport. Staat in een eigen kolom en niet in de
+   regel zelf: de regel klapt het zijpaneel uit, de link verlaat de admin.
+   Twee verschillende bestemmingen horen niet op dezelfde klik. */
+.raplink{ justify-self:center; font-size:.82rem; font-family:var(--font-kop);
+  color:var(--heading); text-decoration:none; border:1px solid var(--purple-300);
+  border-radius:999px; padding:4px 12px; white-space:nowrap; background:var(--surface) }
+.raplink:hover{ background:var(--purple-50) }
+.geenrap{ justify-self:center; color:var(--text-faint); font-size:.82rem }
+.rij.check{ grid-template-columns:1fr 200px 128px 104px; cursor:default }
+.kopcheck{ grid-template-columns:1fr 200px 128px 104px }
+.rij.check .datum{ color:var(--text-subtle); font-size:.85rem; text-align:right }
+.rij.check .waar{ display:flex; flex-direction:column; gap:2px; min-width:0 }
+.rij.check .waar .adres{ color:var(--text-subtle); font-size:.82rem;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 
 /* modal: kopie naast labrapport */
 /* Even zeker weten. Figma 1347:3663. Let op de volgorde: de veilige keuze
@@ -621,6 +636,7 @@ body.geen-testrecht .portret-schrijf{ display:none }
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tabLev" aria-selected="true">Leveranciers <span class="mee" id="telLev"></span></button>
         <button class="tab" role="tab" id="tabLab" aria-selected="false">Laboratoria <span class="mee" id="telLab"></span></button>
+        <button class="tab" role="tab" id="tabCheck" aria-selected="false">Gedraaide checks <span class="mee" id="telCheck"></span></button>
       </div>
 
       <section id="paneelLev">
@@ -632,6 +648,7 @@ body.geen-testrecht .portret-schrijf{ display:none }
             <span class="mid">verwijzingen</span>
             <span class="mid">gecontroleerd</span>
             <button type="button" class="sorteer mid" data-sort="taken" aria-sort="none">taken <span class="pijltje">&#9660;</span></button>
+            <span class="mid">rapport</span>
             <span></span>
           </div>
           <div class="lijst" id="lijstLev"><p class="leeg">Laden…</p></div>
@@ -641,6 +658,20 @@ body.geen-testrecht .portret-schrijf{ display:none }
       <section id="paneelLab" class="verborgen">
         <input class="zoek" id="zoekLab" type="search" placeholder="Zoek een laboratorium">
         <div class="lijst" id="lijstLab"><p class="leeg">Laden…</p></div>
+      </section>
+
+      <!-- De checks die gedraaid zijn. Deze lijst stond alleen op de publieke
+           pagina achter een stafsleutel; hier hoort hij, want dit is de kant
+           waar we werken. Elke regel gaat naar het rapport zelf. -->
+      <section id="paneelCheck" class="verborgen">
+        <input class="zoek" id="zoekCheck" type="search" placeholder="Zoek een gedraaide check">
+        <div class="tabelvak">
+          <div class="tabelkop kopcheck">
+            <span>leverancier</span><span>uitkomst</span>
+            <span style="text-align:right">gedraaid op</span><span class="mid">rapport</span>
+          </div>
+          <div class="lijst" id="lijstCheck"><p class="leeg">Laden…</p></div>
+        </div>
       </section>
     </div>
 
@@ -814,7 +845,7 @@ body.geen-testrecht .portret-schrijf{ display:none }
   function wis(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
   var token = '', naam = '', rol = '';
-  var data = { leveranciers: [], labs: [], statussen: [], signalen: null, naamkoppelingen: [], tekstoordelen: [] };
+  var data = { leveranciers: [], labs: [], statussen: [], signalen: null, naamkoppelingen: [], tekstoordelen: [], checks: [] };
 
   function haal(pad, opties) {
     var o = opties || {};
@@ -961,7 +992,11 @@ body.geen-testrecht .portret-schrijf{ display:none }
       haal('/api/admin/laboratoria').catch(function () { return null; }),
       haal('/api/admin/signalen?max=50').catch(function () { return null; }),
       haal('/api/admin/naamkoppelingen').catch(function () { return null; }),
-      haal('/api/admin/tekstoordelen?status=open').catch(function () { return null; })
+      haal('/api/admin/tekstoordelen?status=open').catch(function () { return null; }),
+      // De gedraaide checks. Een beheerder krijgt hier alles terug, en sinds
+      // 23 september ook een beoordelaar en een lezer - anders was deze lijst
+      // voor Annemarie leeg.
+      haal('/api/audits').catch(function () { return null; })
     ]).then(function (r) {
       data.leveranciers = (r[0] && r[0].leveranciers) || (r[0] && r[0].rijen) || [];
       data.labs = (r[1] && r[1].labs) || [];
@@ -969,7 +1004,8 @@ body.geen-testrecht .portret-schrijf{ display:none }
       data.signalen = r[2] || null;
       data.naamkoppelingen = (r[3] && r[3].oordelen) || [];
       data.tekstoordelen = (r[4] && r[4].oordelen) || [];
-      toonCijfers(); toonLev(); toonLab(); toonLade();
+      data.checks = (r[5] && r[5].cases) || [];
+      toonCijfers(); toonLev(); toonLab(); toonCheck(); toonLade();
     });
   }
 
@@ -1108,6 +1144,81 @@ body.geen-testrecht .portret-schrijf{ display:none }
     toonLev();
   }
 
+  // --- de gedraaide checks -------------------------------------------------
+  //
+  // Het adres van een rapport is index.html?case=<id>. De checker is een
+  // pagina zonder eigen adressen; die parameter is er 23 september bij gezet
+  // zodat er van hieruit naar te wijzen valt.
+  //
+  // Een link opent in een nieuw tabblad: je bent hier aan het werk en je wilt
+  // de leverancierslijst niet kwijtraken om een uitkomst na te kijken.
+  function rapportAdres(id) { return 'index.html?case=' + encodeURIComponent(id); }
+
+  function domeinVan(u) {
+    try {
+      return new URL(/^https?:\/\//i.test(u) ? u : 'https://' + u)
+        .hostname.replace(/^www\./i, '').toLowerCase();
+    } catch (e) { return String(u || '').trim().toLowerCase(); }
+  }
+
+  // De laatst gedraaide check per leverancier. Meer dan een is er niet nodig:
+  // de vorige uitkomst van dezelfde shop staat in de lijst hierboven.
+  function checkPerLeverancier() {
+    var uit = {};
+    (data.checks || []).forEach(function (c) {
+      var d = domeinVan(c.website || c.naam || '');
+      if (!d) return;
+      var oud = uit[d];
+      if (!oud || (c.createdAt || 0) > (oud.createdAt || 0)) uit[d] = c;
+    });
+    return uit;
+  }
+
+  function datumKort(ms) {
+    if (!ms) return '';
+    var d = new Date(Number(ms));
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }) + ' ' +
+      d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // Wat kwam eruit? Dezelfde regels als op de checker zelf, kort gehouden.
+  // LET OP de laatste tak: alles wat hierboven niet is afgevangen belandt
+  // daar, en "geen rode vlaggen" leest als een goedkeuring. Een check die om
+  // een andere reden geen score haalt hoort daar niet te staan.
+  function checkChip(c) {
+    var st = c.status;
+    if (st === 'bezig') return '<span class="chip nieuw">bezig</span>';
+    if (st === 'fout') return '<span class="chip danger">fout</span>';
+    if (st === 'gestopt') return '<span class="chip">gestopt</span>';
+    if (st === 'wacht_op_coa') return '<span class="chip warn">wacht op een rapport</span>';
+    if (st !== 'klaar' && st !== 'gratis_klaar') return '<span class="chip">' + esc(st || '?') + '</span>';
+    var vlaggen = (c.report && c.report.rodeVlaggen && c.report.rodeVlaggen.length) || 0;
+    if (vlaggen) return '<span class="chip danger">' + vlaggen + ' rode vlag' + (vlaggen === 1 ? '' : 'gen') + '</span>';
+    var er = c.engineResult || {}, es = er.evidenceScore, g = er.gate;
+    if (es && es.published) return '<span class="chip ok">score ' + es.value + '</span>';
+    if (g && g.code) return '<span class="chip warn">' + esc(g.code.toLowerCase().replace(/_/g, ' ')) + '</span>';
+    if (g && g.status === 'FAIL') return '<span class="chip warn">niet beoordeeld</span>';
+    return '<span class="chip ok">geen rode vlaggen</span>';
+  }
+
+  function toonCheck() {
+    var q = el('zoekCheck').value.trim().toLowerCase();
+    var r = (data.checks || []).filter(function (c) {
+      return !q || (String(c.website || '') + ' ' + String(c.naam || '')).toLowerCase().indexOf(q) !== -1;
+    }).slice().sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+    el('telCheck').textContent = '(' + r.length + ')';
+    el('lijstCheck').innerHTML = r.length ? r.map(function (c) {
+      return '<div class="rij check">' +
+        '<span class="waar"><span class="naam">' + esc(c.naam || domeinVan(c.website) || '?') + '</span>' +
+          '<span class="adres">' + esc(c.website || '') + '</span></span>' +
+        '<span>' + checkChip(c) + '</span>' +
+        '<span class="datum">' + esc(datumKort(c.createdAt)) + '</span>' +
+        '<a class="raplink" href="' + esc(rapportAdres(c.id)) + '" target="_blank" rel="noopener">openen</a>' +
+        '</div>';
+    }).join('') : '<p class="leeg">Nog geen enkele check gedraaid.</p>';
+  }
+
   function toonLev() {
     var q = el('zoekLev').value.trim().toLowerCase();
     var r = data.leveranciers.filter(function (x) {
@@ -1123,15 +1234,30 @@ body.geen-testrecht .portret-schrijf{ display:none }
       return levSort.om ? -d : d;
     });
     el('telLev').textContent = '(' + r.length + ')';
+    var checks = checkPerLeverancier();
+    // WAAROM DIT GEEN <button> MEER IS. In de laatste kolom staat een link
+    // naar het gedraaide rapport, en een link mag niet in een knop staan - dat
+    // is geen geldige HTML en de browser doet er onvoorspelbare dingen mee.
+    // Een div met role=button gedraagt zich hetzelfde, mits Enter en spatie
+    // blijven werken; dat is hieronder geregeld.
     el('lijstLev').innerHTML = r.length ? r.map(function (x) {
       var o = open(x), e = entiteit(x.vestiging);
-      return '<button class="rij lev' + (o ? ' werk' : '') + '" data-lev="' + esc(x.supplierKey) + '">' +
+      var c = checks[x.supplierKey];
+      // Geen gedraaide check: geen link. Een link die nergens heen gaat is
+      // erger dan geen link, en je ziet zo in een oogopslag waar nog niets is
+      // gedraaid.
+      var rap = c
+        ? '<a class="raplink" href="' + esc(rapportAdres(c.id)) + '" target="_blank" rel="noopener" ' +
+          'title="Rapport van ' + esc(datumKort(c.createdAt)) + '">rapport</a>'
+        : '<span class="geenrap">—</span>';
+      return '<div class="rij lev' + (o ? ' werk' : '') + '" role="button" tabindex="0" ' +
+        'data-lev="' + esc(x.supplierKey) + '">' +
         '<span class="naam">' + esc(x.supplierKey || '?') + '</span>' +
         '<span class="entvak"><span class="ent ' + e.klas + '" title="' + esc(e.uitleg) + '">' + e.code + '</span></span>' +
         '<span class="getal">' + (x.referenties || 0) + '</span>' +
         '<span class="getal">' + (x.gecontroleerd || 0) + '</span>' +
         '<span class="getal">' + o + '</span>' +
-        PIJL + '</button>';
+        rap + PIJL + '</div>';
     }).join('') : '<p class="leeg">Geen leveranciers gevonden.</p>';
     var kop = el('kopLev');
     if (kop) {
@@ -1143,7 +1269,19 @@ body.geen-testrecht .portret-schrijf{ display:none }
       });
     }
     Array.prototype.forEach.call(el('lijstLev').querySelectorAll('[data-lev]'), function (b) {
-      b.addEventListener('click', function () { openLeverancier(b.getAttribute('data-lev')); });
+      b.addEventListener('click', function (ev) {
+        // De link in de laatste kolom gaat ergens anders heen. Zonder dit
+        // klapt tegelijk het zijpaneel uit van de leverancier die je net
+        // verlaat.
+        if (ev.target.closest && ev.target.closest('a')) return;
+        openLeverancier(b.getAttribute('data-lev'));
+      });
+      b.addEventListener('keydown', function (ev) {
+        if (ev.key !== 'Enter' && ev.key !== ' ') return;
+        if (ev.target.tagName === 'A') return;
+        ev.preventDefault();
+        openLeverancier(b.getAttribute('data-lev'));
+      });
     });
   }
 
@@ -1177,14 +1315,23 @@ body.geen-testrecht .portret-schrijf{ display:none }
     b.addEventListener('click', function () { sorteerLev(b.getAttribute('data-sort')); });
   });
   el('zoekLab').addEventListener('input', toonLab);
-  el('tabLev').addEventListener('click', function () {
-    el('tabLev').setAttribute('aria-selected', 'true'); el('tabLab').setAttribute('aria-selected', 'false');
-    el('paneelLev').classList.remove('verborgen'); el('paneelLab').classList.add('verborgen');
+  // Drie tabbladen, een lijstje in plaats van een handmatig paar. Bij twee
+  // viel het nog te schrijven; bij drie ging het fout zodra er een bijkwam.
+  var TABBLADEN = [
+    { tab: 'tabLev', paneel: 'paneelLev' },
+    { tab: 'tabLab', paneel: 'paneelLab' },
+    { tab: 'tabCheck', paneel: 'paneelCheck' }
+  ];
+  TABBLADEN.forEach(function (t) {
+    el(t.tab).addEventListener('click', function () {
+      TABBLADEN.forEach(function (a) {
+        var aan = a.tab === t.tab;
+        el(a.tab).setAttribute('aria-selected', String(aan));
+        el(a.paneel).classList.toggle('verborgen', !aan);
+      });
+    });
   });
-  el('tabLab').addEventListener('click', function () {
-    el('tabLab').setAttribute('aria-selected', 'true'); el('tabLev').setAttribute('aria-selected', 'false');
-    el('paneelLab').classList.remove('verborgen'); el('paneelLev').classList.add('verborgen');
-  });
+  el('zoekCheck').addEventListener('input', toonCheck);
 
   function naarDetail() {
     el('overzicht').classList.add('verborgen');

@@ -175,7 +175,22 @@ function requireOwnerToken(req, res, next) {
 // Vereist dat de aanvrager eigenaar (of admin) is van de case in :id.
 // Laadt de case en hangt hem aan req.case, zodat de route hem niet nog een
 // keer hoeft op te halen.
-function requireCaseAccess(db) {
+// TWEE SMAKEN, en het verschil is lezen tegenover doen.
+//
+// requireCaseAccess(db) is de strenge: alleen de eigenaar van de case en de
+// beheerder komen erdoor. Die hangt onder alles wat iets DOET - stoppen,
+// hervatten, opnieuw draaien, doorzetten naar de deep dive.
+//
+// requireCaseAccess(db, { staf: true }) laat er ook een beoordelaar en een
+// lezer bij. BESLUIT RUBEN 23 september: de staf mag elk gedraaid rapport
+// lezen, anders ziet Annemarie in de admin een lijst met checks waar ze niet
+// in kan kijken. Die hangt alleen onder de GET-routes.
+//
+// LET OP dat dit bewust NIET in een regel is samengevat. Een lezer die overal
+// bij mag lezen is een keuze; een lezer die overal een run kan stoppen of
+// opnieuw kan starten is een ongeluk.
+function requireCaseAccess(db, opties) {
+  const stafMagLezen = !!(opties && opties.staf);
   return async function (req, res, next) {
     try {
       const c = await db.getCase(req.params.id);
@@ -184,6 +199,7 @@ function requireCaseAccess(db) {
       // bestaan.
       if (!c) return res.status(404).json({ error: 'not_found' });
       if (req.isAdmin) { req.case = c; return next(); }
+      if (stafMagLezen && req.isViewer) { req.case = c; return next(); }
       if (!c.ownerTokenHash || c.ownerTokenHash !== req.ownerTokenHash) {
         return res.status(404).json({ error: 'not_found' });
       }
