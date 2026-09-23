@@ -478,8 +478,8 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
         <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
         <div class="plakvak" id="mPlak" tabindex="0">
           <p><span class="stap">Rapport erbij halen:</span> open de link hierboven, klik rechts op het
-            rapport → <em>Afbeeldingsadres kopiëren</em>, en plak dat hier. Plak je de afbeelding zelf,
-            dan zie je hem nu wel maar is hij morgen weg.</p>
+            rapport → <em>Afbeeldingsadres kopiëren</em>, en plak dat hier. Dat adres blijft bewaard, ook voor
+            Anne. Plak je de afbeelding zelf, dan zie alleen jij hem, tot je ververst.</p>
           <input id="mPlakVeld" type="text" placeholder="plak hier het afbeeldingsadres (of Ctrl+V de afbeelding)">
           <p id="mPlakMelding" hidden></p>
         </div>
@@ -1066,22 +1066,16 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   // het adres van de rapportafbeelding op staat, en de pagina zelf mag je niet
   // vanuit onze site ophalen (CORS). De afbeelding zélf laadt wel gewoon.
   // Daarom komt het adres er via jou in: een keer plakken en hij blijft staan.
-  var SLEUTEL_RAPPORT = 'bedrijfchecker.labrapport';
-  var geplakteAfbeeldingen = {};   // alleen deze sessie; een geplakte afbeelding
+  var geplakteAfbeeldingen = {};   // alleen deze sessie: een geplakte afbeelding
                                    // is een blob en overleeft de pagina niet
-
-  function rapporten() { try { return JSON.parse(lees(SLEUTEL_RAPPORT) || '{}'); } catch (e) { return {}; } }
-  function bewaarRapport(ref, url) {
-    var a = rapporten(); a[ref] = url; bewaar(SLEUTEL_RAPPORT, JSON.stringify(a));
-  }
 
   function toonPapier() {
     var r = werk[index] || {}, k = r.kopie || {};
-    var labUrl = rapporten()[r.referentie] || geplakteAfbeeldingen[r.referentie] || null;
+    var labUrl = r.rapportAfbeelding || geplakteAfbeeldingen[r.referentie] || null;
     var vak = el('mKopie');
     if (labUrl) {
       el('mVakTitel').textContent = 'Rapport bij het lab';
-      el('mVakBron').textContent = k.url ? 'de kopie van de shop staat in het veld ernaast' : '';
+      el('mVakBron').textContent = r.rapportDoor ? 'adres erbij gezet door ' + r.rapportDoor : '';
       vak.innerHTML = '<img src="' + esc(labUrl) + '" alt="Rapport bij het laboratorium">';
       return;
     }
@@ -1096,7 +1090,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     el('mVakTitel').textContent = 'Nog geen rapport';
     el('mVakBron').textContent = '';
     vak.innerHTML = '<div class="geenkopie">Geen kopie bij de shop, en het rapport bij het lab ' +
-      'is hier nog niet ingeplakt.</div>';
+      'is hier nog niet bij gezet.</div>';
   }
 
   function plakMelding(tekst, fout) {
@@ -1104,6 +1098,9 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     p.textContent = tekst; p.className = fout ? 'mis' : 'gelukt'; p.hidden = false;
   }
 
+  // Het adres gaat naar de server, niet naar deze browser: anders ziet Anne
+  // niet wat jij erbij hebt gezet. De server toetst of het adres van het lab
+  // komt en niet van de shop.
   function neemRapportUrl(tekst) {
     var r = werk[index]; if (!r) return;
     var url = String(tekst || '').trim();
@@ -1111,18 +1108,18 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
       plakMelding('Dat is geen https-adres. Klik rechts op het rapport en kies "Afbeeldingsadres kopiëren".', true);
       return;
     }
-    // Waarschuwen als het adres niet bij het lab vandaan komt: de kopie van de
-    // shop hier inplakken zou precies het verschil wegpoetsen dat we meten.
-    var labHost = ''; try { labHost = new URL(r.url || '').hostname; } catch (e) {}
-    var plakHost = ''; try { plakHost = new URL(url).hostname; } catch (e) {}
-    bewaarRapport(r.referentie, url);
-    toonPapier();
-    if (labHost && plakHost && plakHost.split('.').slice(-2).join('.') !== labHost.split('.').slice(-2).join('.')) {
-      plakMelding('Bewaard, maar let op: dit adres komt van ' + plakHost + ' en niet van ' + labHost +
-        '. Weet je zeker dat dit het rapport bij het lab is en niet de kopie van de shop?', true);
-    } else {
-      plakMelding('Rapport staat erbij. Blijft bewaard op deze computer.', false);
-    }
+    plakMelding('Bezig met opslaan…', false);
+    haal('/api/admin/coa/references/rapport', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ referentie: r.referentie, url: url, door: naam })
+    }).then(function () {
+      r.rapportAfbeelding = url; r.rapportDoor = naam;
+      toonPapier();
+      plakMelding('Rapport staat erbij. Iedereen die deze referentie opent ziet hem nu.', false);
+    }).catch(function (e) {
+      // Niet stilletjes toch tonen: dan denk je dat het bewaard is.
+      plakMelding('Niet bewaard: ' + e.message, true);
+    });
   }
 
   el('mPlakVeld').addEventListener('change', function () { neemRapportUrl(el('mPlakVeld').value); });
@@ -1137,8 +1134,8 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
         var r = werk[index]; if (!r) return;
         geplakteAfbeeldingen[r.referentie] = URL.createObjectURL(bestand);
         toonPapier();
-        plakMelding('Afbeelding geplakt. Die is weg zodra je de pagina ververst — plak het ' +
-                    'afbeeldingsadres als je hem wilt bewaren.', false);
+        plakMelding('Afbeelding geplakt. Alleen voor jou, en weg zodra je ververst — plak het ' +
+                    'afbeeldingsadres als hij moet blijven staan.', false);
         return;
       }
     }
