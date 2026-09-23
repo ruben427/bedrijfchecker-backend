@@ -177,15 +177,27 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   outline:2px solid var(--accent); outline-offset:2px }
 
 /* modal: kopie naast labrapport */
-.laag{ position:fixed; inset:0; background:rgba(15,15,14,.4);
-  display:none; align-items:flex-start; justify-content:center; padding:48px 24px; overflow:auto; z-index:50 }
+/* De controle is een zijpaneel: het schuift over de pagina heen aan de
+   rechterkant en laat links zien waar je vandaan komt (Figma 1589:7003).
+   Sluiten staat bovenin, niet als kruisje in een hoek. */
+.laag{ position:fixed; inset:0; background:rgba(15,15,14,.3);
+  display:none; align-items:stretch; justify-content:flex-end; z-index:50 }
 .laag.open{ display:flex }
-.kaart{ background:var(--surface); border-radius:var(--radius-lg,24px); padding:36px;
-  width:100%; max-width:1280px; box-shadow:var(--shadow) }
-.kaart-in{ display:flex; gap:24px; align-items:stretch }
-.links{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; justify-content:space-between; gap:24px }
+.paneel{ background:var(--surface); width:100%; max-width:1160px;
+  padding:12px 24px 48px 48px; display:flex; flex-direction:column; gap:12px;
+  overflow:auto; box-shadow:var(--shadow) }
+.paneel-kop{ display:flex; align-items:center; justify-content:space-between;
+  padding:0 16px; flex:none }
+/* flex:1 0 auto — wel meegroeien met het paneel, nooit krimpen onder de
+   inhoud. Krimpen maakt de kolommen hoger dan hun vak en dan valt de
+   bovenkant buiten het paneel, waar je er niet meer bij kunt. */
+.kaart-in{ display:flex; gap:8px; align-items:stretch; flex:1 0 auto }
+.links{ flex:1 1 580px; max-width:580px; min-width:0;
+  display:flex; flex-direction:column; gap:48px }
+.links-onder{ flex:1 1 auto; min-height:0; display:flex; flex-direction:column;
+  justify-content:space-between; gap:12px }
 .titel{ font-family:"Baloo 2",system-ui,sans-serif; font-weight:600; font-size:32px;
-  line-height:1.5; letter-spacing:-.05em; margin:0 0 12px; color:var(--heading-3) }
+  line-height:1.5; letter-spacing:-.05em; margin:0; color:var(--heading-3); flex:none }
 /* De gegevens van de controle staan in dezelfde doosjes als de invoervelden
    (Figma 1586:6324, herzien 23 september), maar het zijn leesvelden: je kunt
    er niets in typen. Wat het lab zegt verander je niet in dit scherm. */
@@ -203,7 +215,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 /* De drie knoppen links, het pijltje uiterst rechts. Past de drie niet op
    een regel, dan breken die onderling af — het pijltje blijft rechts staan. */
 .acties{ display:flex; align-items:center; justify-content:space-between; gap:12px;
-  flex-wrap:nowrap; margin-top:24px }
+  flex-wrap:nowrap; flex:none }
 .acties-groep{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; min-width:0 }
 .volgende{ width:56px; height:56px; flex:none; border-radius:var(--radius-knop,12px); cursor:pointer;
   border:1px solid var(--accent); background:transparent; color:var(--accent); display:grid; place-items:center }
@@ -257,14 +269,17 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   .rij2{ grid-template-columns:1fr }
 }
 @media (max-width:980px){
-  .kaart{ padding:24px; border-radius:var(--radius-md,16px) }
-  .kaart-in{ flex-direction:column-reverse }
-  .rechts{ flex:1 1 auto; width:100% }
+  .paneel{ padding:12px 16px 32px; max-width:none }
+  /* Geen column-reverse: die laat inhoud die niet past naar boven weglopen.
+     Gewoon op volgorde, met het rapport vooraan gezet. */
+  .kaart-in{ flex-direction:column; flex:0 0 auto }
+  .links{ max-width:none; gap:24px }
+  .rechts{ order:-1; flex:0 0 auto; width:100% }
   .kopievak{ width:100%; height:420px }
   .titel{ font-size:26px }
   .veldpaar{ grid-template-columns:1fr; gap:12px }
   .acties, .acties-groep{ flex-direction:column; align-items:stretch }
-  .knop, .volgende{ width:100% }
+  .acties .knop, .acties .volgende{ width:100% }
   .veldregel{ grid-template-columns:auto 1fr; }
 }
 </style>
@@ -357,11 +372,19 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
 </main>
 
 <div class="laag" id="laag" role="dialog" aria-modal="true" aria-labelledby="mTitel">
-  <div class="kaart">
+  <div class="paneel">
+    <div class="paneel-kop">
+      <button class="knop link" id="bSluiten">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"
+             style="width:14px;height:14px"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span>Sluiten</span>
+      </button>
+    </div>
     <div class="kaart-in">
       <div class="links">
+        <h2 class="titel" id="mTitel"></h2>
+        <div class="links-onder">
         <div>
-          <h2 class="titel" id="mTitel"></h2>
           <div class="veldenraster" id="mVelden"></div>
 
           <div class="vervolg" id="vGeen" hidden>
@@ -395,11 +418,12 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>
           </button>
         </div>
+        </div>
       </div>
 
       <div class="rechts">
-        <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
         <div class="kopievak" id="mKopie"></div>
+        <a class="labverwijzing" id="mLink" href="#" target="_blank" rel="noopener"></a>
       </div>
     </div>
   </div>
@@ -882,7 +906,14 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
     return '';
   }
 
-  function openModal(i) { index = i; toonModal(); el('laag').classList.add('open'); el('bAccept').focus(); }
+  function openModal(i) {
+    index = i; toonModal(); el('laag').classList.add('open');
+    // Het paneel scrolt zelf. Focussen zonder die scroll mee te nemen, anders
+    // begin je halverwege bij de knoppen in plaats van bovenaan bij het rapport.
+    var paneel = el('laag').querySelector('.paneel');
+    if (paneel) paneel.scrollTop = 0;
+    try { el('bAccept').focus({ preventScroll: true }); } catch (e) { el('bAccept').focus(); }
+  }
 
   function toonModal() {
     var r = werk[index], c = r.controle || {}, k = r.kopie || {};
@@ -1018,6 +1049,7 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
   });
 
   el('bVolgende').addEventListener('click', volgende);
+  el('bSluiten').addEventListener('click', function () { el('laag').classList.remove('open'); });
   el('laag').addEventListener('click', function (e) { if (e.target === el('laag')) el('laag').classList.remove('open'); });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') { el('laag').classList.remove('open'); sluitLade(); }
