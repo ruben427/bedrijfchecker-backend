@@ -538,10 +538,6 @@ function pct(n, cijfers) {
   return n.toFixed(c).replace('.', ',') + '%';
 }
 
-function metTeken(n) {
-  return (n > 0 ? '+' : '') + pct(n);
-}
-
 function labBlok(recordsIn) {
   const records = (recordsIn || []).filter(Boolean);
   if (!records.length) {
@@ -582,24 +578,27 @@ function labBlok(recordsIn) {
   //
   // Alleen als de vulling-uitspraak leesbaar is: dan staan beide getallen er
   // en zijn de eenheden gelijk. Anders vergelijken we mg met IE.
-  const afwijkingen = [];
+  //
+  // Besluit Ruben 23 september: tonen als PERCENTAGE VAN HET ETIKET, niet als
+  // afwijking. 101,3% leest voor een koper directer dan +1,3%, en onder en
+  // boven het etiket staan dan op dezelfde schaal met 100% als ijkpunt.
+  const etiket = [];
   let boven = 0; let onder = 0; let gelijk = 0;
   records.forEach((r) => {
     if (!zegtIetsOver(r, 'vulling')) return;
     const geclaimd = getal(r.claimedQuantity);
     const gemeten = getal(r.measuredQuantity);
     if (geclaimd === null || gemeten === null || geclaimd === 0) return;
-    const afw = ((gemeten - geclaimd) / geclaimd) * 100;
-    afwijkingen.push(afw);
-    if (afw > 0) boven++; else if (afw < 0) onder++; else gelijk++;
+    etiket.push((gemeten / geclaimd) * 100);
+    if (gemeten > geclaimd) boven++; else if (gemeten < geclaimd) onder++; else gelijk++;
   });
-  const vulling = samenvatting(afwijkingen);
+  const vulling = samenvatting(etiket);
   if (vulling) {
     vulling.boven = boven; vulling.onder = onder; vulling.gelijk = gelijk;
     vulling.weergave = {
-      gemiddelde: metTeken(vulling.gemiddelde),
-      laagste: metTeken(vulling.laagste),
-      hoogste: metTeken(vulling.hoogste)
+      gemiddelde: pct(vulling.gemiddelde),
+      laagste: pct(vulling.laagste),
+      hoogste: pct(vulling.hoogste)
     };
   }
 
@@ -640,8 +639,8 @@ function labBlok(recordsIn) {
     regels.push({
       stand: 'vulling', aantal: vulling.aantal,
       zin: 'Ten opzichte van het etiket: ' + richting.join(', ') + '. Gemiddeld ' +
-        metTeken(vulling.gemiddelde) + ', van ' + metTeken(vulling.laagste) + ' tot ' +
-        metTeken(vulling.hoogste) + ' over ' + vulling.aantal +
+        pct(vulling.gemiddelde) + ' van wat op het etiket staat, van ' + pct(vulling.laagste) +
+        ' tot ' + pct(vulling.hoogste) + ' over ' + vulling.aantal +
         (vulling.aantal === 1 ? ' rapport.' : ' rapporten.')
     });
   }

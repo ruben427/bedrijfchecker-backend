@@ -1227,3 +1227,23 @@ body.sheet-open{ overflow:hidden; }
 .blokken-rij.vier{ grid-template-columns:repeat(2,1fr); }
 .waarden .blokken-rij.vier{ margin:12px 0 4px; }
 @media (max-width:700px){ .blokken-rij.vier{ grid-template-columns:1fr; } }
+
+
+/* Twee tegels in plaats van drie (besluit Ruben 23 september: externe
+   verificatie en productbewijs zijn samengevoegd). De vier secties tellen
+   sindsdien door als 1 tot 4; 3 en 4 dragen hun nummer in de kop. */
+.blokken-rij.twee{ grid-template-columns:repeat(2,1fr); }
+@media (max-width:700px){ .blokken-rij.twee{ grid-template-columns:1fr; } }
+.waarden-kop{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+/* Zelfde vorm als het nummer in een tegel (.blok-stap), zodat 1 tot 4 een
+   serie is en niet twee series die toevallig doortellen. */
+.waarden-stap{ font-weight:400; font-size:18px; color:var(--ds-inkt,var(--text));
+  letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+
+
+/* Tegel 3 en 4: een tweede woord naast de naam ("Gemiddeld") en twee regels
+   met de uiterste waarden eronder. */
+.blok-sub{ margin-left:8px; font-weight:400; text-transform:none; letter-spacing:0;
+  color:var(--text-subtle); }
+.blok-lijnen{ display:flex; flex-direction:column; gap:2px; }
+.blok-lijn{ font-size:.95rem; color:var(--text); font-variant-numeric:tabular-nums; }

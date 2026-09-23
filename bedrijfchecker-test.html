@@ -1394,62 +1394,132 @@
   function blokHtml(o){
     return '<div class="blok ' + o.kleur + '">' +
       '<span class="blok-label">' + escapeHtml(o.label) +
+        (o.sub ? '<span class="blok-sub">' + escapeHtml(o.sub) + '</span>' : '') +
         (o.stap ? '<span class="blok-stap">' + o.stap + '</span>' : '') + '</span>' +
       '<span class="blok-waarde' + (o.woord ? ' woord' : '') + '">' + o.waarde + '</span>' +
       (o.balk || '') +
       (o.uitleg ? '<span class="blok-uitleg">' + escapeHtml(o.uitleg) + '</span>' : '') +
+      ((o.lijnen || []).length
+        ? '<span class="blok-lijnen">' + o.lijnen.map(function(l){
+            return '<span class="blok-lijn">' + escapeHtml(l) + '</span>';
+          }).join('') + '</span>'
+        : '') +
       (o.werk ? '<span class="blok-werk mono">' + escapeHtml(o.werk) + '</span>' : '') +
       '</div>';
   }
 
+  // Vier tegels, twee boven en twee onder (besluit Ruben, 23 september).
+  //
+  //   1 Openheid        2 Productbewijs
+  //   3 Zuiverheid      4 Onder of boven vulling
+  //
+  // Externe verificatie en productbewijs waren twee tegels die allebei
+  // "zoveel van de zoveel rapporten" telden. Dat las als twee noemers voor
+  // dezelfde stapel; ze zijn nu een.
+  //
+  // LET OP - GEEN OORDEEL IN TEGEL 3 EN 4. Het zijn gemiddelden van wat in de
+  // rapporten staat. De kleurregel voor deze getallen is A24 en ligt bij
+  // Annemarie; B-1 (vanaf welke overvulling is het een bevinding) en B-2 (mag
+  // een smalle spreiding zelf een bevinding zijn) staan ook nog open.
+  //
+  // De getallen en hun schrijfwijze komen uit src/blokken.js.
   function blokkenHtml(c){
     var b = blokkenVan(c);
     if (!b) return '';
     var op = b.openheid || {}, ve = b.verificatie || {}, pb = b.productbewijs || {};
+    var l = b.lab || {};
 
-    // Openheid telt het getal mee omhoog terwijl de balk uitslaat.
+    // Schalen. Een zuiverheidsbalk van 0 tot 100 staat altijd vol en laat geen
+    // verschil zien; die loopt daarom van 90 tot 100. De vulling loopt van 90
+    // tot 110, met het etiket (100%) in het midden, zodat te weinig en te veel
+    // op dezelfde schaal staan.
+    var Z_MIN = 90, Z_MAX = 100, V_SPEELRUIMTE = 10;
+    function schaal(waarde, min, max){
+      if (waarde == null) return null;
+      return Math.max(0, Math.min(100, ((waarde - min) / (max - min)) * 100));
+    }
+    // De vullingbalk meet iets anders dan de zuiverheidsbalk: niet hoeveel,
+    // maar hoe dicht bij het etiket. Vol bij 100%, leeg bij 90% en bij 110%.
+    // Te weinig en te veel tellen dus even zwaar - welke van de twee het is,
+    // staat in de regels eronder (besluit Ruben, 23 september).
+    function naderEtiket(waarde){
+      if (waarde == null) return null;
+      return Math.max(0, Math.min(100, (1 - Math.abs(waarde - 100) / V_SPEELRUIMTE) * 100));
+    }
+
+    // 1 - Openheid. Het getal telt mee omhoog terwijl de balk uitslaat.
     var openPct = op.noemer ? (100 * (op.aanwezig || 0)) / op.noemer : null;
     var openheid = blokHtml({
       label:'Openheid', stap:'1', kleur: op.kleur || 'grey',
       waarde: '<span class="js-telop">' + (op.aanwezig != null ? op.aanwezig : '—') + '</span>' +
         '<span class="klein"> van ' + (op.noemer || 0) + '</span>',
       balk: balkHtml(openPct, ' data-telop="' + (op.aanwezig || 0) + '"'),
-      uitleg: op.toelichting || null
+      uitleg: op.toelichting || null,
+      werk: op.werkregel || null
     });
 
-    // Bij verificatie staat een woord boven de balk, geen getal: de stand is
-    // niet altijd een aantal ("Niets te controleren"). De balk toont wel het
-    // aandeel dat is opgelost.
-    var verPct = ve.totaal ? (100 * ((ve.telling && ve.telling.geverifieerd) || 0)) / ve.totaal : null;
-    var verificatie = blokHtml({
-      label:'Externe verificatie', stap:'2', kleur: ve.kleur || 'grey',
-      waarde: escapeHtml(ve.woord || 'Onbekend'), woord:true,
-      balk: balkHtml(verPct),
-      werk: ve.werkregel
-    });
-
-    // Blok 3 krijgt alleen een balk als er een percentage te publiceren is.
-    // Een telling ("12 rapporten") is geen aandeel van iets; daar zou een
-    // balk een verhouding suggereren die er niet is.
-    var waarde, woord = false, balk = '';
-    if (pb.vorm === 'percentage'){
-      waarde = '<span class="js-telop">' + String(pb.waarde).replace('.', ',') + '</span><span class="klein">%</span>';
-      balk = balkHtml(pb.percentage, ' data-telop="' + Math.round(pb.percentage) + '"');
-    } else if (pb.vorm === 'telling'){
-      waarde = pb.waarde + '<span class="klein"> rapporten</span>';
+    // 2 - Productbewijs. Het grote getal is de hardste uitspraak die we
+    // hebben: hoeveel van de gevonden rapporten onafhankelijk bevestigd zijn.
+    var bewijsWerk = [ve.werkregel, pb.werkregel].filter(Boolean).join(' · ');
+    var bewijsKleur = (ve.kleur === 'red' || pb.kleur === 'red') ? 'red' : (ve.kleur || pb.kleur || 'grey');
+    var bewijsWaarde, bewijsWoord = false, bewijsBalk = '';
+    if (ve.totaal){
+      var bevestigd = (ve.telling && ve.telling.geverifieerd) || 0;
+      bewijsWaarde = '<span class="js-telop">' + bevestigd + '</span>' +
+        '<span class="klein"> van ' + ve.totaal + '</span>';
+      bewijsBalk = balkHtml((100 * bevestigd) / ve.totaal, ' data-telop="' + bevestigd + '"');
     } else {
-      waarde = escapeHtml(String(pb.waarde || '—')); woord = true;
+      bewijsWaarde = escapeHtml(String(ve.woord || pb.waarde || '—'));
+      bewijsWoord = true;
     }
     var bewijs = blokHtml({
-      label:'Productbewijs', stap:'3', kleur: pb.kleur || 'grey',
-      waarde: waarde, woord: woord, balk: balk,
-      werk: pb.werkregel || (pb.vorm === 'percentage' && pb.coverage != null ? ('dekking ' + Math.round(pb.coverage) + '%') : null)
+      label:'Productbewijs', stap:'2', kleur: bewijsKleur,
+      waarde: bewijsWaarde, woord: bewijsWoord, balk: bewijsBalk,
+      uitleg: ve.totaal && ve.woord ? ve.woord : null,
+      werk: bewijsWerk || null
     });
 
+    // 3 - Zuiverheid, gemiddeld.
+    var zuiver = '';
+    var z = l.zuiverheid;
+    if (z && z.weergave){
+      zuiver = blokHtml({
+        label:'Zuiverheid', sub:'Gemiddeld', stap:'3', kleur:'grey',
+        waarde: escapeHtml(z.weergave.gemiddelde),
+        balk: balkHtml(schaal(z.gemiddelde, Z_MIN, Z_MAX)),
+        lijnen: z.aantal > 1
+          ? ['Hoogste waarde: ' + z.weergave.hoogste, 'Laagste waarde: ' + z.weergave.laagste]
+          : [],
+        werk: z.aantal + (z.aantal === 1 ? ' gemeten waarde' : ' gemeten waardes') +
+          ' · schaal ' + Z_MIN + '-' + Z_MAX + '%'
+      });
+    }
+
+    // 4 - Vulling, als percentage van het etiket. 100% is precies wat er op
+    // het etiket staat.
+    var vulling = '';
+    var v = l.vulling;
+    if (v && v.weergave){
+      var telling = [];
+      if (v.boven) telling.push(v.boven + ' boven');
+      if (v.onder) telling.push(v.onder + ' onder');
+      if (v.gelijk) telling.push(v.gelijk + ' precies');
+      vulling = blokHtml({
+        label:'Onder of boven vulling', sub:'Gemiddeld', stap:'4', kleur:'grey',
+        waarde: escapeHtml(v.weergave.gemiddelde),
+        balk: balkHtml(naderEtiket(v.gemiddelde)),
+        lijnen: v.aantal > 1
+          ? ['Hoogste waarde: ' + v.weergave.hoogste, 'Laagste waarde: ' + v.weergave.laagste]
+          : [],
+        werk: v.aantal + (v.aantal === 1 ? ' gemeten waarde' : ' gemeten waardes') +
+          (telling.length ? ' · ' + telling.join(', ') : '') +
+          ' · 100% = het etiket, de balk is dan vol'
+      });
+    }
+
     return '<div class="blokken">' +
-      '<p class="blokken-kop">Wat we konden controleren</p>' +
-      '<div class="blokken-rij">' + openheid + verificatie + bewijs + '</div>' +
-      waardenHtml(c) + labHtml(c) + '</div>';
+      '<div class="blokken-rij vier">' + openheid + bewijs + zuiver + vulling + '</div>' +
+      '</div>';
   }
 
   // --- Blok 5: het laboratorium en wat de metingen laten zien --------------
@@ -1461,86 +1531,7 @@
   //
   // De getallen en hun schrijfwijze komen uit src/blokken.js. Hier alleen de
   // vorm.
-  function labHtml(c){
-    var b = blokkenVan(c);
-    var l = b && b.lab;
-    if (!l || !l.beschikbaar) return '';
 
-    // De zin over de labs staat in de tekst, niet in een tegel: welk lab het
-    // is, is geen getal op een schaal.
-    var tekst = '';
-    (l.regels || []).forEach(function(r){
-      if (r.stand === 'labs') tekst += '<p class="waarden-notitie">' + escapeHtml(r.zin) + '</p>';
-    });
-
-    var z = l.zuiverheid, v = l.vulling;
-    if (!z && !v) return tekst ? '<div class="waarden">' + tekst + '</div>' : '';
-
-    // De balken. Een zuiverheidsbalk van 0 tot 100 staat altijd vol en laat
-    // geen verschil zien; daarom loopt hij van 90 tot 100 (besluit Ruben,
-    // 23 september). De schaal staat onder elke tegel, want een balk zonder
-    // schaal suggereert een verhouding die er niet is.
-    var Z_MIN = 90, Z_MAX = 100;
-    var V_MAX = 25;
-    function schaal(waarde, min, max){
-      if (waarde == null) return null;
-      return Math.max(0, Math.min(100, ((waarde - min) / (max - min)) * 100));
-    }
-
-    var tegels = '';
-    function tegel(label, waarde, pct, werk){
-      tegels += blokHtml({
-        label: label, stap: '', kleur: 'grey',
-        waarde: waarde,
-        balk: balkHtml(pct, pct == null ? '' : ' data-telop="' + Math.round(pct) + '"'),
-        werk: werk
-      });
-    }
-    function cijfer(tekstwaarde){
-      return '<span>' + escapeHtml(tekstwaarde) + '</span>';
-    }
-
-    // Boven: de twee gemiddelden. Onder: de uitersten van de zuiverheid.
-    if (z) tegel('Zuiverheid, gemiddeld', cijfer(z.weergave.gemiddelde),
-      schaal(z.gemiddelde, Z_MIN, Z_MAX),
-      'schaal ' + Z_MIN + '-' + Z_MAX + '% \u00b7 ' + z.aantal + ' rapport(en)');
-
-    if (v) {
-      var telling = [];
-      if (v.boven) telling.push(v.boven + ' boven');
-      if (v.onder) telling.push(v.onder + ' onder');
-      if (v.gelijk) telling.push(v.gelijk + ' gelijk');
-      tegel('Vulling t.o.v. etiket, gemiddeld', cijfer(v.weergave.gemiddelde),
-        schaal(v.gemiddelde, 0, V_MAX),
-        'schaal 0 tot +' + V_MAX + '% \u00b7 ' + telling.join(', '));
-    }
-
-    if (z) {
-      tegel('Laagste zuiverheid', cijfer(z.weergave.laagste),
-        schaal(z.laagste, Z_MIN, Z_MAX), 'schaal ' + Z_MIN + '-' + Z_MAX + '%');
-      tegel('Hoogste zuiverheid', cijfer(z.weergave.hoogste),
-        schaal(z.hoogste, Z_MIN, Z_MAX), 'schaal ' + Z_MIN + '-' + Z_MAX + '%');
-    }
-
-    // De waarschuwing hoort in beeld en niet in een hover: een gemiddelde over
-    // verschillende producten en batches zegt iets over de documenten, niet
-    // over het flesje dat iemand koopt. De zin komt uit de backend.
-    var notitie = '';
-    for (var i = 0; i < (l.regels || []).length; i++){
-      if (l.regels[i].toelichting){
-        notitie = '<p class="waarden-notitie">' + escapeHtml(l.regels[i].toelichting) + '</p>';
-        break;
-      }
-    }
-
-    return '<div class="waarden">' +
-      '<p class="waarden-kop">Wat de metingen laten zien</p>' +
-      tekst +
-      '<div class="blokken-rij vier">' + tegels + '</div>' +
-      notitie +
-      (l.werkregel ? '<div class="waarden-werk mono">' + escapeHtml(l.werkregel) + '</div>' : '') +
-      '</div>';
-  }
 
   // --- Blok 4: wat de rapporten over de waarden zeggen ---------------------
   //
@@ -1564,6 +1555,12 @@
   // lezen. Deze standen zeggen iets wat de telling niet laat zien.
   var WAARDEN_NOTITIES = ['methode_niet_verifieerbaar', 'gedeeld_labbewijs', 'promotie_geblokkeerd'];
 
+  // LET OP - NIET MEER AANGEROEPEN sinds 23 september. Op verzoek van Ruben
+  // toont het rapport vier tegels en niet meer dit blok. De functie blijft
+  // staan omdat hij de zichtbare kant is van het besluit van Annemarie van
+  // 20 september (geverifieerd / gerapporteerd / niets over te zeggen); dat
+  // besluit is niet ingetrokken, alleen deze weergave is eruit. Terugzetten
+  // is een regel: + waardenHtml(c) in blokkenHtml.
   function waardenHtml(c){
     var b = blokkenVan(c);
     var w = b && b.waarden;
@@ -1605,7 +1602,7 @@
     });
 
     return '<div class="waarden">' +
-      '<p class="waarden-kop">Wat de rapporten over de waarden zeggen</p>' +
+      '<p class="waarden-kop">Wat de rapporten over de waarden zeggen<span class="waarden-stap">3</span></p>' +
       rijen + uitleg + notities +
       (w.werkregel ? '<div class="waarden-werk mono">' + escapeHtml(w.werkregel) + '</div>' : '') +
       '</div>';
