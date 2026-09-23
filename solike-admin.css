@@ -1,0 +1,74 @@
+/* ---------------------------------------------------------------------------
+   PepProof admin — blauw in plaats van paars.
+
+   Waarom een eigen bestand en niet gewoon de tokens in solike.css omzetten:
+   solike.css wordt door ZEVEN pagina's geladen, waarvan er twee publiek zijn.
+   Paars daar omzetten kleurt de checker mee. Deze laag komt er alleen bij de
+   stafpagina's overheen en herdefinieert uitsluitend de tokens - geen enkele
+   component wordt hier opnieuw beschreven.
+
+   De schaal is gebouwd op twee ankers van Ruben: 500 #2306ff en 700 #041899.
+   De negen stappen ertussen en eromheen zijn daaruit berekend, niet gekozen:
+   de tint loopt van 232 graden aan de diepe kant naar 247 aan de heldere, en
+   de verzadiging zakt alleen in de lichtste stappen - anders wordt 50 een
+   grijsblauwe waas in plaats van een kleur.
+
+   Laad dit NA solike.css en voor de pagina-eigen stijlen.
+
+   stap  hex        contrast op wit
+   25    #faf9fd    1.05    paginagrond
+   50    #f1f0fc    1.13    vlakken
+   100   #dfdbfd    1.34    vlakken
+   200   #beb5ff    1.87    randen
+   300   #9385ff    2.98    randen, iconen
+   400   #5d47ff    5.51    tekst op licht
+   500   #2306ff    8.26    anker
+   600   #0602d9    10.40   knoppen
+   700   #041899    13.16   anker, koppen
+   800   #041371    15.71   koppen
+   900   #040d49    18.12   diepste kop
+--------------------------------------------------------------------------- */
+
+:root{
+  --blauw-25:#faf9fd;
+  --blauw-50:#f1f0fc;
+  --blauw-100:#dfdbfd;
+  --blauw-200:#beb5ff;
+  --blauw-300:#9385ff;
+  --blauw-400:#5d47ff;
+  --blauw-500:#2306ff;
+  --blauw-600:#0602d9;
+  --blauw-700:#041899;
+  --blauw-800:#041371;
+  --blauw-900:#040d49;
+
+  /* Dezelfde rollen als in solike.css, nu blauw ingevuld. */
+  --heading:var(--blauw-700);
+  --heading-2:var(--blauw-800);
+  --heading-3:var(--blauw-900);
+  --purple-50:var(--blauw-50);
+  --purple-300:var(--blauw-300);
+  --purple-600:var(--blauw-600);
+}
+
+/* Donker: blauw moet hier juist LICHT zijn, net zoals paars daar #e2a6f5
+   wordt. De stappen hieronder zijn op dezelfde lichtheid gezet als hun
+   paarse tegenhangers, zodat de opmaak niet verschuift - alleen de kleur. */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --heading:#a4a4f7;
+    --heading-2:#8888f3;
+    --heading-3:#d4d4ff;
+    --purple-50:#161631;
+    --purple-300:#7171f3;
+    --purple-600:#5c5ced;
+  }
+}
+:root[data-theme="dark"]{
+  --heading:#a4a4f7;
+  --heading-2:#8888f3;
+  --heading-3:#d4d4ff;
+  --purple-50:#161631;
+  --purple-300:#7171f3;
+  --purple-600:#5c5ced;
+}
