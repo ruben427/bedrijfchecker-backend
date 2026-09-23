@@ -329,6 +329,13 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
 .ophalen[hidden]{ display:none }
 .ophalen-uitleg{ margin:0; font-size:16px; line-height:1.5; letter-spacing:-.02em; color:var(--text) }
 .ophalen .stap{ font-weight:600 }
+/* De twee waarden die je op het formulier van het lab intikt. Groot genoeg om
+   over te typen en te selecteren: dit is waarmee gewerkt wordt, geen bijschrift. */
+.invulwaarden{ margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 14px; align-items:baseline }
+.invulwaarden dt{ font-size:14px; color:var(--muted); white-space:nowrap }
+.invulwaarden dd{ margin:0; font-size:18px; font-weight:600; letter-spacing:.01em;
+  font-variant-numeric:tabular-nums; user-select:all }
+#mWeg{ display:flex; flex-direction:column; gap:14px }
 .ophalen .veld{ margin:0 }
 .knop.breed{ width:100% }
 .ophalen .gelukt{ color:var(--ok); margin:0; font-size:14px }
@@ -587,15 +594,10 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
         <!-- Stand 2: het rapport is er niet. Dan alleen de weg ernaartoe. -->
         <div class="ophalen" id="mPlak" hidden tabindex="0">
           <h3 class="ophalen-kop">Nog geen rapport</h3>
-          <p class="ophalen-uitleg"><span class="stap">Rapport erbij halen:</span><br>
-            Klik hieronder op open het rapport. Kopieer de afbeelding door met de rechter muisknop
-            op het rapport te klikken en te kiezen voor Kopieer afbeelding (Ctrl + c | Cmd + c)<br>
-            Plak de afbeelding in onderstaand veld</p>
-          <a class="knop link" id="mOpen" href="#" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
-                 style="width:16px;height:16px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-            <span>open het rapport</span>
-          </a>
+          <!-- De weg naar het rapport hangt af van het lab. Sommige geven een
+               adres per rapport, andere een formulier waar je twee waarden
+               intikt. Wat hier komt te staan bepaalt zetWegNaarHetLab(). -->
+          <div id="mWeg"></div>
           <label class="veld altijd">
             <input id="mPlakVeld" type="text" placeholder="Plak de afbeelding hier (Ctrl + v | Cmd + v)">
             <span class="veld-label">Afbeelding URL of Image</span>
@@ -952,16 +954,37 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     if (vak) vak.scrollTop = 0;
     haal('/api/admin/leveranciers/' + encodeURIComponent(key)).then(function (j) {
       var refs = j.referenties || [], docs = j.documenten || [];
-      // Een kopie bij de shop hoort bij een referentie via het taaknummer.
-      // Zonder kopie valt er niets naast elkaar te leggen.
-      var perTask = {};
+      // Een kopie bij de shop hoort bij een referentie. Zonder kopie valt er
+      // niets naast elkaar te leggen. Die koppeling kan op drie manieren, en
+      // ze zijn alle drie nodig:
+      //
+      //  1. VASTGELEGD. Een eerdere controle noteert waartegen het labrapport
+      //     is afgezet (vergelekenMet: een url of een sha256). Dat is door een
+      //     mens vastgelegd en gaat dus vóór de twee afleidingen hieronder.
+      //  2. HET TAAKNUMMER. Zo werkt Janoshik: daar ís de referentie het
+      //     taaknummer.
+      //  3. DE VERIFICATIESLEUTEL. RC Testing geeft per rapport twee nummers:
+      //     een rapportnummer (RC749587, dat is het taaknummer) en een losse
+      //     sleutel (84590223). De labreferentie hangt aan de sleutel.
+      //
+      // Tot 23 september werd alleen op het taaknummer gezocht. Daardoor vond
+      // dit scherm geen van de dertig documenten van peptidekliniek en stond
+      // er "Nog geen rapport" met een plakvak, terwijl de PDF er gewoon was.
+      var perSleutel = {};
+      function legVast(sleutel, doc) {
+        var s = String(sleutel == null ? '' : sleutel).replace(/^#/, '').trim();
+        if (s && !perSleutel[s]) perSleutel[s] = doc;
+      }
       docs.forEach(function (d) {
-        var t = String(d.taskNumber || '').replace(/^#/, '');
-        if (t) perTask[t] = d;
+        legVast(d.taskNumber, d);
+        (d.verificatieSleutels || []).forEach(function (k) { legVast(k, d); });
       });
       refs.forEach(function (r) {
-        var t = String(r.referentie || '').split('-')[0];
-        r.kopie = perTask[t] || null;
+        var tegen = r.controle && r.controle.vergelekenMet;
+        var vast = tegen ? docs.filter(function (d) {
+          return d.url === tegen || d.sha256 === tegen;
+        })[0] : null;
+        r.kopie = vast || perSleutel[String(r.referentie || '').split('-')[0]] || null;
       });
       // Alle verwijzingen zijn werk. Ook een kale referentie - zonder kopie
       // bij de shop valt er geen klasse te geven, maar je kunt wel nagaan of
@@ -1305,7 +1328,7 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     }).map(function (v) { return v.id; });
     tekenVelden(c);
 
-    el('mOpen').href = r.url || '#';
+    zetWegNaarHetLab(r);
     el('mPlakVeld').value = '';
     el('mPlakMelding').hidden = true;
     uitRapport = [];
@@ -1431,6 +1454,58 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
     el('mVakTitel').textContent = 'Nog geen rapport';
     el('mVakBron').textContent = '';
     el('mPapier').hidden = true;
+  }
+
+  // NIET ELKE LABVERWIJZING IS EEN ADRES. Bij RC Testing bestaat er geen
+  // klikbare url per rapport: je vult op een formulier twee waarden in. Onze
+  // eigen notatie daarvoor - labref://rctesting/<sleutel> - staat in een veld
+  // dat url heet, en dat als href gebruiken levert een link op die nergens
+  // heen gaat. Ruben klikte er 23 september op en kreeg niets.
+  //
+  // Zolang de backend geen verificatiewijze per referentie meegeeft, beslist
+  // deze functie het hier. Zodra dat veld er is, hoort deze tabel te
+  // verdwijnen en komt het adres uit de referentie zelf.
+  var VERIFICATIEFORMULIER = {
+    'rc testing': 'https://www.rc-testing.com/verify'
+  };
+
+  function zetWegNaarHetLab(r) {
+    var vak = el('mWeg'); if (!vak) return;
+    var url = String(r.url || '');
+
+    // Stand 1: een echt adres. Dan de knop zoals hij was.
+    if (/^https?:\/\//i.test(url)) {
+      vak.innerHTML =
+        '<p class="ophalen-uitleg"><span class="stap">Rapport erbij halen:</span><br>' +
+        'Klik hieronder op open het rapport. Kopieer de afbeelding door met de rechter muisknop ' +
+        'op het rapport te klikken en te kiezen voor Kopieer afbeelding (Ctrl + c | Cmd + c)<br>' +
+        'Plak de afbeelding in onderstaand veld</p>' +
+        '<a class="knop link" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span>open het rapport</span></a>';
+      return;
+    }
+
+    // Stand 2: geen adres. Dan de instructie, met de waarden die je nodig
+    // hebt. Die staan er al: het rapportnummer is het taaknummer van de kopie
+    // bij de shop, de sleutel is de referentie zelf.
+    var lab = String(r.lab || '').toLowerCase().trim();
+    var adres = VERIFICATIEFORMULIER[lab] || null;
+    var rapport = (r.kopie && r.kopie.taskNumber)
+      ? String(r.kopie.taskNumber).replace(/^#/, '') : '';
+    var h = '<p class="ophalen-uitleg"><span class="stap">Er is geen adres per rapport.</span><br>' +
+      esc(r.lab || 'Dit lab') + ' geeft geen link. Nacontroleren gaat via een formulier ' +
+      'waar je deze waarden intikt.</p>' +
+      '<dl class="invulwaarden">' +
+      (rapport ? '<dt>Rapportnummer</dt><dd>' + esc(rapport) + '</dd>' : '') +
+      '<dt>Verificatiesleutel</dt><dd>' + esc(r.referentie || '') + '</dd>' +
+      '</dl>';
+    if (adres) {
+      h += '<a class="knop link" href="' + esc(adres) + '" target="_blank" rel="noopener noreferrer">' +
+        '<span>' + esc(adres.replace(/^https?:\/\//, '')) + '</span></a>';
+    } else {
+      h += '<p class="ophalen-uitleg">Waar dat formulier staat weten wij voor dit lab nog niet.</p>';
+    }
+    vak.innerHTML = h;
   }
 
   function plakMelding(tekst, fout) {

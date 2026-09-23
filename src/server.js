@@ -753,6 +753,17 @@ app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken,
         sha256: d.sha256, url: d.url, status: d.status, lab: d.lab,
         taskNumber: d.task_number, klasse: d.authenticity_class,
         mimetype: d.mimetype, byteSize: d.byte_size,
+        // TWEE IDENTIFICATOREN PER RAPPORT. Bij Janoshik is de labreferentie
+        // het taaknummer, en dan is task_number genoeg. RC Testing geeft er
+        // twee: een rapportnummer (RC749587, dat komt hier binnen als
+        // task_number) en een losse verificatiesleutel (84590223). De
+        // labreferentie hangt aan de SLEUTEL. Zonder dit veld kon de admin het
+        // document niet bij de referentie vinden en stond er "Nog geen
+        // rapport" terwijl de PDF gewoon in het archief zat - 23 september zo
+        // gevonden bij alle dertig documenten van peptidekliniek.
+        verificatieSleutels: (d.extraction && Array.isArray(d.extraction.coaRecords)
+          ? d.extraction.coaRecords.map((c) => c && c.verificationKey).filter(Boolean).map(String)
+          : []),
         product: (d.extraction && d.extraction.coaRecords && d.extraction.coaRecords[0] && d.extraction.coaRecords[0].product) || null,
         zuiverheid: (d.extraction && d.extraction.coaRecords && d.extraction.coaRecords[0] && d.extraction.coaRecords[0].purityPercent) || null,
         eersteAnalyse: d.first_analyzed_at
