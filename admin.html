@@ -612,9 +612,18 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
   'use strict';
 
   var API_BASE = 'https://bedrijfchecker-backend-production.up.railway.app';
-  var SLEUTEL_TOKEN = 'bedrijfchecker.ownerToken';
-  var SLEUTEL_NAAM = 'bedrijfchecker.naam';
-  var SLEUTEL_GEZIEN = 'bedrijfchecker.gezien';
+  // LET OP dat deze namen NIET beginnen met 'bedrijfchecker.' - dat was 23
+  // september de oorzaak van een checker die stil vastliep. Deze pagina en
+  // bedrijfchecker.html staan op hetzelfde domein en deelden dus dezelfde
+  // localStorage. Inloggen hier overschreef het willekeurige eigenaarstoken
+  // van de checker met een rolsleutel, en vanaf dat moment kon die browser
+  // geen enkele check meer opvragen.
+  var SLEUTEL_TOKEN = 'pepproof.adminSleutel';
+  var SLEUTEL_NAAM = 'pepproof.adminNaam';
+  var SLEUTEL_GEZIEN = 'pepproof.adminGezien';
+  // De sleutel die de checker gebruikt. Wij schrijven er nooit in - we ruimen
+  // hem alleen op als daar aantoonbaar onze eigen rolsleutel in staat.
+  var SLEUTEL_CHECKER = 'bedrijfchecker.ownerToken';
 
   function el(id) { return document.getElementById(id); }
   function esc(s) {
@@ -668,6 +677,12 @@ body.geen-testrecht .acties-groep, body.geen-testrecht #vOpslaan{ display:none }
         var b = el('binnen');
         if (!b.querySelector('.mismatch')) b.insertBefore(w, b.firstChild);
       }
+      // Opruimen van de oude situatie: staat onze rolsleutel in het vakje van
+      // de checker, dan is dat een restant van toen beide pagina's dezelfde
+      // naam gebruikten. Weghalen, zodat de checker zichzelf een vers
+      // eigenaarstoken geeft en zijn checks weer kan opvragen. Een ander
+      // token laten we met rust - dat is iemands eigen geschiedenis.
+      try { if (localStorage.getItem(SLEUTEL_CHECKER) === t) localStorage.removeItem(SLEUTEL_CHECKER); } catch (e) {}
       bewaar(SLEUTEL_TOKEN, t); bewaar(SLEUTEL_NAAM, n);
       el('aanmelden').classList.add('verborgen');
       el('binnen').classList.remove('verborgen');

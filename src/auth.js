@@ -138,8 +138,30 @@ function requireOwnerToken(req, res, next) {
   req.isLezer = !req.isAdmin && !req.isBeoordelaar && isLezer(req);
   req.isViewer = req.isBeoordelaar || req.isLezer;
   req.rol = req.isAdmin ? 'beheerder' : (req.isBeoordelaar ? 'beoordelaar' : (req.isLezer ? 'lezer' : null));
-  if (req.isAdmin || req.isViewer) {
+  // Een BEHEERDER hoeft geen eigenaarshash: requireCaseAccess laat hem bij elke
+  // case en listCases() geeft hem alles.
+  if (req.isAdmin) {
     req.ownerTokenHash = null;
+    return next();
+  }
+  // Een BEOORDELAAR of LEZER wel. Hier stond isViewer bij de regel hierboven,
+  // en dat maakte een stille val, 23 september gemeten op de live backend:
+  //
+  //   POST /api/audits met een rolsleutel  -> 201, case aangemaakt
+  //   GET  /api/audits/:id met diezelfde   -> 404
+  //   GET  /api/audits (de lijst)          -> 0
+  //
+  // De case kreeg owner_token_hash NULL, en daarop geeft requireCaseAccess
+  // bewust 404 ("bestaat niet" en "niet van jou" zijn dezelfde melding). De
+  // run draaide gewoon door op de server; alleen kon niemand hem meer opvragen.
+  // De checker vertaalde die 404 naar null zonder fout, dus het zag eruit als
+  // vastlopen.
+  //
+  // LET OP waarom de plausibiliteitstest hier NIET geldt: een leestoken mag
+  // een wachtwoordzin zijn (spaties, korter dan 32). Die eis stellen zou een
+  // lezer op alles een 401 geven. Voor de hash maakt de vorm niet uit.
+  if (req.isViewer) {
+    req.ownerTokenHash = hashToken(readToken(req));
     return next();
   }
   const token = readToken(req);

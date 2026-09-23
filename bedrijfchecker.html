@@ -301,6 +301,15 @@
   }
 
   function renderBanner(){
+    // Een check hoort bij de browser die hem startte - er is geen login. Komt
+    // hij niet terug, dan is dat geen netwerkstoring en moet er iets anders
+    // staan dan "probeer te verversen", want verversen helpt hier nooit.
+    if (state.eigenaarFout){
+      banner.innerHTML = '<div class="banner danger">Deze check hoort niet bij deze browser. ' +
+        'Er is geen account: een check is alleen zichtbaar in de browser waarin hij is gestart. ' +
+        'Start hem hier opnieuw, of open hem in de browser waarin je hem begon.</div>';
+      return;
+    }
     if (!state.apiError){ banner.innerHTML=''; return; }
     banner.innerHTML = '<div class="banner danger">Kan geen verbinding maken met de Bedrijfchecker-server: ' + escapeHtml(state.apiError) + '. Probeer de pagina te verversen.</div>';
   }
@@ -327,7 +336,11 @@
     casePoller = setInterval(function(){
       if (state.view !== 'detail' || state.currentCaseId !== id){ stopCasePoller(); return; }
       apiGetCase(id).then(function(c){
-        if (!c || state.currentCaseId !== id) return;
+        if (state.currentCaseId !== id) return;
+        // null = 404. Blijven pollen heeft dan geen zin: dit wordt nooit iets.
+        // Hier stond 'if (!c) return', en dat was precies het stille vastlopen
+        // - elke vier seconden niets, zonder enig teken aan de gebruiker.
+        if (!c){ stopCasePoller(); state.eigenaarFout = true; renderBanner(); return; }
         state.currentCase = c;
         render();
         if (c.status !== 'bezig') stopCasePoller();
@@ -337,6 +350,7 @@
   function goDashboard(){
     stopCasePoller();
     state.view='dashboard'; state.currentCaseId=null; state.currentCase=null;
+    state.eigenaarFout = false;
     state.startDraft = { website:'' };
     state.startFiles = [];
     state.startUploadOpen = false;
@@ -353,7 +367,9 @@
     state.currentCase = state.cases.find(function(c){ return c.id===id; }) || null;
     render();
     apiGetCase(id).then(function(c){
-      if (!c || state.currentCaseId !== id) return;
+      if (state.currentCaseId !== id) return;
+      if (!c){ state.eigenaarFout = true; renderBanner(); return; }
+      state.eigenaarFout = false;
       state.currentCase = c;
       render();
       if (c.status === 'bezig') ensureCasePoller(id);
