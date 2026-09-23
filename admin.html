@@ -246,12 +246,11 @@ body.alleen-kijken .knop.prim, body.alleen-kijken .werkrij .knop{ display:none }
    Twee standen (Figma 1607:7231): het rapport is er, of de weg ernaartoe. */
 .papier{ position:relative; width:100%; display:flex; justify-content:center }
 .papier[hidden]{ display:none }
-/* Weggooien is zeldzaam en onomkeerbaar: die knop hoort niet permanent in
-   beeld te staan. Op een aanraakscherm is er geen hover, dus daar staat hij
-   er wel - anders is hij onbereikbaar. */
+/* Weggooien is zeldzaam en onomkeerbaar: die knop staat alleen in beeld als
+   je met de muis over het rapport gaat. Hij mag over het plaatje heen vallen.
+   Geen uitzondering voor aanraakschermen: dit scherm is voor de desktop. */
 .wisknop{ position:absolute; top:20px; right:20px; opacity:0; transition:opacity .12s }
 .papier:hover .wisknop, .wisknop:focus-visible{ opacity:1 }
-@media (hover:none){ .wisknop{ opacity:1 } }
 
 .ophalen{ width:100%; display:flex; flex-direction:column; gap:14px; padding:24px;
   border:1px solid var(--border); border-radius:var(--radius-sm,8px); background:var(--surface) }
