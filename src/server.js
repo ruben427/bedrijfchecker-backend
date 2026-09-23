@@ -938,7 +938,33 @@ app.post('/api/admin/coa/references/rapport/uitlezen', rl.caseAction, auth.requi
       maxTokens: 2048,
       label: 'rapport-uitlezen'
     });
-    res.json({ ok: true, gelezen, gelezenOp: Date.now() });
+    // Hoort dit rapport wel bij deze referentie? Een Janoshik-referentie
+    // begint met het taaknummer (102064-Tirzepatide_60mg_YYPMGG45D735), dus
+    // dat is na te rekenen. Wijkt het af, dan is er een ander rapport
+    // ingeplakt en mogen deze waarden hier niet terechtkomen - dat is precies
+    // de fout die je later nooit meer terugvindt.
+    //
+    // Alleen toetsen als de referentie ook echt met cijfers begint: bij een
+    // lab met een ander formaat valt er niets te vergelijken en zou een
+    // weigering onterecht zijn.
+    const taakInRef = /^(\d{3,})/.exec(referentie);
+    const taakOpRapport = String(gelezen && gelezen.taskNumber || '').replace(/[^0-9]/g, '');
+    if (taakInRef && taakOpRapport && taakInRef[1] !== taakOpRapport) {
+      return res.status(409).json({
+        error: 'ander_rapport',
+        message: 'Op dit rapport staat taaknummer ' + taakOpRapport + ', maar deze referentie hoort bij ' +
+          taakInRef[1] + '. Er is een ander rapport ingeplakt; er is niets uitgelezen.'
+      });
+    }
+    // De unieke sleutel is een zachtere toets: niet elk labformaat zet hem in
+    // de referentie, dus dit is een waarschuwing en geen weigering.
+    const waarschuwingen = [];
+    const sleutel = String(gelezen && gelezen.sleutel || '').trim();
+    if (sleutel && sleutel.length >= 6 && referentie.toLowerCase().indexOf(sleutel.toLowerCase()) === -1) {
+      waarschuwingen.push('De unieke sleutel op het rapport (' + sleutel + ') komt niet voor in de referentie.');
+    }
+
+    res.json({ ok: true, gelezen, waarschuwingen, gelezenOp: Date.now() });
   } catch (e) {
     res.status(500).json(sanitizeError(e, req));
   }
