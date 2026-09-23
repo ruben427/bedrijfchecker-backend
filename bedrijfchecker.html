@@ -1008,6 +1008,13 @@
         '<label class="coa-tussen-kies" for="f-tussen-file">Bestand kiezen</label>' +
         '<input type="file" id="f-tussen-file" accept="image/*,application/pdf" multiple hidden>' +
       '</div>' +
+      // Twee keer dezelfde keuze, en dat is geen slordigheid. Op een smal
+      // scherm staat "Bestand kiezen" niet IN het veld maar eronder, als
+      // secundaire knop (besluit Ruben, 23 september) - en dat is een andere
+      // plek in de DOM, geen andere opmaak. CSS kan een element niet uit zijn
+      // doos halen, dus staan ze er allebei en verbergt het breekpunt er een.
+      // Allebei wijzen ze naar hetzelfde verborgen bestandsveld.
+      '<label class="btn secondary coa-tussen-kies-mobiel" for="f-tussen-file">Bestand kiezen</label>' +
       (namen ? '<span class="coa-bestand">' + escapeHtml(namen) +
         ' <button type="button" class="coa-wis" id="tussen-wis" aria-label="Verwijderen">&times;</button></span>' : '') +
       (state.tussenCoaError ? '<div class="field-error">' + escapeHtml(state.tussenCoaError) + '</div>' : '') +

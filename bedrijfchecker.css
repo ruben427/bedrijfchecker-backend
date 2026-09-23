@@ -1376,14 +1376,21 @@ body.sheet-open{ overflow:hidden; }
 }
 .coa-tussen-kies:hover{ color:var(--accent-strong); }
 .coa-tussen .btn-cta{ margin-top:0; }
+/* Breed genoeg: "Bestand kiezen" staat in het veld, dus de losse knop niet. */
+.coa-tussen-kies-mobiel{ display:none; }
 
 @media (max-width:640px){
   .coa-tussen{ padding:20px; }
   .coa-tussen-kop{ font-size:21px; line-height:1.15; }
   .coa-tussen-tekst{ font-size:16px; }
   .coa-tussen-veld input[type=text]{ font-size:16px; padding:0 12px; }
-  .coa-tussen-kies{ padding:0 14px; font-size:16px; }
   .coa-tussen .btn-cta{ width:100%; }
+  /* Smal: het veld is alleen nog het veld, en de bestandskeuze staat eronder
+     als secundaire knop uit het designsysteem. Op deze breedte vraagt een
+     tik naast de rand van het veld anders om precisie die een duim niet
+     heeft, en de twee acties zijn niet te onderscheiden. */
+  .coa-tussen-kies{ display:none; }
+  .coa-tussen-kies-mobiel{ display:inline-flex; width:100%; }
 }
 
 @media (max-width:640px){
