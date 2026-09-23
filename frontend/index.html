@@ -274,6 +274,9 @@
     if (!res.ok){
       var err = new Error(data.message || data.error || 'Aanmaken van de audit is mislukt (' + res.status + ')');
       err.code = data.error;
+      // Bij een doorgelinkt adres stuurt de server het adres mee waar de check
+      // wel kan (besluit Ruben 23 sep, taak raccoonpeptides.com).
+      err.doorgelinktNaar = data.doorgelinktNaar || null;
       throw err;
     }
     return data.case;
@@ -659,7 +662,18 @@
       goDetail(created.id);
     } catch(e){
       delete state.runningCaseIds['__new__'];
-      if (e.code === 'invalid_url' || e.code === 'not_peptide_supplier'){
+      // BESLUIT RUBEN 23 september 2026 (taak raccoonpeptides.com): "dat we
+      // zeggen dat je deze niet kan checken en dat we de URL die doorgelinkt
+      // is invuld in het veld die je wel kan checken". Het veld wordt dus
+      // ingevuld, maar er start NIETS vanzelf - de volgende druk op start is
+      // van de gebruiker, niet van ons.
+      if (e.code === 'doorgelinkt' && e.doorgelinktNaar){
+        state.startDraft.website = e.doorgelinktNaar;
+        state.startUrlError = e.message || 'Deze website stuurt je door naar een andere winkel.';
+        renderDashboard();
+        var veld = app.querySelector('#f-website');
+        if (veld) veld.focus();
+      } else if (e.code === 'invalid_url' || e.code === 'not_peptide_supplier'){
         state.startUrlError = e.message || 'Vul een geldige web URL in.';
         renderDashboard();
       } else {

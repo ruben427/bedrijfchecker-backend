@@ -179,6 +179,20 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
     // pas dan starten. Fail-open (zie relevanceCheck.js): bij twijfel of een
     // technische hobbel gaat de audit gewoon door.
     const relevance = await checkPeptideSupplierRelevance({ naam, website });
+    // BESLUIT RUBEN 23 september 2026 (taak raccoonpeptides.com): een adres dat
+    // doorlinkt naar een andere winkel is niet te controleren, en dan geven we
+    // het adres terug waar het wel kan - "we zeggen dat je deze niet kan
+    // checken en we de URL die doorgelinkt is invulden in het veld die je wel
+    // kan checken". Eigen foutcode, want dit is geen oordeel over de shop
+    // zoals not_peptide_supplier dat wel is; er valt hier simpelweg niets te
+    // meten.
+    if (!relevance.relevant && relevance.doorgelinktNaar) {
+      return res.status(422).json({
+        error: 'doorgelinkt',
+        doorgelinktNaar: relevance.doorgelinktNaar,
+        message: 'Deze website is niet te controleren: hij stuurt je door naar een andere winkel.' + (relevance.reasoning ? ' ' + relevance.reasoning : '') + ' Het adres hiernaast is ingevuld - druk nog een keer op start om die te controleren.'
+      });
+    }
     if (!relevance.relevant) {
       return res.status(422).json({
         error: 'not_peptide_supplier',

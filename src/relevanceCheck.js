@@ -23,11 +23,92 @@
 // "onbekend" is nu voorbehouden aan pagina's zonder bruikbare tekst
 // (cookiemelding/laadscherm/foutmelding), niet meer aan "ambigu qua topic".
 
+// ---------------------------------------------------------------------------
+// DOORGELINKTE SHOPS (BESLUIT RUBEN, 23 september 2026, taak "Nieuwe
+// leverancier bekeken: raccoonpeptides.com")
+//
+// raccoonpeptides.com bleek geen eigen winkel: wie het adres intikt, komt uit
+// bij peptidesupermarket.co.uk. Wij zouden dan een rapport maken over een
+// domein dat zelf niets verkoopt, en dat rapport zou gaan over de bewijzen
+// van een ANDERE shop.
+//
+// Zijn woorden: "kunnen we dit toevoegen aan het gedeelte waar we checken of
+// het een peptide website is. Dat als het wordt doorgelinkt. Dat we zeggen
+// dat je deze niet kan checken en dat we de URL die doorgelinkt is invuld in
+// het veld die je wel kan checken."
+//
+// Dus: dit is geen oordeel over de shop en geen uitsluiting. Het is de
+// vaststelling dat er op dit adres niets te controleren valt, plus het adres
+// waar dat wel kan. Wie het wil weten, drukt nog een keer op start.
+//
+// LET OP - twee grenzen die hier bewust in zitten:
+//  * Alleen een sprong naar een ANDERE site telt. http->https, www erbij of
+//    eraf, een taalpad en een subdomein zijn dezelfde winkel.
+//  * Bij een technische hobbel gebeurt er niets: dan loopt de voorcheck
+//    gewoon door zoals hij altijd liep. Dezelfde fail-open als hierboven -
+//    een echte leverancier tegenhouden omdat onze eigen meting haperde is
+//    erger dan een audit die achteraf onnodig bleek.
+// ---------------------------------------------------------------------------
+
+const { isPublicHttpUrl } = require('./urlGuard');
+
+const DOORLINK_TIMEOUT_MS = Number(process.env.DOORLINK_TIMEOUT_MS) || 8000;
+
+// Twee hostnamen horen bij dezelfde winkel als ze na het weghalen van "www."
+// gelijk zijn, of als de een een subdomein van de ander is.
+function zelfdeSite(a, b) {
+  if (!a || !b) return true;
+  const x = String(a).toLowerCase().replace(/^www\./, '');
+  const y = String(b).toLowerCase().replace(/^www\./, '');
+  if (x === y) return true;
+  return x.endsWith('.' + y) || y.endsWith('.' + x);
+}
+
+// Volgt de omleidingen en geeft het eindadres terug als dat op een andere
+// site uitkomt. Geeft null terug bij gelijk gebleven adres en bij elke fout.
+async function volgDoorlink(website) {
+  const start = isPublicHttpUrl(website);
+  if (!start.ok) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOORLINK_TIMEOUT_MS);
+  try {
+    const res = await fetch(start.url, { redirect: 'follow', signal: controller.signal });
+    if (res.body && typeof res.body.cancel === 'function') {
+      try { await res.body.cancel(); } catch (e) { /* niets aan te doen */ }
+    }
+    const eind = String(res.url || '');
+    if (!eind) return null;
+    // Het eindadres is een nieuwe bestemming en dus opnieuw invoer van buiten:
+    // dezelfde SSRF-controle als op het beginadres.
+    const veilig = isPublicHttpUrl(eind);
+    if (!veilig.ok) return null;
+    const vanHost = new URL(start.url).hostname;
+    const naarHost = new URL(veilig.url).hostname;
+    if (zelfdeSite(vanHost, naarHost)) return null;
+    return { url: veilig.url, van: vanHost, naar: naarHost };
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const { tavilyExtract } = require('./tavilyClient');
 const { sampleJsonSafe } = require('./anthropicClient');
 
 async function checkPeptideSupplierRelevance(ctx) {
   try {
+    // Eerst kijken of dit adres wel bij zichzelf uitkomt. Zo niet, dan heeft
+    // beoordelen geen zin: de paginatekst is dan van een andere winkel.
+    const doorlink = await volgDoorlink(ctx.website);
+    if (doorlink) {
+      return {
+        relevant: false,
+        verdict: 'doorgelinkt',
+        doorgelinktNaar: doorlink.url,
+        reasoning: doorlink.van + ' stuurt je door naar ' + doorlink.naar + '. Deze winkel is daardoor niet te controleren: alles wat er te zien is, hoort bij ' + doorlink.naar + '.'
+      };
+    }
     const extract = await tavilyExtract([ctx.website], { depth: 'advanced' });
     const pageText = (extract.ok[0] && extract.ok[0].content) || '';
     if (!pageText) {
@@ -44,4 +125,4 @@ async function checkPeptideSupplierRelevance(ctx) {
   }
 }
 
-module.exports = { checkPeptideSupplierRelevance };
+module.exports = { checkPeptideSupplierRelevance, volgDoorlink, zelfdeSite };
