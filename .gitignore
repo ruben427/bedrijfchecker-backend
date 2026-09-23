@@ -5,3 +5,7 @@ npm-debug.log
 .DS_Store
 Claude outputs/
 _oud/
+
+# Claims van gelijktijdig werkende chats. Nooit committen: ze gelden
+# alleen op deze machine en alleen zolang iemand bezig is.
+.claude-locks/
