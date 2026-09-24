@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<title>Journey — PepProof</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="solike.css">
+<link rel="stylesheet" href="solike-admin.css">
+<link rel="stylesheet" href="bedrijfchecker.css">
+
+<!--
+  Journeypagina voor de admin.
+  Alle inhoud staat in de lijst HOOFDSTUKKEN onderaan dit bestand.
+  Stap toevoegen = een object toevoegen aan `stappen` van het juiste hoofdstuk.
+  Open vraag toevoegen = een regel in VRAGEN (nummer -> tekst + eigenaar) en het nummer in `vragen` van de stap.
+  Leeg veld = die rol doet niets in die stap; de rij wordt dan niet getoond.
+-->
+
+<style>
+  body{background:var(--bg);color:var(--text);margin:0}
+  .wrap{max-width:1280px;margin:0 auto;padding:24px 16px 80px}
+  .top h1{font-family:var(--font-kop,'Baloo 2',sans-serif);color:var(--heading);margin:0 0 4px;font-size:1.7rem;line-height:1.2}
+  .top .sub{color:var(--text-muted);font-size:.92rem;margin:0;line-height:1.55;max-width:760px}
+
+  .principes{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:18px 0 6px}
+  .principe{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:.86rem;line-height:1.5}
+  .principe b{display:block;color:var(--heading);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+
+  /* Tabs */
+  .tabs{display:flex;gap:6px;overflow-x:auto;padding:4px 2px 10px;margin:18px -2px 0;scrollbar-width:thin;
+    border-bottom:1px solid var(--border)}
+  .tab{flex:0 0 auto;font:inherit;font-size:.88rem;font-weight:600;padding:9px 14px;border-radius:12px;cursor:pointer;
+    background:var(--surface);color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:8px}
+  .tab .nr{font-family:var(--font-mono,'IBM Plex Mono',monospace);font-size:.76rem;color:var(--text-muted)}
+  .tab .tel{font-size:.7rem;font-weight:700;background:var(--warn-soft);color:var(--warn);border-radius:999px;padding:1px 7px}
+  .tab[aria-selected="true"]{background:var(--heading);border-color:var(--heading);color:var(--surface)}
+  .tab[aria-selected="true"] .nr{color:var(--surface);opacity:.8}
+
+  .hoofdstuk-kop{margin:18px 0 4px}
+  .hoofdstuk-kop h2{font-family:var(--font-kop,'Baloo 2',sans-serif);color:var(--heading);font-size:1.3rem;margin:0}
+  .hoofdstuk-kop p{margin:4px 0 0;color:var(--text-muted);font-size:.9rem;line-height:1.55;max-width:760px}
+
+  /* Horizontale journey */
+  .rail{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;padding:18px 2px 16px;
+    scrollbar-width:thin;overscroll-behavior-x:contain;align-items:flex-start}
+  .stap{flex:0 0 300px;scroll-snap-align:start;background:var(--surface);border:1px solid var(--border);
+    border-radius:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;position:relative}
+  .stap:not(:last-child)::after{content:"";position:absolute;top:30px;right:-15px;width:16px;height:2px;background:var(--border)}
+  .stap-kop{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .stap-nr{font-family:var(--font-mono,'IBM Plex Mono',monospace);font-size:.74rem;color:var(--accent);font-weight:600}
+  .stap-kop h3{margin:2px 0 0;font-size:1.02rem;line-height:1.3;color:var(--text)}
+
+  .laan{padding:10px 16px;border-bottom:1px dashed var(--border);font-size:.86rem;line-height:1.5}
+  .laan:last-child{border-bottom:0}
+  .laan .rol{display:inline-block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    border-radius:6px;padding:1px 7px;margin-bottom:4px}
+  .laan p{margin:0}
+  .laan p + p{margin-top:4px}
+  .laan .voelt{color:var(--text-muted);font-style:italic}
+  .rol.gebruiker{background:var(--accent-soft);color:var(--accent-strong)}
+  .rol.systeem{background:var(--surface-2);color:var(--text-muted)}
+  .rol.redacteur{background:var(--ok-soft);color:var(--ok)}
+  .rol.anne{background:var(--purple-50,#fcf3ff);color:var(--heading)}
+
+  .letop{margin:10px 12px 0;background:var(--warn-soft);border:1px solid var(--warn);border-radius:10px;
+    padding:8px 10px;font-size:.82rem;line-height:1.5}
+  .letop b{color:var(--warn)}
+  .vragen{margin:10px 12px 14px;padding:0;list-style:none}
+  .vragen li{font-size:.82rem;line-height:1.45;padding:6px 0;border-top:1px solid var(--border);display:flex;gap:8px}
+  .vragen .qnr{font-family:var(--font-mono,'IBM Plex Mono',monospace);color:var(--text-muted);flex:0 0 auto}
+  .eig{display:inline-block;font-size:.66rem;font-weight:700;border-radius:999px;padding:0 6px;margin-left:4px;
+    border:1px solid var(--border);color:var(--text-muted);white-space:nowrap}
+  .eig.Anne{color:var(--heading);border-color:var(--heading)}
+  .eig.Jurist{color:var(--danger);border-color:var(--danger)}
+
+  .hint{font-size:.8rem;color:var(--text-muted);margin:0}
+  .gaten{margin-top:26px;background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);
+    border-radius:14px;padding:14px 16px;font-size:.88rem;line-height:1.6}
+  .gaten h2{font-size:1rem;margin:0 0 6px;color:var(--text)}
+  .gaten ul{margin:0;padding-left:18px}
+
+  .legenda{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+
+
+  .sectie-kop{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-faint);padding:10px 16px 0}
+  .pg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 12px 0;align-items:start}
+  .jb-blok{border-radius:10px;padding:8px 10px;font-size:.8rem;line-height:1.45}
+  .jb-blok ul{margin:0;padding-left:16px}
+  .jb-blok li + li{margin-top:3px}
+  .jb-blok-kop{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+  .jb-blok.pains{background:var(--danger-soft)}
+  .jb-blok.pains .jb-blok-kop{color:var(--danger)}
+  .jb-blok.gains{background:var(--ok-soft)}
+  .jb-blok.gains .jb-blok-kop{color:var(--ok)}
+  .jb-blok.nodig{margin:8px 12px 0;background:var(--surface-2)}
+  .jb-blok.nodig .jb-blok-kop{color:var(--text-muted)}
+  .jb-blok.nodig li::marker{content:"☐  "}
+  .jb-blok.meten,.jb-blok.tests{margin:8px 12px 0;background:transparent;border:1px dashed var(--border)}
+  .jb-blok.meten .jb-blok-kop{color:var(--accent-strong)}
+  .jb-blok.tests .jb-blok-kop{color:var(--text-muted)}
+  .jb-blok .leeg{margin:0;color:var(--text-faint);font-style:italic}
+  .tdatum{font-family:var(--font-mono,'IBM Plex Mono',monospace);font-size:.74rem;color:var(--text-muted)}
+  .rol.leverancier{background:var(--warn-soft);color:var(--warn)}
+  .status{display:inline-block;font-size:.72rem;font-weight:700;border-radius:999px;padding:2px 9px;border:1px solid var(--border);color:var(--text-muted)}
+  .status.gepland{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+  .status.gebouwd{color:var(--heading);border-color:var(--heading)}
+  .status.getest{color:var(--ok);border-color:var(--ok);background:var(--ok-soft)}
+  .taaklink{font-size:.78rem;margin-left:6px;color:var(--accent-strong)}
+
+  .ideeen{margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
+  .ideeen h3{margin:0 0 10px;font-size:1.02rem;color:var(--heading)}
+  .idee-rij{display:grid;grid-template-columns:1.3fr 1fr 1fr 110px;gap:12px;padding:10px 0;border-top:1px solid var(--border);font-size:.86rem;line-height:1.5}
+  .idee-rij.kop{border-top:0;padding-top:0;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)}
+  .idee-rij span:first-child{font-weight:600}
+  @media (max-width:640px){
+    .idee-rij{grid-template-columns:1fr;gap:4px}
+    .idee-rij.kop{display:none}
+    .idee-rij span[data-k]:not(:first-child)::before{content:attr(data-k) ": ";font-weight:700;color:var(--text-muted)}
+    .pg{grid-template-columns:1fr}
+  }
+
+  @media (max-width:640px){
+    .top h1{font-size:1.4rem}
+    .stap{flex-basis:84vw}
+    .principes{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:8px;padding-bottom:6px}
+    .principe{flex:0 0 72vw;scroll-snap-align:start}
+  }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>Journey — PepProof</h1>
+    <p class="sub">Van twijfel over een shop tot terugkomen na aankoop. Zeven hoofdstukken, per hoofdstuk de stappen van links naar rechts.
+      Per stap: de actie en van wie, pains en gains, wat nodig is om de stap te voltooien, en open vragen. Onder elk hoofdstuk staan de ideeën.</p>
+  </div>
+
+  <div class="principes">
+    <div class="principe"><b>De norm</b>URL invullen en snel een resultaat waar je op kunt vertrouwen.</div>
+    <div class="principe"><b>Geen mening</b>Niets over het product. Alleen over de leverancier: wat is getest, door wie.</div>
+    <div class="principe"><b>Regels, geen oordeel</b>Data wordt via Annes regels een uitkomst. De regels zijn terug te vinden.</div>
+    <div class="principe"><b>Anne het laatst</b>Systeem en redacteuren bereiden voor, Anne verifieert en classificeert.</div>
+    <div class="principe"><b>Samen</b>Elke check en upload maakt de markt eerlijker. Dat moet je voelen.</div>
+  </div>
+
+  <div class="legenda" aria-hidden="true">
+    <span class="laan" style="padding:0;border:0"><span class="rol gebruiker">Gebruiker</span></span>
+    <span class="laan" style="padding:0;border:0"><span class="rol systeem">Systeem</span></span>
+    <span class="laan" style="padding:0;border:0"><span class="rol redacteur">Redacteur</span></span>
+    <span class="laan" style="padding:0;border:0"><span class="rol anne">Anne</span></span>
+    <span class="laan" style="padding:0;border:0"><span class="rol leverancier">Leverancier</span></span>
+  </div>
+
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div id="hoofdstuk"></div>
+
+</div>
+
+<script>
+/* ---------- Open vragen: nummer -> [tekst, eigenaar] ---------- */
+const VRAGEN = {
+  1:  ["Upload in de gratis versie: op 14 sep besloten van niet, nu is het de kern van de community. Wat geldt?", "Ruben"],
+  2:  ["Nieuwe shop zonder COA: verplicht delen, of een uitkomst plus een vraag?", "Ruben"],
+  3:  ["€3,50 of donatie: schuift de betaalde Deep Dive naar later, of bestaan ze naast elkaar?", "Ruben"],
+  4:  ["Annewaarde: één waarde per shop (botst met 'geen trustscore') of per bevinding?", "Ruben"],
+  5:  ["Deep Dive persoonlijk vanwege jouw batch en moment, of vanwege je lichaam (gezondheidsgegevens)?", "Ruben"],
+  6:  ["Reviews op de shoppagina, of alleen COA's?", "Ruben"],
+  7:  ["Wat is 'snel'? Binnen hoeveel minuten staat het gratis resultaat er?", "Ruben"],
+  8:  ["Krijgt een shop buiten Europa vooraf een melding dat het resultaat mager is?", "Ruben"],
+  9:  ["Welke termijn beloven we voor een check? Bijvoorbeeld binnen 2 werkdagen.", "Anne"],
+  10: ["Hoeveel checks per week kan Anne aan, en wat als de werklijst groeit?", "Anne"],
+  11: ["Wie krijgt welk bericht: uploader, volgers, of iedereen die keek?", "Ruben"],
+  12: ["Bericht ook als de check niets verandert?", "Ruben"],
+  13: ["Mail, app of allebei? Toestemming, bewaartermijn en afmelden.", "Ruben"],
+  14: ["Wie zijn de redacteuren: community-vrijwilligers of eigen mensen?", "Ruben"],
+  15: ["Zien redacteuren wie een COA heeft geüpload?", "Ruben"],
+  16: ["Eén redacteur per COA, of twee los van elkaar?", "Ruben"],
+  17: ["Hoeveel weegt een test van drie maanden oud nog?", "Anne"],
+  18: ["Vanaf hoeveel COA's tonen we een trendlijn?", "Anne"],
+  19: ["Wanneer is een piek in data verdacht, en wie beslist dat?", "Anne"],
+  20: ["Hoe krijgt de community invloed op de regels: voorstellen, stemmen, iets anders?", "Anne"],
+  21: ["Wat toont de gratis pagina als een shop verdwijnt?", "Ruben"],
+  22: ["Welk bewijs is genoeg voor 'oude shop onder nieuwe naam'?", "Anne"],
+  23: ["Wat eerst: persoonlijk bedankje of contact tussen gebruikers?", "Ruben"],
+  24: ["Hoe maken we 'samen' zichtbaar zonder meningen?", "Ruben"],
+  25: ["Positionering 'los van de wet' en de missiezin.", "Jurist"],
+  26: ["Donatiemodel bij een B.V.", "Jurist"],
+  27: ["Personen achter het bedrijf in de Deep Dive (AVG).", "Jurist"],
+  28: ["Gebruiksdeel van De Anne Methode (technieken, innemen).", "Jurist"],
+  29: ["Krijgt de leverancier een eigen pad, en wanneer?", "Ruben"],
+  30: ["Hoe snel reageren we op een correctieverzoek van een shop?", "Anne"],
+  31: ["Telt bewijs dat een shop alleen aan ons levert als openheid?", "Anne"]
+};
+
+/* ---------- De journey ----------
+   Per stap:
+     gebruiker / systeem / redacteur / anne  = de actie, en van wie
+     voelt   = wat de gebruiker voelt
+     pains   = wat schuurt of tegenhoudt
+     gains   = wat de stap oplevert
+     nodig   = wat er moet zijn om de stap te voltooien
+     letop   = waarschuwing
+     meten   = meetpunten uit het platform
+     tests   = [{ datum: '2026-10-01', bron: 'usertest 1', tekst: 'wat we zagen' }]
+     vragen  = nummers uit VRAGEN
+   Per hoofdstuk:
+     ideeen  = { status: idee|gepland|gebouwd|getest, taak: link naar Notion, idee: wat we kunnen doen, doel: om wat te bereiken, brengt: wat het ons oplevert }
+*/
+const HOOFDSTUKKEN = [
+{
+  titel: "Vóór de check",
+  intro: "De koper staat op het punt te bestellen en wil zeker weten bij wie. PepProof geeft geen koopadvies: we kijken mee als je al wilt kopen.",
+  stappen: [
+    { titel: "Twijfel over een shop",
+      meten: ["Bezoekers per bron (kennisbank, zoekmachine, community)"], tests: [],
+      gebruiker: "Ziet een shop en staat op het punt peptiden te bestellen.",
+      voelt: "Onzeker: is dit echt wat ze zeggen?",
+      pains: ["Weet niet waar hij moet beginnen met checken", "Shops claimen allemaal 'lab tested'"],
+      gains: ["Ergens terecht kunnen voordat hij betaalt"],
+      nodig: ["PepProof is vindbaar op het moment van twijfel"] },
+    { titel: "Kennis zoeken",
+      meten: ["Klikken van kennisbank naar checker"], tests: [],
+      gebruiker: "Leest in de kennisbank van De Anne Methode of hoort via de community van PepProof.",
+      voelt: "Nieuwsgierig, wil begrijpen wat erbij komt kijken.",
+      anne: "Schrijft de kennisbank: puurheid, over- en underfill, wat er nog meer in zit.",
+      pains: ["Informatie online is verspreid en tegenstrijdig", "Vaktermen zonder uitleg"],
+      gains: ["Begrijpt waar hij op moet letten", "Vertrouwen in Anne als bron"],
+      nodig: ["Kennisbankartikelen die naar de check verwijzen"],
+      letop: "Onafhankelijkheid: laat zien wat de relatie is tussen De Anne Methode en de markt, en dat PepProof geen geld van leveranciers aanneemt (als dat zo is)." },
+    { titel: "Naar PepProof",
+      meten: ["% dat na de startpagina een shop invult"], tests: [],
+      gebruiker: "Opent de checker.",
+      voelt: "Wil geen verkooppraatje, wel bewijs.",
+      systeem: "Toont de belofte: wij verkopen niets en adviseren niets. We laten zien wat getest is en door wie.",
+      pains: ["Wantrouwen: is dit weer een verkapte shop?"],
+      gains: ["Binnen een paar seconden snappen wat PepProof wel en niet doet"],
+      nodig: ["Heldere missiezin op de startpagina", "Juridisch getoetste positionering"],
+      vragen: [25] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Elk kennisbankartikel eindigt met 'Check jouw shop'", doel: "Lezers op het twijfelmoment naar de check brengen", brengt: "Meer checks vanuit bestaand bereik, zonder advertenties" },
+    { status: "idee", taak: "", idee: "Pagina 'Wie zit achter PepProof' met de relatie tot De Anne Methode", doel: "Wantrouwen wegnemen vóór de eerste check", brengt: "Vertrouwen in de uitkomst; minder 'jullie zijn ook een shop'" }
+  ]
+},
+{
+  titel: "De gratis check",
+  intro: "Basisinformatie die op het web te vinden is, verzameld op één plek. Geen juridische of bedrijfsinformatie; die zit in de Deep Dive.",
+  stappen: [
+    { titel: "Shop invullen",
+      meten: ["% met batchnummer ingevuld", "% afgewezen door voorcheck"], tests: [],
+      gebruiker: "Vult de shop in, en eventueel de batch die hij wil kopen.",
+      voelt: "Afwachtend: hoe lang gaat dit duren?",
+      systeem: "Voorcheck: is dit een peptideshop? Zo nee, direct stoppen.",
+      pains: ["Weet niet waar hij het batchnummer vindt", "Onduidelijk hoe lang het duurt"],
+      gains: ["Eén veld, geen account nodig"],
+      nodig: ["Geldige shop-URL", "Voorcheck die snel antwoordt"],
+      vragen: [7] },
+    { titel: "Dekking melden",
+      meten: ["Verdeling NL / EU / buiten EU"], tests: [],
+      gebruiker: "Ziet meteen wat hij kan verwachten.",
+      systeem: "NL: grootste waarde. EU: redelijk goed. Buiten Europa: vooral techniek, weinig te vinden, minder vaak bijgewerkt.",
+      pains: ["Mager rapport zonder uitleg voelt als een slechte tool"],
+      gains: ["Verwachting klopt met wat hij krijgt"],
+      nodig: ["Land van de shop bepalen vóór de check start"],
+      letop: "Zeg het vóór het resultaat, anders lijkt een mager rapport een slechte tool of een shop die iets verbergt.",
+      vragen: [8] },
+    { titel: "Check loopt",
+      meten: ["Tijd tot resultaat (mediaan, p90)", "% afgehaakt tijdens wachten", "% hergebruik van eerdere checks"], tests: [],
+      voelt: "Ongeduldig: gebeurt er iets?",
+      systeem: "Haalt COA's van de website, zoekt labs, hergebruikt wat al gecheckt is. Toont het werk per stap, geen nepbalk.",
+      pains: ["Minuten wachten", "Labchecks die niet machinaal lukken"],
+      gains: ["Ziet dat er echt gewerkt wordt", "'Dit hadden we al geverifieerd' bij bekende shops"],
+      nodig: ["Voortgang per stap", "Hergebruik van eerdere checks"],
+      letop: "Labs verwachten een mens. Veel labchecks lukken niet machinaal en worden handwerk van Anne. Leg uit dat dat aan ons ligt, niet aan de shop." },
+    { titel: "Resultaat",
+      meten: ["Tijd op de resultaatpagina", "Klikken op 'Waarom deze uitkomst?'"], tests: [],
+      gebruiker: "Leest harde cijfers en een classificatie. Per lab: voldoet aan de eisen, ja of nee, en waarom.",
+      voelt: "Gerustgesteld of gewaarschuwd, en: ik heb bijgedragen.",
+      systeem: "Vertaalt data via de regels naar een uitkomst. Link 'Waarom deze uitkomst?' naar de regel en de versie die gold.",
+      anne: "Bepaalt de regels voor de classificatie.",
+      pains: ["Vaktermen (overfill, endotoxinen) zonder uitleg", "Denkt dat groen voor zijn batch geldt"],
+      gains: ["In tien seconden weten waar hij staat", "Kan elke uitkomst naar een regel terugvoeren"],
+      nodig: ["Vastgestelde regels van Anne", "Uitleg per begrip", "Batch duidelijk bij elke uitkomst"],
+      letop: "Per batch verschillend: een groen resultaat voor batch A zegt niets over de batch die de koper krijgt.",
+      vragen: [4, 6] },
+    { titel: "Geen COA's gevonden",
+      meten: ["% checks zonder COA", "% daarvan dat later een COA deelt"], tests: [],
+      gebruiker: "Ziet: deze shop publiceert geen testrapporten. Dat is zelf een bevinding.",
+      systeem: "Vraagt of hij er een heeft, of opvraagt bij de shop. Tip: vraag de COA vóór je koopt.",
+      pains: ["Heeft nog niet gekocht, dus nog geen COA", "Lege uitkomst voelt als niks"],
+      gains: ["Weet dat ontbrekend bewijs ook informatie is", "Weet wat hij de shop kan vragen"],
+      nodig: ["Tekst voor 'geen rapport gevonden'", "Voorbeeldvraag om een COA op te vragen"],
+      letop: "Wie nog niet gekocht heeft, heeft meestal nog geen COA. Een verplichte upload zet hem stil op het moment dat hij ons het hardst nodig heeft.",
+      vragen: [1, 2] },
+    { titel: "Bewaren en volgen",
+      meten: ["% dat rapport mailt", "% dat een alert zet"], tests: [],
+      gebruiker: "Mailt het rapport naar zichzelf en zet een alert.",
+      systeem: "De gratis pagina bestaat echt en blijft staan: je kunt terugkomen.",
+      pains: ["Mailadres geven voelt als een verplichting"],
+      gains: ["Hoeft niet opnieuw te zoeken", "Hoort het als er iets verandert"],
+      nodig: ["Vaste URL per shop", "Toestemming en afmelden voor mail"],
+      vragen: [13] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Kant-en-klaar berichtje 'Mag ik de COA van batch X?' om naar de shop te sturen", doel: "Kopers zonder COA toch aan bewijs helpen", brengt: "Meer COA's binnen, en shops merken dat kopers erom vragen" },
+    { status: "idee", taak: "", idee: "Uitleg-pop-up bij elk begrip (purity, overfill, endotoxinen)", doel: "Het resultaat begrijpelijk maken voor niet-experts", brengt: "Opleidende rol van Anne direct in het product" },
+    { status: "idee", taak: "", idee: "Uitkomst eerst, details eronder", doel: "Resultaat binnen tien seconden duidelijk", brengt: "Minder afhakers op de resultaatpagina" }
+  ]
+},
+{
+  titel: "Bijdragen",
+  intro: "Hoe meer mensen COA's delen, hoe gedetailleerder het beeld. We gebruiken alleen de data, nooit het document zelf, en delen nooit COA's van anderen.",
+  stappen: [
+    { titel: "COA delen",
+      meten: ["Uploads per week", "% uploads dat een nieuwe labreferentie is"], tests: [],
+      gebruiker: "Zet zijn COA op het platform, gekregen bij aankoop of opgevraagd.",
+      voelt: "Samen: ik help de volgende koper.",
+      pains: ["Twijfel of zijn gegevens gedeeld worden", "Weet niet wat er daarna gebeurt"],
+      gains: ["Draagt bij", "Krijgt zelf een check van zijn batch"],
+      nodig: ["Uploadveld (foto of PDF)", "Duidelijke belofte: alleen data, nooit het document"] },
+    { titel: "Uitlezen",
+      meten: ["% correct uitgelezen (na redactie)"], tests: [],
+      systeem: "Leest de COA uit en zet de gegevens in de admin-backend. Eén controle per unieke labreferentie, niet per upload.",
+      gebruiker: "Ziet status: ontvangen.",
+      pains: ["Slechte foto's of scans lezen fout uit"],
+      gains: ["Geen dubbel werk bij hetzelfde rapport"],
+      nodig: ["Uitlezen met vision", "Deduplicatie op labreferentie"] },
+    { titel: "Redacteur controleert",
+      meten: ["Doorlooptijd bij redactie", "% met correcties"], tests: [],
+      redacteur: "Vergelijkt de invoer met het rapport: is alles goed overgenomen?",
+      gebruiker: "Ziet status: gecontroleerd.",
+      pains: ["Wachtrij als er weinig redacteuren zijn"],
+      gains: ["Fouten eruit voordat Anne kijkt", "Annes tijd blijft voor wat alleen zij kan"],
+      nodig: ["Redacteuren met toegang", "Vergelijkscherm in de admin"],
+      vragen: [14, 15, 16] },
+    { titel: "Anne verifieert",
+      meten: ["Doorlooptijd bij Anne", "Werklijst-omvang per week"], tests: [],
+      anne: "Checkt als enige of het rapport overeenkomt met het lab. Machinale labtoets is voorfilter, geen poort.",
+      gebruiker: "Ziet status: bij Anne.",
+      pains: ["Annes tijd is de bottleneck", "Labs blokkeren machinale checks"],
+      gains: ["Een mens staat in voor de verificatie"],
+      nodig: ["Werklijst voor Anne", "Toegang tot de verificatiepagina's van labs"],
+      vragen: [9, 10] },
+    { titel: "Geaccordeerd",
+      meten: ["% geaccordeerd tegenover afgewezen"], tests: [],
+      anne: "Accordeert. Pas nu telt de COA als betrouwbare bron.",
+      systeem: "Toont de data met blijvend label 'door derde aangeleverd'. Vóór Annes check is niets zichtbaar.",
+      pains: ["Wachten tot het zichtbaar is"],
+      gains: ["Betrouwbare bron voor iedereen die daarna kijkt"],
+      nodig: ["Accordeerknop voor Anne", "Label 'door derde aangeleverd'"],
+      letop: "Een geaccordeerde COA van een bezoeker is geen openheid van de shop. Telt apart." },
+    { titel: "Bericht en bedankje",
+      meten: ["Tijd van upload tot bericht", "% dat binnen 30 dagen opnieuw uploadt"], tests: [],
+      gebruiker: "Krijgt bericht dat zijn COA gecheckt is, en kan de pagina bekijken.",
+      voelt: "Gezien: dankzij mij is batch X gecheckt.",
+      anne: "Komt persoonlijk terug. Het bericht komt van Anne, niet van 'het systeem'.",
+      pains: ["Geen bericht = denkt dat er niets gebeurd is"],
+      gains: ["Voelt zich onderdeel van de community", "Komt terug en deelt vaker"],
+      nodig: ["Contactgegevens met toestemming", "Berichtsjabloon in Annes stem"],
+      letop: "Persoonlijk is de grootste belofte en het grootste risico: het werkt zolang Anne het aankan.",
+      vragen: [11, 12, 23, 24] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Statusbalk ontvangen → gecontroleerd → bij Anne → geaccordeerd", doel: "Wachten begrijpelijk maken", brengt: "Minder vragen 'is mijn upload aangekomen?'" },
+    { status: "idee", taak: "", idee: "Teller 'dankzij jou zijn er nu 5 batches van deze shop gecheckt'", doel: "Bijdrage zichtbaar maken zonder meningen", brengt: "Gevoel van samen, meer herhaalde uploads" },
+    { status: "idee", taak: "", idee: "Persoonlijk bedankje van Anne, deels voorbereid", doel: "Het persoonlijke vasthouden als het drukker wordt", brengt: "Loyaliteit, en Anne blijft het gezicht" }
+  ]
+},
+{
+  titel: "Volgen en terugkomen",
+  intro: "Een platform waar je in de tijd op terugkomt. Na een tijdje zie je een leverancier over meerdere batches, en of er iets verandert.",
+  stappen: [
+    { titel: "Shop volgen",
+      meten: ["Actieve alerts", "Afmeldingen per verzonden mail"], tests: [],
+      gebruiker: "Zet een alert op een shop of batch.",
+      voelt: "Nieuwsgierig: is er iets veranderd?",
+      pains: ["Te veel mails", "Weet niet welke gebeurtenissen hij wil horen"],
+      gains: ["Hoeft niet zelf te blijven kijken"],
+      nodig: ["Alert per shop en per batch", "Keuze welke meldingen"] },
+    { titel: "Iets nieuws binnen",
+      meten: ["Nieuwe shops, labs en COA's per week"], tests: [],
+      systeem: "Nieuwe shop, lab of COA: PepProof krijgt een melding om te checken. Op de pagina: 'Er liggen 2 nieuwe rapporten bij Anne.'",
+      anne: "Checkt wat binnenkomt.",
+      pains: ["Ziet dat er iets is, maar nog niet wat"],
+      gains: ["Weet dat de pagina leeft"],
+      nodig: ["Signalenlijst in de admin", "Teller 'wacht op Anne' op de publieke pagina"] },
+    { titel: "Batches over tijd",
+      meten: ["Shops met genoeg COA's voor een trend"], tests: [],
+      gebruiker: "Ziet per batch wat er veranderd is, en een trendlijn: sommige shops worden beter, andere slechter.",
+      systeem: "Toont de lijn pas bij genoeg COA's. Anders: 'nog te weinig tests voor een trend'.",
+      anne: "Weegt recente tests anders dan oude.",
+      pains: ["Te weinig data in het begin"],
+      gains: ["Ziet een shop over tijd, niet één momentopname"],
+      nodig: ["Archief van COA's met datum", "Weging van oud tegen nieuw"],
+      vragen: [17, 18] },
+    { titel: "Shop of lab verandert",
+      meten: ["Labwissels en naamswissels per maand"], tests: [],
+      systeem: "Shop stopt met een lab, verdwijnt, of gaat verder onder een andere naam. Pagina krijgt een status zoals 'niet meer actief sinds…'.",
+      anne: "Houdt wisselende shops nauw in de gaten en legt het vast, met bewijs.",
+      pains: ["Oude pagina lijkt actueel", "Nieuwe naam, oude praktijken"],
+      gains: ["Koper ziet de geschiedenis achter een nieuwe naam"],
+      nodig: ["Status per shop", "Koppeling oud–nieuw met bewijs"],
+      vragen: [21, 22] },
+    { titel: "Piek in data",
+      meten: ["Pieken gesignaleerd, en hoeveel daarvan bevestigd"], tests: [],
+      systeem: "Ziet snel als er ineens veel nieuwe data binnenkomt die de uitslag beïnvloedt.",
+      anne: "Bevestigt eerst. Tot dan staat de shop intern op 'onder controle'.",
+      gebruiker: "Krijgt pas daarna bericht bij een grote verandering.",
+      pains: ["Shops die de uitslag proberen te sturen"],
+      gains: ["Uitslag blijft eerlijk", "Volgers horen alleen bevestigde veranderingen"],
+      nodig: ["Detectie van ongewone pieken", "Status 'onder controle'"],
+      letop: "Eerst Anne, dan het bericht. Anders verspreidt manipulatie zich via ons eigen kanaal.",
+      vragen: [19] },
+    { titel: "Regels veranderen",
+      meten: ["Regelwijzigingen per kwartaal", "Uitkomsten die daardoor veranderden"], tests: [],
+      anne: "Past regels aan. Nu Anne, langzaam steeds meer de community.",
+      systeem: "Toont bij elk resultaat de datum en de versie van de regels.",
+      pains: ["Uitkomst verandert zonder dat de shop veranderde"],
+      gains: ["Regels groeien mee met de markt", "Community voelt eigenaarschap"],
+      nodig: ["Versies van regels", "Openbare regelpagina"],
+      letop: "Veilige eerste stap: community stelt voor, Anne beslist en legt uit waarom.",
+      vragen: [20] },
+    { titel: "Deep Dive overwegen",
+      meten: ["% volgers dat een Deep Dive start"], tests: [],
+      gebruiker: "Ziet wat er veranderd is en beslist of een Deep Dive op zijn batch zinvol is.",
+      voelt: "Zeker genoeg om te kiezen.",
+      pains: ["Weet niet wat de Deep Dive extra geeft"],
+      gains: ["Kiest bewust, op het juiste moment"],
+      nodig: ["Duidelijk verschil gratis en Deep Dive"] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Wekelijkse samenvatting in plaats van losse mails", doel: "Volgen zonder overlast", brengt: "Minder afmeldingen, gebruiker blijft betrokken" },
+    { status: "idee", taak: "", idee: "Tijdlijn per shop: labwissels, naamswissels, nieuwe batches", doel: "Verandering in één oogopslag", brengt: "De reden om terug te komen, en ons unieke archief" },
+    { status: "idee", taak: "", idee: "Openbare regelpagina met versiegeschiedenis", doel: "Uitkomsten navolgbaar maken", brengt: "Vertrouwen, en een basis voor community-invloed" }
+  ]
+},
+{
+  titel: "Deep Dive",
+  intro: "De duik in het bedrijf, met de kennis en ervaring van Anne. Een uitkomst op basis van data en regels, nooit de waarheid. Alleen voor jou.",
+  stappen: [
+    { titel: "Kiezen voor verdieping",
+      meten: ["Conversie gratis → Deep Dive", "Donaties per 100 checks"], tests: [],
+      gebruiker: "Kiest bewust voor de Deep Dive op zijn shop en batch.",
+      pains: ["Betalen of doneren voelt als drempel"],
+      gains: ["Meer zekerheid voor zijn specifieke aankoop"],
+      nodig: ["Betaal- of donatieflow"],
+      vragen: [3, 26] },
+    { titel: "KvK en personen",
+      meten: ["% shops met gevonden KvK-inschrijving", "Kosten KvK per Deep Dive"], tests: [],
+      systeem: "Zoekt KvK-gegevens op en wie er achter het bedrijf zit, uit officiële registers.",
+      pains: ["Buitenlandse shops zonder KvK", "KvK-API kost geld per opvraging"],
+      gains: ["Weet welke onderneming echt achter de shop zit"],
+      nodig: ["KvK-API-account", "Cache van uittreksels (3–6 maanden)"],
+      letop: "Namen van bestuurders zijn persoonsgegevens. Alleen wat relevant is voor de shop, geen dossier.",
+      vragen: [27] },
+    { titel: "Connecties",
+      meten: ["% Deep Dives met een gevonden verband"], tests: [],
+      systeem: "Welke andere bedrijven, hoe ze verbonden zijn, en misschien met welke labs.",
+      pains: ["Verbanden zijn niet altijd hard te maken"],
+      gains: ["Ziet patronen die op de website niet zichtbaar zijn"],
+      nodig: ["Registerdata over gerelateerde bedrijven", "Regel wanneer een verband 'bewezen' is"] },
+    { titel: "Annes beeld",
+      meten: ["Tijd van Anne per Deep Dive"], tests: [],
+      anne: "Meer classificatie op basis van haar kennis en ervaring, altijd met de data. Zichtbaar gelabeld als 'uit de ervaring van Anne'.",
+      pains: ["Ervaring kan als feit gelezen worden"],
+      gains: ["Kennis die nergens anders te krijgen is"],
+      nodig: ["Vast label voor ervaring tegenover data"] },
+    { titel: "Persoonlijke momentopname",
+      meten: ["Tijd van aanvraag tot rapport"], tests: [],
+      gebruiker: "Krijgt een momentopname alleen voor hem, niet om te delen. Persoonlijk advies over de shop en zijn batch.",
+      anne: "Deels geautomatiseerd, deels bekijkt ze het moment en de batch zelf.",
+      pains: ["Wachten op Anne"],
+      gains: ["Advies over precies zijn situatie"],
+      nodig: ["Datum en ontvanger op het rapport", "Tijd van Anne per Deep Dive"],
+      letop: "Niet delen is niet af te dwingen. Zet erop voor wie en van welke datum, en schrijf het zo dat het ook gedeeld klopt. Advies over de shop, nooit over het product.",
+      vragen: [5] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Voorbeeld-Deep Dive van een fictieve shop", doel: "Laten zien wat je krijgt vóór je kiest", brengt: "Meer bewuste keuzes voor de Deep Dive" },
+    { status: "idee", taak: "", idee: "Deep Dive als PDF met naam en datum als watermerk", doel: "Doorsturen ontmoedigen zonder het te verbieden", brengt: "Minder lekken, en gedeeld blijft het kloppen" }
+  ]
+},
+{
+  titel: "Na aankoop — De Anne Methode",
+  intro: "PepProof is vóór de aankoop, De Anne Methode erna. Anne is geen arts: ze spreekt uit eigen ervaring en wat anderen met haar delen.",
+  stappen: [
+    { titel: "Weten wat je hebt",
+      meten: ["Batch-uploads na aankoop"], tests: [],
+      gebruiker: "Heeft gekocht en wil weten wat hij in handen heeft: welk product, welke specs.",
+      systeem: "Batchnummer of COA delen is de brug: helpt hem, en is een nieuw datapunt voor PepProof (hoofdstuk Bijdragen).",
+      pains: ["Etiket en COA zeggen hem weinig"],
+      gains: ["Weet wat hij heeft", "Draagt tegelijk bij"],
+      nodig: ["Batch opzoeken of uploaden na aankoop"] },
+    { titel: "Bewaren en bijhouden",
+      meten: ["Bezoek kennisbank na aankoop"], tests: [],
+      gebruiker: "Leert hoe te bewaren, hoe lang, en hoe bij te houden wat hij doet.",
+      anne: "Deelt kennis en bijproducten. Zegt niet wat werkt, maar wat al jaren voor haar werkt.",
+      pains: ["Informatie verspreid en tegenstrijdig"],
+      gains: ["Veiliger omgaan met wat hij heeft"],
+      nodig: ["Kennisbank", "Hulpmiddel om bij te houden"],
+      letop: "Technieken om het in te nemen liggen het dichtst bij medisch advies. Apart juridisch toetsen, los van PepProof.",
+      vragen: [28] },
+    { titel: "Ervaringen delen",
+      meten: ["Bijdragen per week", "% dat moderatie nodig had"], tests: [],
+      gebruiker: "Deelt goede en slechte ervaringen, en hoe hij de informatie gebruikte.",
+      pains: ["Deelt liever niet dat hij het gebruikt", "Gezondheidsclaims van anderen"],
+      gains: ["Leert van anderen", "Voelt dat hij er niet alleen voor staat"],
+      nodig: ["Pseudoniem mogelijk", "Moderatie"],
+      letop: "Ervaring is geen bewijs: nooit in het PepProof-rapport. Moderatie nodig voor gezondheidsclaims en shops die zich als klant voordoen. Contact tussen gebruikers alleen als je dat zelf kiest, met pseudoniem." },
+    { titel: "Terug naar volgen",
+      meten: ["% dat binnen 90 dagen een nieuwe check doet"], tests: [],
+      gebruiker: "Volgt zijn shop verder en komt terug bij de volgende aankoop.",
+      voelt: "Onderdeel van een community die de markt eerlijker maakt.",
+      pains: ["Vergeet PepProof tot de volgende aankoop"],
+      gains: ["Checkt vanzelf opnieuw"],
+      nodig: ["Alert staat nog aan"] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Na aankoop: 'Upload je batchnummer' in de mail", doel: "De brug naar Bijdragen leggen", brengt: "Meer batches binnen, precies van wat er gekocht wordt" },
+    { status: "idee", taak: "", idee: "Logboek om bij te houden wat je doet", doel: "Leren en reguleren, zoals Anne het bedoelt", brengt: "Terugkerend gebruik van De Anne Methode" }
+  ]
+},
+{
+  titel: "De leverancier",
+  intro: "Shops die echt mee willen doen, krijgen een eigen pad: zien wat er over ze staat, reageren en bewijs aanleveren. Invloed op de uitslag kopen kan nooit.",
+  stappen: [
+    { titel: "Ontdekt de eigen pagina",
+      vragen: [29],
+      meten: ["Shops die hun pagina claimen"], tests: [],
+      leverancier: "Ziet dat hij op PepProof staat, via een klant of een zoekopdracht.",
+      pains: ["Voelt zich beoordeeld zonder gevraagd te zijn"],
+      gains: ["Weet wat kopers over zijn bewijs te zien krijgen"],
+      nodig: ["Uitleg voor shops: hoe PepProof werkt en wat de regels zijn"] },
+    { titel: "Claimt de pagina",
+      meten: ["Doorlooptijd van claim tot bevestiging"], tests: [],
+      leverancier: "Toont aan dat hij de shop is, bijvoorbeeld met een code op zijn eigen website.",
+      systeem: "Controleert de code op het domein.",
+      pains: ["Extra stap voor een drukke ondernemer"],
+      gains: ["Kan reageren en aanleveren als erkende partij"],
+      nodig: ["Domeinverificatie"],
+      letop: "Een claim geeft geen invloed op de uitslag, alleen een stem en een route om bewijs aan te leveren." },
+    { titel: "Reageert of vraagt correctie",
+      meten: ["Correctieverzoeken", "% terecht bevonden"], tests: [],
+      leverancier: "Wijst op een fout, bijvoorbeeld een verkeerd uitgelezen batch.",
+      redacteur: "Zoekt het verzoek uit.",
+      anne: "Beslist over de correctie.",
+      pains: ["Verzoek blijft hangen"],
+      gains: ["Fouten van ons worden hersteld, zichtbaar en eerlijk"],
+      nodig: ["Correctieformulier", "Termijn waarbinnen we reageren"],
+      vragen: [30] },
+    { titel: "Levert bewijs aan",
+      meten: ["COA's direct van shops per week"], tests: [],
+      leverancier: "Levert COA's per batch direct aan, of zet ze openbaar op zijn site.",
+      systeem: "Leest uit en zet ze in de gewone controlelijn: redacteur, dan Anne.",
+      pains: ["Weet niet welk bewijs telt"],
+      gains: ["Beter beeld door eigen openheid"],
+      nodig: ["Uitleg welk bewijs meetelt"],
+      letop: "Openbaar op de eigen site telt als openheid van de shop. Alleen aan ons geleverd is iets anders; beide houden hun eigen label.",
+      vragen: [31] },
+    { titel: "Volgt zijn eigen ontwikkeling",
+      meten: ["Shops die beter scoren na een jaar"], tests: [],
+      leverancier: "Ziet zijn eigen tijdlijn en wat hij kan verbeteren.",
+      pains: ["Oude slechte batch blijft zichtbaar"],
+      gains: ["Kan laten zien dat hij beter wordt"],
+      nodig: ["Tijdlijn per shop"] }
+  ],
+  ideeen: [
+    { status: "idee", taak: "", idee: "Pagina 'Voor leveranciers' met de regels en hoe je bewijs aanlevert", doel: "Shops die mee willen doen de weg wijzen", brengt: "Meer openbare COA's, minder boze mails" },
+    { status: "idee", taak: "", idee: "Vaste regel: PepProof neemt geen geld aan van leveranciers", doel: "Onafhankelijkheid zichtbaar borgen", brengt: "Vertrouwen van kopers in elke uitkomst" }
+  ]
+}
+];
+
+/* ---------- Weergave ---------- */
+const ROLLEN = [
+  ["gebruiker", "Gebruiker"],
+  ["systeem", "Systeem"],
+  ["redacteur", "Redacteur"],
+  ["anne", "Anne"],
+  ["leverancier", "Leverancier"]
+];
+
+const STATUSSEN = ['idee', 'gepland', 'gebouwd', 'getest'];
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function lijst(klasse, kop, items){
+  if (!items || !items.length) return '';
+  return '<div class="jb-blok ' + klasse + '"><div class="jb-blok-kop">' + kop + '</div><ul>' +
+    items.map(t => '<li>' + esc(t) + '</li>').join('') + '</ul></div>';
+}
+
+function testsHtml(tests){
+  let h = '<div class="jb-blok tests"><div class="jb-blok-kop">Usertests</div>';
+  if (!tests || !tests.length) return h + '<p class="leeg">Nog geen bevindingen.</p></div>';
+  return h + '<ul>' + tests.map(t => '<li><span class="tdatum">' + esc(t.datum || '') + (t.bron ? ' · ' + esc(t.bron) : '') +
+    '</span> ' + esc(t.tekst || '') + '</li>').join('') + '</ul></div>';
+}
+
+function stapHtml(s, i){
+  let h = '<article class="stap"><div class="stap-kop"><div class="stap-nr">Stap ' + (i+1) + '</div><h3>' + esc(s.titel) + '</h3></div>';
+  h += '<div class="sectie-kop">Actie · van wie</div>';
+  for (const [sleutel, naam] of ROLLEN){
+    const tekst = s[sleutel];
+    const voelt = sleutel === "gebruiker" ? s.voelt : null;
+    if (!tekst && !voelt) continue;
+    h += '<div class="laan"><span class="rol ' + sleutel + '">' + naam + '</span>';
+    if (tekst) h += '<p>' + esc(tekst) + '</p>';
+    if (voelt) h += '<p class="voelt">Voelt: ' + esc(voelt) + '</p>';
+    h += '</div>';
+  }
+  h += '<div class="pg">' + lijst('pains', 'Pains', s.pains) + lijst('gains', 'Gains', s.gains) + '</div>';
+  h += lijst('nodig', 'Nodig om te voltooien', s.nodig);
+  h += lijst('meten', 'Meten', s.meten);
+  h += testsHtml(s.tests);
+  if (s.letop) h += '<div class="letop"><b>LET OP</b> ' + esc(s.letop) + '</div>';
+  if (s.vragen && s.vragen.length){
+    h += '<ul class="vragen">';
+    for (const n of s.vragen){
+      const [t, eig] = VRAGEN[n] || ["(onbekende vraag)", ""];
+      h += '<li><span class="qnr">' + n + '</span><span>' + esc(t) + ' <span class="eig ' + esc(eig) + '">' + esc(eig) + '</span></span></li>';
+    }
+    h += '</ul>';
+  } else {
+    h += '<div style="height:12px"></div>';
+  }
+  return h + '</article>';
+}
+
+function ideeenHtml(hs){
+  const lijstje = hs.ideeen || [];
+  let h = '<section class="ideeen"><h3>Ideeën voor dit hoofdstuk</h3>';
+  if (!lijstje.length) return h + '<p class="hint">Nog geen ideeën.</p></section>';
+  h += '<div class="idee-tabel"><div class="idee-rij kop"><span>Idee — wat kunnen we doen</span><span>Om wat te bereiken</span><span>Wat brengt het ons</span><span>Status</span></div>';
+  for (const d of lijstje){
+    const st = STATUSSEN.includes(d.status) ? d.status : 'idee';
+    const taak = d.taak ? ' <a class="taaklink" href="' + esc(d.taak) + '" target="_blank" rel="noopener">taak</a>' : '';
+    h += '<div class="idee-rij"><span data-k="Idee">' + esc(d.idee) + '</span><span data-k="Doel">' + esc(d.doel) +
+         '</span><span data-k="Brengt">' + esc(d.brengt) + '</span><span><span class="status ' + st + '">' + st + '</span>' + taak + '</span></div>';
+  }
+  return h + '</div></section>';
+}
+
+function toon(idx){
+  const hs = HOOFDSTUKKEN[idx];
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.setAttribute('aria-selected', i === idx ? 'true' : 'false');
+    if (i === idx) { const bar = t.parentNode; bar.scrollLeft = t.offsetLeft - bar.offsetLeft - 8; }
+  });
+  document.getElementById('hoofdstuk').innerHTML =
+    '<div class="hoofdstuk-kop"><h2>' + (idx+1) + '. ' + esc(hs.titel) + '</h2><p>' + esc(hs.intro) + '</p></div>' +
+    '<div class="rail">' + hs.stappen.map(stapHtml).join('') + '</div>' +
+    '<p class="hint">Schuif opzij voor de volgende stap.</p>' +
+    ideeenHtml(hs);
+  try { history.replaceState(null, '', '#h' + (idx+1)); } catch(e){}
+}
+
+(function init(){
+  const tabs = document.getElementById('tabs');
+  HOOFDSTUKKEN.forEach((hs, i) => {
+    const open = hs.stappen.reduce((n, s) => n + ((s.vragen || []).length), 0);
+    const b = document.createElement('button');
+    b.className = 'tab'; b.setAttribute('role', 'tab');
+    b.innerHTML = '<span class="nr">' + (i+1) + '</span>' + esc(hs.titel) + (open ? '<span class="tel" title="open vragen">' + open + '</span>' : '');
+    b.onclick = () => toon(i);
+    tabs.appendChild(b);
+  });
+  const m = /^#h(\d+)$/.exec(location.hash);
+  const start = m ? Math.min(Math.max(parseInt(m[1], 10) - 1, 0), HOOFDSTUKKEN.length - 1) : 0;
+  toon(start);
+})();
+</script>
