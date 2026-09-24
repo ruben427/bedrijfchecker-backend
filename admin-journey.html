@@ -35,9 +35,7 @@
     background:var(--surface);color:var(--text);border:1px solid var(--border);display:flex;align-items:center;gap:8px}
   .tab .nr{font-family:var(--font-mono,'IBM Plex Mono',monospace);font-size:.76rem;color:var(--text-muted)}
   .tab .tel{font-size:.7rem;font-weight:700;background:var(--warn-soft);color:var(--warn);border-radius:999px;padding:1px 7px}
-  .tab[aria-selected="true"]{background:var(--heading);border-color:var(--heading);color:var(--surface)}
-  .tab[aria-selected="true"] .nr{color:var(--surface);opacity:.8}
-
+  
   .hoofdstuk-kop{margin:18px 0 4px}
   .hoofdstuk-kop h2{font-family:var(--font-kop,'Baloo 2',sans-serif);color:var(--heading);font-size:1.3rem;margin:0}
   .hoofdstuk-kop p{margin:4px 0 0;color:var(--text-muted);font-size:.9rem;line-height:1.55;max-width:760px}
@@ -121,6 +119,40 @@
     .pg{grid-template-columns:1fr}
   }
 
+  /* Doorlopende journey met kleur per hoofdstuk */
+  .balk{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:8px;
+    border-bottom:3px solid var(--hk-actief, var(--border));margin-top:18px;transition:border-color .25s}
+  .balk .tabs{flex:1 1 auto;margin:0;border-bottom:0;padding:10px 2px}
+  .navknoppen{display:flex;gap:6px;flex:0 0 auto}
+  .nav{font:inherit;font-size:1rem;font-weight:700;width:38px;height:38px;border-radius:10px;cursor:pointer;
+    background:var(--surface);color:var(--text);border:1px solid var(--border)}
+  .nav:hover{border-color:var(--hk-actief, var(--border))}
+  .tab{border-left:4px solid var(--hk)}
+  .tab[aria-selected="true"]{background:var(--hk);border-color:var(--hk);color:#fff}
+  .tab[aria-selected="true"] .nr{color:#fff}
+  .rail{position:relative}
+  .rail:focus-visible{outline:2px solid var(--hk-actief);outline-offset:4px;border-radius:12px}
+  .stap{border-top:5px solid var(--hk)}
+  .stap .stap-kop{background:color-mix(in srgb, var(--hk) 9%, var(--surface));border-radius:13px 13px 0 0}
+  .stap .stap-nr{color:var(--hk)}
+  .stap:not(:last-child)::after{background:var(--hk)}
+  .hstart{flex:0 0 250px;scroll-snap-align:start;border-radius:18px;padding:22px 20px;position:relative;
+    background:var(--hk);color:#fff;display:flex;flex-direction:column;gap:8px;align-self:stretch;min-height:320px}
+  .hstart-nr{font-family:var(--font-mono,'IBM Plex Mono',monospace);font-size:.76rem;opacity:.85;text-transform:uppercase;letter-spacing:.06em}
+  .hstart h2{margin:0;font-family:var(--font-kop,'Baloo 2',sans-serif);font-size:1.45rem;line-height:1.15;color:#fff}
+  .hstart p{margin:0;font-size:.88rem;line-height:1.55;opacity:.95}
+  .hstart-feit{margin-top:auto;font-size:.78rem;font-weight:600;opacity:.9}
+  .hstart-pijl{position:absolute;right:16px;bottom:14px;font-size:1.4rem;opacity:.7}
+  @media (prefers-color-scheme: dark){
+    .tab[aria-selected="true"],.tab[aria-selected="true"] .nr,.hstart,.hstart h2{color:#17100a}
+  }
+  .ideeen{border-top:5px solid var(--hk-actief, var(--border))}
+  .ideeen h3{color:var(--hk-actief, var(--heading))}
+  @media (max-width:640px){
+    .hstart{flex-basis:70vw;min-height:260px}
+    .navknoppen{display:none}
+  }
+
   @media (max-width:640px){
     .top h1{font-size:1.4rem}
     .stap{flex-basis:84vw}
@@ -132,7 +164,7 @@
 <div class="wrap">
   <div class="top">
     <h1>Journey — PepProof</h1>
-    <p class="sub">Van twijfel over een shop tot terugkomen na aankoop. Zeven hoofdstukken, per hoofdstuk de stappen van links naar rechts.
+    <p class="sub">Van twijfel over een shop tot terugkomen na aankoop. Zeven hoofdstukken achter elkaar, van links naar rechts; elke kleur is een hoofdstuk.
       Per stap: de actie en van wie, pains en gains, wat nodig is om de stap te voltooien, en open vragen. Onder elk hoofdstuk staan de ideeën.</p>
   </div>
 
@@ -152,8 +184,16 @@
     <span class="laan" style="padding:0;border:0"><span class="rol leverancier">Leverancier</span></span>
   </div>
 
-  <div class="tabs" role="tablist" id="tabs"></div>
-  <div id="hoofdstuk"></div>
+  <div class="balk">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="navknoppen">
+      <button class="nav" id="terug" aria-label="Vorige stap">←</button>
+      <button class="nav" id="verder" aria-label="Volgende stap">→</button>
+    </div>
+  </div>
+  <div class="rail" id="rail" tabindex="0" aria-label="Journey, schuif opzij"></div>
+  <p class="hint">Schuif opzij, gebruik de pijlen, of klik een hoofdstuk. De tab bovenin loopt mee.</p>
+  <section class="ideeen" id="ideeen"></section>
 
 </div>
 
@@ -598,8 +638,9 @@ function testsHtml(tests){
     '</span> ' + esc(t.tekst || '') + '</li>').join('') + '</ul></div>';
 }
 
-function stapHtml(s, i){
-  let h = '<article class="stap"><div class="stap-kop"><div class="stap-nr">Stap ' + (i+1) + '</div><h3>' + esc(s.titel) + '</h3></div>';
+function stapHtml(s, i, hi){
+  let h = '<article class="stap" data-h="' + hi + '"><div class="stap-kop"><div class="stap-nr">' + (hi+1) + '.' + (i+1) + ' · ' +
+          esc(HOOFDSTUKKEN[hi].titel) + '</div><h3>' + esc(s.titel) + '</h3></div>';
   h += '<div class="sectie-kop">Actie · van wie</div>';
   for (const [sleutel, naam] of ROLLEN){
     const tekst = s[sleutel];
@@ -628,10 +669,20 @@ function stapHtml(s, i){
   return h + '</article>';
 }
 
-function ideeenHtml(hs){
+// Eerste kaart van elk hoofdstuk: markeert de overgang in de doorlopende rail.
+function startHtml(hs, hi){
+  const open = hs.stappen.reduce((n, s) => n + ((s.vragen || []).length), 0);
+  return '<article class="hstart" data-h="' + hi + '" id="h' + (hi+1) + '">' +
+    '<div class="hstart-nr">Hoofdstuk ' + (hi+1) + '</div>' +
+    '<h2>' + esc(hs.titel) + '</h2><p>' + esc(hs.intro) + '</p>' +
+    '<div class="hstart-feit">' + hs.stappen.length + ' stappen · ' + open + ' open vragen · ' + (hs.ideeen || []).length + ' ideeën</div>' +
+    '<div class="hstart-pijl" aria-hidden="true">→</div></article>';
+}
+
+function ideeenHtml(hs, hi){
   const lijstje = hs.ideeen || [];
-  let h = '<section class="ideeen"><h3>Ideeën voor dit hoofdstuk</h3>';
-  if (!lijstje.length) return h + '<p class="hint">Nog geen ideeën.</p></section>';
+  let h = '<h3>Ideeën — ' + (hi+1) + '. ' + esc(hs.titel) + '</h3>';
+  if (!lijstje.length) return h + '<p class="hint">Nog geen ideeën.</p>';
   h += '<div class="idee-tabel"><div class="idee-rij kop"><span>Idee — wat kunnen we doen</span><span>Om wat te bereiken</span><span>Wat brengt het ons</span><span>Status</span></div>';
   for (const d of lijstje){
     const st = STATUSSEN.includes(d.status) ? d.status : 'idee';
@@ -639,35 +690,87 @@ function ideeenHtml(hs){
     h += '<div class="idee-rij"><span data-k="Idee">' + esc(d.idee) + '</span><span data-k="Doel">' + esc(d.doel) +
          '</span><span data-k="Brengt">' + esc(d.brengt) + '</span><span><span class="status ' + st + '">' + st + '</span>' + taak + '</span></div>';
   }
-  return h + '</div></section>';
+  return h + '</div>';
 }
 
-function toon(idx){
-  const hs = HOOFDSTUKKEN[idx];
+// Een kleur per hoofdstuk. Donkere modus krijgt een lichtere variant (zie CSS).
+const KLEUREN = ['#2f6fde', '#e0620b', '#1a8a5a', '#8a3ffc', '#c2334a', '#0d8f98', '#a67a00'];
+const KLEUREN_DONKER = ['#7aa7ff', '#ff9a52', '#4cc990', '#b98cff', '#ff7d91', '#4fd0d8', '#e6bb3c'];
+
+let actief = -1, doelH = null, doelTimer = null;
+
+function zetActief(hi){
+  if (hi === actief) return;
+  actief = hi;
+  const hs = HOOFDSTUKKEN[hi];
+  document.documentElement.style.setProperty('--hk-actief', 'var(--hk' + hi + ')');
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.setAttribute('aria-selected', i === idx ? 'true' : 'false');
-    if (i === idx) { const bar = t.parentNode; bar.scrollLeft = t.offsetLeft - bar.offsetLeft - 8; }
+    const aan = i === hi;
+    t.setAttribute('aria-selected', aan ? 'true' : 'false');
+    if (aan) { const bar = t.parentNode; bar.scrollTo({ left: t.offsetLeft - bar.offsetLeft - 8, behavior: 'smooth' }); }
   });
-  document.getElementById('hoofdstuk').innerHTML =
-    '<div class="hoofdstuk-kop"><h2>' + (idx+1) + '. ' + esc(hs.titel) + '</h2><p>' + esc(hs.intro) + '</p></div>' +
-    '<div class="rail">' + hs.stappen.map(stapHtml).join('') + '</div>' +
-    '<p class="hint">Schuif opzij voor de volgende stap.</p>' +
-    ideeenHtml(hs);
-  try { history.replaceState(null, '', '#h' + (idx+1)); } catch(e){}
+  document.getElementById('ideeen').innerHTML = ideeenHtml(hs, hi);
+  try { history.replaceState(null, '', '#h' + (hi+1)); } catch(e){}
+}
+
+function spring(hi, zacht){
+  const rail = document.getElementById('rail');
+  const doel = document.getElementById('h' + (hi+1));
+  if (!doel) return;
+  doelH = hi; zetActief(hi);
+  clearTimeout(doelTimer); doelTimer = setTimeout(() => { doelH = null; }, 900);
+  rail.scrollTo({ left: doel.offsetLeft - 2, behavior: zacht ? 'smooth' : 'auto' });
+}
+
+function spy(){
+  if (doelH !== null) return;
+  const rail = document.getElementById('rail');
+  const x = rail.scrollLeft + 60;
+  const starts = rail.querySelectorAll('.hstart');
+  let hi = 0;
+  starts.forEach((el, i) => { if (el.offsetLeft <= x) hi = i; });
+  // Helemaal aan het eind: laatste hoofdstuk, ook als de startkaart nog niet links staat.
+  if (rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4) hi = starts.length - 1;
+  zetActief(hi);
 }
 
 (function init(){
+  const kleurCss = HOOFDSTUKKEN.map((_, i) => '--hk' + i + ':' + KLEUREN[i % KLEUREN.length]).join(';');
+  const kleurDonker = HOOFDSTUKKEN.map((_, i) => '--hk' + i + ':' + KLEUREN_DONKER[i % KLEUREN_DONKER.length]).join(';');
+  const st = document.createElement('style');
+  st.textContent = ':root{' + kleurCss + '} @media (prefers-color-scheme: dark){:root{' + kleurDonker + '}} ' +
+    HOOFDSTUKKEN.map((_, i) => '[data-h="' + i + '"]{--hk:var(--hk' + i + ')}').join(' ');
+  document.head.appendChild(st);
+
   const tabs = document.getElementById('tabs');
   HOOFDSTUKKEN.forEach((hs, i) => {
     const open = hs.stappen.reduce((n, s) => n + ((s.vragen || []).length), 0);
     const b = document.createElement('button');
-    b.className = 'tab'; b.setAttribute('role', 'tab');
+    b.className = 'tab'; b.setAttribute('role', 'tab'); b.dataset.h = i;
     b.innerHTML = '<span class="nr">' + (i+1) + '</span>' + esc(hs.titel) + (open ? '<span class="tel" title="open vragen">' + open + '</span>' : '');
-    b.onclick = () => toon(i);
+    b.onclick = () => spring(i, true);
     tabs.appendChild(b);
   });
+
+  const rail = document.getElementById('rail');
+  rail.innerHTML = HOOFDSTUKKEN.map((hs, hi) => startHtml(hs, hi) + hs.stappen.map((s, i) => stapHtml(s, i, hi)).join('')).join('');
+  let wacht = false;
+  rail.addEventListener('scroll', () => {
+    if (wacht) return; wacht = true;
+    requestAnimationFrame(() => { wacht = false; spy(); });
+  }, { passive: true });
+
+  const stapBreedte = () => (rail.querySelector('.stap') || rail).offsetWidth + 14;
+  document.getElementById('terug').onclick = () => rail.scrollBy({ left: -stapBreedte(), behavior: 'smooth' });
+  document.getElementById('verder').onclick = () => rail.scrollBy({ left: stapBreedte(), behavior: 'smooth' });
+  rail.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') { rail.scrollBy({ left: stapBreedte(), behavior: 'smooth' }); e.preventDefault(); }
+    if (e.key === 'ArrowLeft') { rail.scrollBy({ left: -stapBreedte(), behavior: 'smooth' }); e.preventDefault(); }
+  });
+
   const m = /^#h(\d+)$/.exec(location.hash);
   const start = m ? Math.min(Math.max(parseInt(m[1], 10) - 1, 0), HOOFDSTUKKEN.length - 1) : 0;
-  toon(start);
+  zetActief(start);
+  if (start) requestAnimationFrame(() => spring(start, false));
 })();
 </script>
