@@ -1518,7 +1518,12 @@ body.geen-testrecht .portret-schrijf{ display:none }
     { id: 'register', titel: 'Register' },
     { id: 'verzending', titel: 'Verzending' },
     { id: 'contact', titel: 'Contact' },
-    { id: 'handel', titel: 'Handel' }
+    { id: 'handel', titel: 'Handel' },
+    { id: 'verband', titel: 'Waar het nog aan vastzit' },
+    { id: 'vindbaar', titel: 'Vindbaar' },
+    // Persoonsgegevens onderaan en met een eigen kop, zodat het zichtbaar een
+    // aparte categorie is en niet tussen het BTW-nummer door glipt.
+    { id: 'personen', titel: 'Personen — persoonsgegevens' }
   ];
   var feitenNu = [];
 
@@ -1532,8 +1537,14 @@ body.geen-testrecht .portret-schrijf{ display:none }
       : (f.waarde ? '<span class="fw">' + esc(f.waarde) + '</span>'
                   : '<span class="fw leeg">—</span>');
     var bron = f.bron ? '<span class="fbron">' + esc(f.bron) + '</span>' : '';
+    // Een persoonsgegeven draagt een merkteken. Publiek op te vragen is niet
+    // hetzelfde als vrij te publiceren, en dat verschil hoort zichtbaar te
+    // zijn op het scherm waar iemand het intikt.
+    var merk = f.persoonsgegeven
+      ? ' <span class="stand" title="Persoonsgegeven. Opslaan is iets anders dan publiceren; het publieke rapport slaat deze velden over tenzij dat apart is besloten.">persoon</span>'
+      : '';
     return '<div class="feitrij" data-veld="' + esc(f.veld) + '">' +
-      '<span class="fl" title="' + esc(f.hulp || '') + '">' + esc(f.label) + '</span>' +
+      '<span class="fl" title="' + esc(f.hulp || '') + '">' + esc(f.label) + merk + '</span>' +
       '<span>' + waarde + bron + '</span>' +
       '<span class="portret-schrijf" style="display:flex;gap:8px;align-items:center">' + badge +
         '<button type="button" class="knop sec klein" data-feit="' + esc(f.veld) + '">' +
@@ -1545,7 +1556,8 @@ body.geen-testrecht .portret-schrijf{ display:none }
     feitenNu = lijst || [];
     var h = '<div class="blok" id="fBlok"><h2>Bedrijfsgegevens</h2>' +
       '<p class="duiding">Wat deze partij over zichzelf zegt, en wat wij ervan hebben nagekeken. ' +
-      'Elk veld draagt zijn eigen stand: wat de shop vermeldt is iets anders dan wat wij hebben vastgesteld.</p>';
+      'Elk veld draagt zijn eigen stand: wat de shop vermeldt is iets anders dan wat wij hebben vastgesteld. ' +
+      'Velden met <em>persoon</em> zijn persoonsgegevens — die staan hier wel, maar gaan niet vanzelf mee naar het publieke rapport.</p>';
     FEIT_GROEPEN.forEach(function (g) {
       var velden = feitenNu.filter(function (f) { return f.groep === g.id; });
       if (!velden.length) return;

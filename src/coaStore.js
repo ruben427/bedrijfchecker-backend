@@ -1287,9 +1287,21 @@ const FEIT_STANDEN = ['voorstel', 'vermeld', 'vastgesteld', 'niet_gevonden'];
 
 // De velden die een leverancier kan dragen. Volgorde is de weergavevolgorde.
 //
+// BESLUIT RUBEN 24 september: alles wat publiek te vinden is mag erin.
+//
+// LET OP het onderscheid dat daar onder zit. Publiek vindbaar en publiceerbaar
+// zijn twee verschillende vragen. Bestuurdersnamen staan open in het
+// Handelsregister, maar het blijven persoonsgegevens: opslaan is iets anders
+// dan ze systematisch herpubliceren naast een oordeel over een shop.
+//
+// Daarom draagt zo'n veld hier persoonsgegeven:true. Dat is geen verbod - het
+// staat gewoon in de admin - maar het maakt het mogelijk om het publieke
+// rapport ze in EEN regel te laten overslaan, in plaats van dat iemand later
+// per veld moet gaan nadenken. Wat er uiteindelijk publiek gaat, beslissen
+// Ruben en Annemarie, niet dit bestand.
+//
 // WAT HIER NIET IN STAAT en ook niet in hoort: aantallen, percentages en
-// scores - die komen per run uit de database. Bestuurders en eigenaren -
-// persoonsgegevens, dat is de Deep Dive en een ander juridisch verhaal.
+// scores - die komen per run uit de database en zijn binnen een week onwaar.
 // En alles wat over de bedoeling van een bedrijf gaat; dit zijn feiten.
 const FEIT_VELDEN = [
   { id: 'handelsnaam', label: 'Handelsnaam', groep: 'naam' },
@@ -1305,9 +1317,20 @@ const FEIT_VELDEN = [
     hulp: 'Noemt de shop ergens een fysiek adres? Los van of wij het konden nagaan.' },
   { id: 'kvk', label: 'KvK-nummer', groep: 'register' },
   { id: 'btw', label: 'BTW-nummer', groep: 'register' },
+  { id: 'rechtsvorm', label: 'Rechtsvorm', groep: 'register',
+    hulp: 'B.V., eenmanszaak, VOF, buitenlandse vennootschap.' },
   { id: 'sbi', label: 'SBI-hoofdactiviteit', groep: 'register',
-    hulp: 'Waarvoor het bedrijf staat ingeschreven.' },
+    hulp: 'Waarvoor het bedrijf staat ingeschreven. Bij peptivae staat de shop op de inschrijving van een vechtsportschool.' },
   { id: 'inschrijfdatum', label: 'Eerste inschrijving KvK', groep: 'register' },
+  { id: 'inschrijfstatus', label: 'Status inschrijving', groep: 'register',
+    hulp: 'Actief, opgeheven, ontbonden, faillissement.' },
+  { id: 'statutaireZetel', label: 'Statutaire zetel', groep: 'register',
+    hulp: 'De juridische vestigingsplaats. Hoeft niet hetzelfde te zijn als waar ze zitten.' },
+  { id: 'vestigingsnummer', label: 'Vestigingsnummer', groep: 'register' },
+  { id: 'handelsnamen', label: 'Alle handelsnamen', groep: 'register',
+    hulp: 'Onder welke namen deze inschrijving nog meer naar buiten treedt.' },
+  { id: 'werkzamePersonen', label: 'Werkzame personen', groep: 'register',
+    hulp: 'Zoals het register het vermeldt.' },
   { id: 'magazijn', label: 'Magazijn', groep: 'verzending',
     hulp: 'Eigen magazijn op hetzelfde adres, een ander adres, of doorverzending. Dit is altijd een bewering van de shop.' },
   { id: 'verzendingVanuit', label: 'Verzending vanuit', groep: 'verzending' },
@@ -1319,7 +1342,31 @@ const FEIT_VELDEN = [
   { id: 'voorwaarden', label: 'Algemene voorwaarden', groep: 'handel',
     hulp: 'De URL, of niet_gevonden.' },
   { id: 'retourbeleid', label: 'Retour- en herroepingsbeleid', groep: 'handel',
-    hulp: 'De URL, of niet_gevonden.' }
+    hulp: 'De URL, of niet_gevonden.' },
+
+  // Persoonsgegevens. Publiek op te vragen bij de KvK, maar het blijven namen
+  // van mensen. Zie de uitleg boven deze lijst: opslaan is niet hetzelfde als
+  // publiceren, en het publieke rapport filtert hierop.
+  { id: 'bestuurders', label: 'Bestuurders', groep: 'personen', persoonsgegeven: true,
+    hulp: 'Zoals vermeld in het Handelsregister. Persoonsgegeven.' },
+  { id: 'eigenaar', label: 'Eigenaar of enig aandeelhouder', groep: 'personen', persoonsgegeven: true,
+    hulp: 'Persoonsgegeven.' },
+  { id: 'domeinhouder', label: 'Domeinhouder', groep: 'personen', persoonsgegeven: true,
+    hulp: 'Uit de whois. Bij een natuurlijk persoon is dit vaak afgeschermd, en dat is zelf ook een gegeven.' },
+
+  // Waar deze partij nog meer aan vastzit. Voor dit project het nuttigst van
+  // allemaal: twee shops op dezelfde inschrijving is een hard, controleerbaar
+  // verband, en dat is precies wat een bezoeker nooit zelf ziet.
+  { id: 'andereShopsZelfdeKvk', label: 'Andere shops op dezelfde inschrijving', groep: 'verband' },
+  { id: 'domeinSinds', label: 'Domein geregistreerd sinds', groep: 'verband',
+    hulp: 'Uit de whois. Zegt hoe lang deze winkel bestaat, los van wat de site beweert.' },
+  { id: 'merkregistratie', label: 'Merkregistratie', groep: 'verband',
+    hulp: 'BOIP of EUIPO, als er een is.' },
+
+  { id: 'socialmedia', label: 'Social media', groep: 'vindbaar',
+    hulp: 'De kanalen die de shop zelf noemt. Eén per regel.' },
+  { id: 'reviewprofiel', label: 'Reviewprofiel', groep: 'vindbaar',
+    hulp: 'Trustpilot of vergelijkbaar. De URL, niet de score — die verandert.' }
 ];
 const FEIT_VELD_IDS = new Set(FEIT_VELDEN.map((v) => v.id));
 
