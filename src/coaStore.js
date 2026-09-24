@@ -366,16 +366,18 @@ async function initCoaSchema() {
       aangemaakt_op BIGINT
     );
   `);
-  // WELKE VELDEN WILLEN WE, PER ENTITEIT EN PER LAAG.
+  // WAT TONEN WE, PER ENTITEIT EN PER LAAG.
   //
-  // Drie lagen, en ze vallen niet samen:
-  //   verzamelen  gaat de crawler hiernaar op zoek, staat het als taak open
-  //   free        mag een bezoeker dit gratis zien
-  //   deepdive    zit het in het betaalde deel
+  // Twee lagen: free en deepdive. BESLUIT RUBEN 24 september.
   //
-  // Bestuurders laten zien waarom dat uit elkaar moet: die wil je wel
-  // verzamelen en waarschijnlijk in geen van beide rapporten. Met een enkele
-  // aan-uitknop per veld kan dat niet.
+  // Er stond eerst een derde laag, "verzamelen". Die is eruit: OPHALEN IS EEN
+  // EIGENSCHAP VAN DE CRAWLER, GEEN INSTELLING. Hij gaat achter alles aan wat
+  // hij kan vinden, voor elke leverancier. Wat je hier zet is uitsluitend wat
+  // je ermee laat zien.
+  //
+  // Wat dat voor een persoonsgegeven betekent: bestuurders worden opgehaald en
+  // staan in de admin, maar in geen van beide lagen. Daar is geen derde rij
+  // voor nodig - niet aangevinkt is genoeg.
   //
   // Een regel betekent AAN. Geen regel is uit; dat scheelt een kolom die je
   // moet bijhouden en maakt "zet deze laag op deze lijst" een vervanging.
@@ -1412,14 +1414,16 @@ const FEIT_VELDEN = [
 const FEIT_GROEPEN = ['naam', 'adres', 'register', 'verzending', 'contact',
   'handel', 'verband', 'vindbaar', 'personen'];
 const ENTITEITEN = ['nl', 'eu', 'ow'];
-const LAGEN = ['verzamelen', 'free', 'deepdive'];
+const LAGEN = ['free', 'deepdive'];
 
-// De eerste vulling. FEIT_VELDEN is vanaf hier de startinhoud en niet meer de
-// waarheid: staat er al iets in de tabel, dan blijft dat staan.
+// De eerste vulling van de VELDENLIJST. FEIT_VELDEN is vanaf hier de
+// startinhoud en niet meer de waarheid: staat er al iets in de tabel, dan
+// blijft dat staan.
 //
-// LET OP wat er NIET gezaaid wordt: free en deepdive blijven leeg. Wat een
-// bezoeker gratis te zien krijgt is een besluit van Annemarie, en dat hoort
-// niet als bijvangst van een eerste opstart te ontstaan.
+// LET OP dat er GEEN profiel gezaaid wordt. Beide lagen beginnen leeg. Wat een
+// bezoeker te zien krijgt is een besluit van Annemarie, en dat hoort niet als
+// bijvangst van een eerste opstart te ontstaan - een gezaaid profiel zou een
+// keuze zijn die niemand heeft gemaakt en die er wel uitziet als beleid.
 async function zaaiVelden() {
   try {
     const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM veld_definitie');
@@ -1433,22 +1437,10 @@ async function zaaiVelden() {
         );
       }
     }
-    const p = await pool.query('SELECT COUNT(*)::int AS n FROM veld_profiel');
-    if (!p.rows[0] || p.rows[0].n === 0) {
-      // Alles wat geen persoonsgegeven is staat bij elke entiteit op
-      // verzamelen. Dat is de stand van vandaag: we halen op wat we kunnen,
-      // en wat ermee gebeurt wordt daarna pas gekozen.
-      for (const e of ENTITEITEN) {
-        for (const v of FEIT_VELDEN) {
-          if (v.persoonsgegeven) continue;
-          await pool.query(
-            `INSERT INTO veld_profiel (entiteit, laag, veld, vastgelegd_door, vastgelegd_op)
-             VALUES ($1,'verzamelen',$2,'startinhoud',$3) ON CONFLICT DO NOTHING`,
-            [e, v.id, Date.now()]
-          );
-        }
-      }
-    }
+    // De laag "verzamelen" bestaat niet meer; wat er van een eerdere versie
+    // nog van staat hoort weg, anders draagt de tabel een laag die nergens
+    // meer betekenis heeft.
+    await pool.query(`DELETE FROM veld_profiel WHERE laag = 'verzamelen'`);
   } catch (e) {
     console.error('coaStore.zaaiVelden:', (e && e.message) || e);
   }

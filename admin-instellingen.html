@@ -154,8 +154,6 @@
       uitleg: 'Wereldwijd. Registers zijn hier zelden openbaar en vaak niet na te gaan.' }
   };
   var LAAG = {
-    verzamelen: { titel: 'Verzamelen',
-      uitleg: 'Hier gaat de crawler naar op zoek, en het staat als open taak in de admin.' },
     free: { titel: 'In de gratis check',
       uitleg: 'Wat een bezoeker zonder te betalen te zien krijgt.' },
     deepdive: { titel: 'In de Deep Dive',
@@ -255,10 +253,10 @@
         : zonderNaam ? 'Er staat geen naam bij je sleutel in deze browser. Meld je opnieuw aan in de admin — elk profiel draagt wie het vastlegde.'
         : 'Je kijkt mee met een leestoken — aanpassen kan niet.') + '</p>' +
       '<div class="blok" style="background:var(--purple-50)">' +
-        '<p class="duiding" style="margin:0">Drie lagen, en ze vallen niet samen. ' +
-        '<strong>Verzamelen</strong> is wat we ophalen, <strong>gratis</strong> en <strong>Deep Dive</strong> ' +
-        'is wat we tonen. Een veld dat je wel wilt weten maar niet wilt tonen — bestuurders bijvoorbeeld — ' +
-        'staat alleen op verzamelen.</p></div>' +
+        '<p class="duiding" style="margin:0">De crawler haalt op wat hij kan vinden — dat staat hier niet. ' +
+        'Wat je hier zet is wat we ervan <strong>tonen</strong>. Een veld dat je wel wilt weten maar niet ' +
+        'wilt laten zien — bestuurders bijvoorbeeld — vink je gewoon nergens aan. ' +
+        'Het staat dan in de admin en verder nergens.</p></div>' +
       data.entiteiten.map(entBlok).join('') +
       nieuwVeldBlok();
     bind();
