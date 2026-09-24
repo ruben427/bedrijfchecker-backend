@@ -772,10 +772,55 @@ app.post('/api/admin/leveranciers/feit', rl.caseAction, auth.requireOwnerToken, 
   }
 });
 
-// Welke velden er zijn, met hun label en groep. De admin tekent zijn formulier
-// hieruit, zodat een veld erbij op een plek gebeurt en niet op twee.
-app.get('/api/admin/leveranciers/veldenlijst', rl.read, auth.requireOwnerToken, requireLezer, (req, res) => {
-  res.json({ velden: coaStore.FEIT_VELDEN, standen: coaStore.FEIT_STANDEN });
+// Welke velden er zijn, en per entiteit welke lagen ze dragen. Dit is wat de
+// instellingenpagina tekent en straks wat de crawler als opdracht leest.
+app.get('/api/admin/velden', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const [velden, profielen] = await Promise.all([
+      coaStore.veldDefinities(), coaStore.veldProfielen()
+    ]);
+    res.json({ velden, profielen, groepen: coaStore.FEIT_GROEPEN,
+      entiteiten: coaStore.ENTITEITEN, lagen: coaStore.LAGEN, standen: coaStore.FEIT_STANDEN });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Een veld erbij. De sleutel wordt uit het label afgeleid en komt nooit uit de
+// invoer: hij belandt in een primaire sleutel en in de opmaak van de admin.
+app.post('/api/admin/velden', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const label = String(b.label || '').trim();
+    if (label.length < 2) return res.status(400).json({ error: 'geen_label', message: 'Geef het veld een naam.' });
+    if (coaStore.FEIT_GROEPEN.indexOf(String(b.groep || '')) === -1) {
+      return res.status(400).json({ error: 'geen_groep', message: 'Kies een bestaande groep.' });
+    }
+    const door = String(b.door || '').trim();
+    if (!door) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie dit veld toevoegt.' });
+    const veld = await coaStore.saveVeldDefinitie({
+      label, groep: b.groep, hulp: b.hulp, persoonsgegeven: !!b.persoonsgegeven, door
+    });
+    if (!veld) return res.status(500).json({ error: 'niet_opgeslagen', message: 'Toevoegen is niet gelukt.' });
+    res.json({ ok: true, veld });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Een hele laag van een entiteit zetten. Het scherm stuurt de complete lijst;
+// wat er niet in staat gaat eruit.
+app.post('/api/admin/velden/profiel', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const door = String(b.door || '').trim();
+    if (!door) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie dit vastlegt.' });
+    const uit = await coaStore.zetVeldProfiel(String(b.entiteit || ''), String(b.laag || ''), b.velden, door);
+    if (!uit) return res.status(400).json({ error: 'niet_opgeslagen', message: 'Onbekende entiteit of laag.' });
+    res.json({ ok: true, entiteit: b.entiteit, laag: b.laag, velden: uit });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
 });
 
 // Het portret van een leverancier vastleggen: het geschreven stuk over wie

@@ -350,6 +350,46 @@ async function initCoaSchema() {
       PRIMARY KEY (supplier_key, veld)
     );
   `);
+  // WELKE VELDEN BESTAAN ER. Stond tot 24 september in FEIT_VELDEN in dit
+  // bestand; die lijst is nu nog uitsluitend de STARTINHOUD. Wat er werkelijk
+  // is, staat hier - zodat een veld erbij een klik in de admin is en geen
+  // uitrol.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS veld_definitie (
+      veld TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      groep TEXT NOT NULL,
+      hulp TEXT,
+      persoonsgegeven BOOLEAN NOT NULL DEFAULT FALSE,
+      volgorde INT NOT NULL DEFAULT 0,
+      aangemaakt_door TEXT,
+      aangemaakt_op BIGINT
+    );
+  `);
+  // WELKE VELDEN WILLEN WE, PER ENTITEIT EN PER LAAG.
+  //
+  // Drie lagen, en ze vallen niet samen:
+  //   verzamelen  gaat de crawler hiernaar op zoek, staat het als taak open
+  //   free        mag een bezoeker dit gratis zien
+  //   deepdive    zit het in het betaalde deel
+  //
+  // Bestuurders laten zien waarom dat uit elkaar moet: die wil je wel
+  // verzamelen en waarschijnlijk in geen van beide rapporten. Met een enkele
+  // aan-uitknop per veld kan dat niet.
+  //
+  // Een regel betekent AAN. Geen regel is uit; dat scheelt een kolom die je
+  // moet bijhouden en maakt "zet deze laag op deze lijst" een vervanging.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS veld_profiel (
+      entiteit TEXT NOT NULL,
+      laag TEXT NOT NULL,
+      veld TEXT NOT NULL,
+      vastgelegd_door TEXT,
+      vastgelegd_op BIGINT,
+      PRIMARY KEY (entiteit, laag, veld)
+    );
+  `);
+  await zaaiVelden();
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -1368,7 +1408,143 @@ const FEIT_VELDEN = [
   { id: 'reviewprofiel', label: 'Reviewprofiel', groep: 'vindbaar',
     hulp: 'Trustpilot of vergelijkbaar. De URL, niet de score — die verandert.' }
 ];
-const FEIT_VELD_IDS = new Set(FEIT_VELDEN.map((v) => v.id));
+
+const FEIT_GROEPEN = ['naam', 'adres', 'register', 'verzending', 'contact',
+  'handel', 'verband', 'vindbaar', 'personen'];
+const ENTITEITEN = ['nl', 'eu', 'ow'];
+const LAGEN = ['verzamelen', 'free', 'deepdive'];
+
+// De eerste vulling. FEIT_VELDEN is vanaf hier de startinhoud en niet meer de
+// waarheid: staat er al iets in de tabel, dan blijft dat staan.
+//
+// LET OP wat er NIET gezaaid wordt: free en deepdive blijven leeg. Wat een
+// bezoeker gratis te zien krijgt is een besluit van Annemarie, en dat hoort
+// niet als bijvangst van een eerste opstart te ontstaan.
+async function zaaiVelden() {
+  try {
+    const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM veld_definitie');
+    if (!rows[0] || rows[0].n === 0) {
+      for (let i = 0; i < FEIT_VELDEN.length; i++) {
+        const v = FEIT_VELDEN[i];
+        await pool.query(
+          `INSERT INTO veld_definitie (veld, label, groep, hulp, persoonsgegeven, volgorde, aangemaakt_door, aangemaakt_op)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (veld) DO NOTHING`,
+          [v.id, v.label, v.groep, v.hulp || null, !!v.persoonsgegeven, i, 'startinhoud', Date.now()]
+        );
+      }
+    }
+    const p = await pool.query('SELECT COUNT(*)::int AS n FROM veld_profiel');
+    if (!p.rows[0] || p.rows[0].n === 0) {
+      // Alles wat geen persoonsgegeven is staat bij elke entiteit op
+      // verzamelen. Dat is de stand van vandaag: we halen op wat we kunnen,
+      // en wat ermee gebeurt wordt daarna pas gekozen.
+      for (const e of ENTITEITEN) {
+        for (const v of FEIT_VELDEN) {
+          if (v.persoonsgegeven) continue;
+          await pool.query(
+            `INSERT INTO veld_profiel (entiteit, laag, veld, vastgelegd_door, vastgelegd_op)
+             VALUES ($1,'verzamelen',$2,'startinhoud',$3) ON CONFLICT DO NOTHING`,
+            [e, v.id, Date.now()]
+          );
+        }
+      }
+    }
+  } catch (e) {
+    console.error('coaStore.zaaiVelden:', (e && e.message) || e);
+  }
+}
+
+async function veldDefinities() {
+  try {
+    const { rows } = await pool.query(
+      `SELECT veld, label, groep, hulp, persoonsgegeven, volgorde
+         FROM veld_definitie ORDER BY volgorde, veld`
+    );
+    return rows.map((r) => ({
+      id: r.veld, label: r.label, groep: r.groep, hulp: r.hulp || null,
+      persoonsgegeven: !!r.persoonsgegeven, volgorde: r.volgorde
+    }));
+  } catch (e) {
+    console.error('coaStore.veldDefinities:', (e && e.message) || e);
+    return FEIT_VELDEN.slice();
+  }
+}
+
+async function saveVeldDefinitie(g) {
+  const o = g || {};
+  const label = String(o.label || '').trim();
+  const groep = String(o.groep || '').trim();
+  const door = String(o.door || '').trim();
+  if (!label || FEIT_GROEPEN.indexOf(groep) === -1 || !door) return null;
+  // De sleutel komt uit het label en nooit uit de invoer: een veldnaam belandt
+  // in een primaire sleutel en in de admin-opmaak, en daar hoort geen losse
+  // tekst in te kunnen.
+  let basis = label.toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ').trim()
+    .split(' ').map((w, i) => i ? w.charAt(0).toUpperCase() + w.slice(1) : w).join('');
+  if (!basis) return null;
+  basis = basis.slice(0, 40);
+  try {
+    const bestaat = await pool.query('SELECT veld FROM veld_definitie WHERE veld LIKE $1', [basis + '%']);
+    let veld = basis, n = 2;
+    const gebruikt = new Set(bestaat.rows.map((r) => r.veld));
+    while (gebruikt.has(veld)) { veld = basis + n; n++; }
+    const max = await pool.query('SELECT COALESCE(MAX(volgorde), 0)::int AS m FROM veld_definitie');
+    const { rows } = await pool.query(
+      `INSERT INTO veld_definitie (veld, label, groep, hulp, persoonsgegeven, volgorde, aangemaakt_door, aangemaakt_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [veld, label, groep, String(o.hulp || '').trim() || null,
+       !!o.persoonsgegeven, (max.rows[0] ? max.rows[0].m : 0) + 1, door, Date.now()]
+    );
+    const r = rows[0];
+    return r ? { id: r.veld, label: r.label, groep: r.groep, hulp: r.hulp || null,
+      persoonsgegeven: !!r.persoonsgegeven, volgorde: r.volgorde } : null;
+  } catch (e) {
+    console.error('coaStore.saveVeldDefinitie:', (e && e.message) || e);
+    return null;
+  }
+}
+
+async function veldProfielen() {
+  const uit = {};
+  ENTITEITEN.forEach((e) => { uit[e] = {}; LAGEN.forEach((l) => { uit[e][l] = []; }); });
+  try {
+    const { rows } = await pool.query('SELECT entiteit, laag, veld FROM veld_profiel');
+    rows.forEach((r) => {
+      if (!uit[r.entiteit]) { uit[r.entiteit] = {}; LAGEN.forEach((l) => { uit[r.entiteit][l] = []; }); }
+      if (!uit[r.entiteit][r.laag]) uit[r.entiteit][r.laag] = [];
+      uit[r.entiteit][r.laag].push(r.veld);
+    });
+  } catch (e) {
+    console.error('coaStore.veldProfielen:', (e && e.message) || e);
+  }
+  return uit;
+}
+
+// Een hele laag in een keer zetten. Vervangen en niet bijwerken: het scherm
+// stuurt de complete lijst, en dan is uitzetten hetzelfde als niet meesturen.
+async function zetVeldProfiel(entiteit, laag, velden, door) {
+  if (ENTITEITEN.indexOf(entiteit) === -1 || LAGEN.indexOf(laag) === -1) return null;
+  const naam = String(door || '').trim();
+  if (!naam) return null;
+  const lijst = Array.isArray(velden) ? velden.map(String) : [];
+  try {
+    const bekend = new Set((await veldDefinities()).map((v) => v.id));
+    const schoon = lijst.filter((v) => bekend.has(v));
+    await pool.query('DELETE FROM veld_profiel WHERE entiteit = $1 AND laag = $2', [entiteit, laag]);
+    for (const v of schoon) {
+      await pool.query(
+        `INSERT INTO veld_profiel (entiteit, laag, veld, vastgelegd_door, vastgelegd_op)
+         VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+        [entiteit, laag, v, naam, Date.now()]
+      );
+    }
+    return schoon;
+  } catch (e) {
+    console.error('coaStore.zetVeldProfiel:', (e && e.message) || e);
+    return null;
+  }
+}
 
 async function feiten(supplierKey) {
   if (!supplierKey) return [];
@@ -1381,10 +1557,15 @@ async function feiten(supplierKey) {
     rows.forEach((r) => { per[r.veld] = r; });
     // Altijd alle velden teruggeven, ook de lege. Een veld dat ontbreekt in de
     // lijst is onzichtbaar, en dan weet niemand dat het nog open staat.
-    return FEIT_VELDEN.map((v) => {
+    //
+    // Uit de TABEL, niet uit FEIT_VELDEN: sinds 24 september kan een veld er in
+    // de admin bij komen, en dat hoort dan meteen in elk paneel te staan.
+    const definities = await veldDefinities();
+    return definities.map((v) => {
       const r = per[v.id];
       return {
         veld: v.id, label: v.label, groep: v.groep, hulp: v.hulp || null,
+        persoonsgegeven: !!v.persoonsgegeven,
         waarde: r ? r.waarde : null,
         stand: r ? r.stand : null,
         bron: r ? r.bron : null,
@@ -1405,8 +1586,12 @@ async function saveFeit(supplierKey, veld, gegevens) {
   const g = gegevens || {};
   const door = String(g.vastgelegdDoor || '').trim();
   const stand = String(g.stand || '').trim();
-  if (!supplierKey || !FEIT_VELD_IDS.has(veld) || !door) return null;
+  if (!supplierKey || !veld || !door) return null;
   if (FEIT_STANDEN.indexOf(stand) === -1) return null;
+  // Tegen de TABEL toetsen en niet tegen de constante: een veld dat vandaag in
+  // de admin is aangemaakt staat niet in FEIT_VELDEN.
+  const bekend = await veldDefinities();
+  if (!bekend.some((v) => v.id === veld)) return null;
   try {
     const { rows } = await pool.query(
       `INSERT INTO leverancier_feit (supplier_key, veld, waarde, stand, bron, toelichting, vastgelegd_door, vastgelegd_op)
@@ -3414,7 +3599,8 @@ module.exports = {
   bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,
   vestigingen, saveVestiging, labBriefhoofden,
   portret, savePortret,
-  feiten, saveFeit, FEIT_VELDEN, FEIT_STANDEN,
+  feiten, saveFeit, FEIT_VELDEN, FEIT_STANDEN, FEIT_GROEPEN, ENTITEITEN, LAGEN,
+  veldDefinities, saveVeldDefinitie, veldProfielen, zetVeldProfiel,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,
