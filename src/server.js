@@ -723,6 +723,61 @@ app.post('/api/admin/tekstoordelen', rl.caseAction, auth.requireOwnerToken, requ
   }
 });
 
+// Een bedrijfsgegeven van een leverancier vastleggen: adres, KvK, contact.
+//
+// Lezen mag een lezer, vastleggen vraagt een beoordelaar. Elk veld draagt een
+// eigen stand, en die stand is het hele punt: "vermeld" is wat de shop over
+// zichzelf zegt, "vastgesteld" is wat wij bij de bron hebben nagekeken. Het
+// verschil tussen die twee mag niet vervagen, want een vak met een KvK-nummer
+// erin leest als nagegaan.
+//
+// Een voorstel van het systeem kan alleen door een mens naar een hogere stand;
+// de pipeline schrijft zelf uitsluitend "voorstel".
+app.post('/api/admin/leveranciers/feit', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const key = coaStore.supplierKeyFromUrl(String(b.supplierKey || '').trim());
+    if (!key) return res.status(400).json({ error: 'geen_leverancier', message: 'Geef mee om welke leverancier het gaat.' });
+    const veld = String(b.veld || '').trim();
+    if (!coaStore.FEIT_VELDEN.some((v) => v.id === veld)) {
+      return res.status(400).json({ error: 'onbekend_veld', message: 'Dit veld bestaat niet.' });
+    }
+    const stand = String(b.stand || '').trim();
+    if (coaStore.FEIT_STANDEN.indexOf(stand) === -1) {
+      return res.status(400).json({ error: 'geen_stand', message: 'Kies hoe hard dit gegeven is.' });
+    }
+    const vastgelegdDoor = String(b.vastgelegdDoor || '').trim();
+    if (!vastgelegdDoor) return res.status(400).json({ error: 'geen_beoordelaar', message: 'Vul in wie dit heeft vastgelegd.' });
+    const waarde = String(b.waarde == null ? '' : b.waarde).trim();
+    // Niet gevonden is de enige stand zonder waarde. Bij de andere drie staat
+    // er iets, anders is er niets vastgelegd en hoort het veld leeg te blijven.
+    if (stand !== 'niet_gevonden' && !waarde) {
+      return res.status(400).json({ error: 'geen_waarde', message: 'Vul een waarde in, of zet het veld op "niet gevonden".' });
+    }
+    // Een bron is geen formaliteit: zonder bron is over een half jaar niet na
+    // te gaan waar dit vandaan kwam, en dan is het onbruikbaar geworden.
+    const bron = String(b.bron || '').trim();
+    if ((stand === 'vermeld' || stand === 'vastgesteld') && !bron) {
+      return res.status(400).json({ error: 'geen_bron', message: 'Zet erbij waar je dit hebt gezien.' });
+    }
+
+    const opgeslagen = await coaStore.saveFeit(key, veld, {
+      waarde: stand === 'niet_gevonden' ? null : waarde,
+      stand, bron, toelichting: b.toelichting, vastgelegdDoor
+    });
+    if (!opgeslagen) return res.status(500).json({ error: 'niet_opgeslagen', message: 'Opslaan is niet gelukt.' });
+    res.json({ ok: true, feit: opgeslagen });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Welke velden er zijn, met hun label en groep. De admin tekent zijn formulier
+// hieruit, zodat een veld erbij op een plek gebeurt en niet op twee.
+app.get('/api/admin/leveranciers/veldenlijst', rl.read, auth.requireOwnerToken, requireLezer, (req, res) => {
+  res.json({ velden: coaStore.FEIT_VELDEN, standen: coaStore.FEIT_STANDEN });
+});
+
 // Het portret van een leverancier vastleggen: het geschreven stuk over wie
 // deze partij is. Lezen mag een lezer, schrijven vraagt een beoordelaar -
 // dit is redactiewerk en dat is Annemarie's werk, niet dat van het systeem.
@@ -886,11 +941,12 @@ app.get('/api/admin/leveranciers', rl.read, auth.requireOwnerToken, requireLezer
 app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
   try {
     const key = coaStore.supplierKeyFromUrl(req.params.supplierKey);
-    const [referenties, documenten, laboordeel, portret] = await Promise.all([
+    const [referenties, documenten, laboordeel, portret, feiten] = await Promise.all([
       coaStore.referentiesVanLeverancier(key, 500),
       coaStore.getDocumentsBySupplier(key),
       coaStore.laboordeelVoorLeverancier(key),
-      coaStore.portret(key)
+      coaStore.portret(key),
+      coaStore.feiten(key)
     ]);
     referenties.forEach((r) => {
       r.wieBesteldeDeTest = (r.controle && r.controle.client)
@@ -903,6 +959,10 @@ app.get('/api/admin/leveranciers/:supplierKey', rl.read, auth.requireOwnerToken,
       // geschreven. Het staat hier los van alles wat geteld wordt, want het
       // verandert niet mee met een run.
       portret,
+      // De bedrijfsgegevens: adres, KvK, contact. Altijd de hele lijst, ook de
+      // lege velden - anders is niet te zien wat er nog open staat. Elk veld
+      // draagt zijn eigen stand en bron.
+      feiten,
       // Zwaarste bevinding die we kennen: verwijst deze leverancier naar een
       // laboratorium waarvan een mens heeft vastgesteld dat het niet bestaat?
       laboordeel,

@@ -254,6 +254,30 @@ body.geen-testrecht .portret-schrijf{ display:none }
 .portret-wie{ margin:12px 0 0; font-size:.8rem; color:var(--text-faint) }
 .portret-waarschuwing{ margin:8px 0 0; font-size:.82rem; color:var(--accent-strong) }
 .portret-waarschuwing[hidden]{ display:none }
+
+/* Bedrijfsgegevens. Per veld een regel met de waarde, hoe hard hij is en waar
+   hij vandaan komt. Die drie horen bij elkaar te staan: een waarde zonder
+   stand leest als nagegaan, en dat is het meestal niet. */
+.feitgroep{ margin:0 0 18px }
+.feitgroep:last-child{ margin-bottom:0 }
+.feitgroep h3{ font-family:var(--font-kop); font-weight:600; font-size:.82rem;
+  text-transform:uppercase; letter-spacing:.06em; color:var(--text-faint);
+  margin:0 0 6px }
+.feitrij{ display:grid; grid-template-columns:200px 1fr auto; gap:12px;
+  align-items:baseline; padding:8px 0; border-top:1px solid var(--border) }
+.feitrij:first-of-type{ border-top:0 }
+.feitrij .fl{ color:var(--text-subtle); font-size:.86rem }
+.feitrij .fw{ min-width:0; overflow-wrap:anywhere }
+.feitrij .fw.leeg{ color:var(--text-faint) }
+.feitrij .fbron{ display:block; font-size:.76rem; color:var(--text-faint);
+  margin-top:2px; overflow-wrap:anywhere }
+.feitrij .knop{ align-self:center }
+.stand{ font-size:.7rem; padding:2px 8px; border-radius:999px; white-space:nowrap;
+  border:1px solid var(--border); color:var(--text-muted) }
+.stand.voorstel{ border-color:var(--warn); color:var(--warn); background:var(--warn-soft) }
+.stand.vastgesteld{ border-color:var(--ok); color:var(--ok); background:var(--ok-soft) }
+.stand.open{ border-style:dashed; color:var(--text-faint) }
+.feitform{ grid-column:1 / -1; display:flex; flex-direction:column; gap:0; padding:8px 0 4px }
 .rij:focus-visible, .tab:focus-visible, .bel:focus-visible{
   outline:2px solid var(--accent); outline-offset:2px }
 
@@ -1453,14 +1477,151 @@ body.geen-testrecht .portret-schrijf{ display:none }
       }
 
       h += portretBlok(j.portret);
+      h += feitenBlok(j.feiten);
 
       h += '<div class="blok" id="lBlok"></div>';
 
       el('lInhoud').innerHTML = h;
       wirePortret(key, j.portret);
+      wireFeiten(key, j.feiten || []);
       toonWerklijst();
     }).catch(function (e) {
       el('lInhoud').innerHTML = '<p class="fout">Ophalen mislukt: ' + esc(e.message) + '</p>';
+    });
+  }
+
+  // --- bedrijfsgegevens ----------------------------------------------------
+  //
+  // Adres, KvK, contact. Per veld drie dingen, en dat derde is waar het om
+  // draait: de WAARDE, de STAND (hoe hard is dit) en de BRON.
+  //
+  // Een vak met "KvK 42079966" leest als nagegaan. Van de zeven Nederlandse
+  // leveranciers is geen enkel nummer ooit in het Handelsregister opgezocht;
+  // bij peptidekliniek rust het op een Trustpilot-pagina en bij virogenix op
+  // een registeraggregator. Zonder stand zou dat verschil onzichtbaar zijn.
+  //
+  // De standen lopen op in bewijskracht. Een voorstel van het systeem gaat
+  // nooit vanzelf naar vermeld - daar hoort een mens tussen.
+  var FEIT_STAND = {
+    voorstel: { kort: 'voorstel', klas: 'voorstel',
+      uitleg: 'Het systeem heeft dit ergens gelezen. Nog door niemand bekeken.' },
+    vermeld: { kort: 'door de shop vermeld', klas: '',
+      uitleg: 'De shop zegt dit zelf. Een bewering van de partij over zichzelf.' },
+    vastgesteld: { kort: 'door ons vastgesteld', klas: 'vastgesteld',
+      uitleg: 'Bij de bron nagekeken — het register zelf, geen aggregator.' },
+    niet_gevonden: { kort: 'niet gevonden', klas: '',
+      uitleg: 'Wij hebben gezocht en het staat er niet. Dat is een vaststelling.' }
+  };
+  var FEIT_GROEPEN = [
+    { id: 'naam', titel: 'Naam' },
+    { id: 'adres', titel: 'Adres' },
+    { id: 'register', titel: 'Register' },
+    { id: 'verzending', titel: 'Verzending' },
+    { id: 'contact', titel: 'Contact' },
+    { id: 'handel', titel: 'Handel' }
+  ];
+  var feitenNu = [];
+
+  function feitRij(f) {
+    var st = FEIT_STAND[f.stand];
+    var badge = st
+      ? '<span class="stand ' + st.klas + '" title="' + esc(st.uitleg) + '">' + esc(st.kort) + '</span>'
+      : '<span class="stand open">nog niets</span>';
+    var waarde = f.stand === 'niet_gevonden'
+      ? '<span class="fw leeg">niet gevonden</span>'
+      : (f.waarde ? '<span class="fw">' + esc(f.waarde) + '</span>'
+                  : '<span class="fw leeg">—</span>');
+    var bron = f.bron ? '<span class="fbron">' + esc(f.bron) + '</span>' : '';
+    return '<div class="feitrij" data-veld="' + esc(f.veld) + '">' +
+      '<span class="fl" title="' + esc(f.hulp || '') + '">' + esc(f.label) + '</span>' +
+      '<span>' + waarde + bron + '</span>' +
+      '<span class="portret-schrijf" style="display:flex;gap:8px;align-items:center">' + badge +
+        '<button type="button" class="knop sec klein" data-feit="' + esc(f.veld) + '">' +
+        (f.stand ? 'wijzig' : 'invullen') + '</button></span>' +
+      '</div>';
+  }
+
+  function feitenBlok(lijst) {
+    feitenNu = lijst || [];
+    var h = '<div class="blok" id="fBlok"><h2>Bedrijfsgegevens</h2>' +
+      '<p class="duiding">Wat deze partij over zichzelf zegt, en wat wij ervan hebben nagekeken. ' +
+      'Elk veld draagt zijn eigen stand: wat de shop vermeldt is iets anders dan wat wij hebben vastgesteld.</p>';
+    FEIT_GROEPEN.forEach(function (g) {
+      var velden = feitenNu.filter(function (f) { return f.groep === g.id; });
+      if (!velden.length) return;
+      h += '<div class="feitgroep"><h3>' + esc(g.titel) + '</h3>' +
+        velden.map(feitRij).join('') + '</div>';
+    });
+    return h + '</div>';
+  }
+
+  function wireFeiten(key, lijst) {
+    feitenNu = lijst || [];
+    var blok = el('fBlok'); if (!blok) return;
+    Array.prototype.forEach.call(blok.querySelectorAll('[data-feit]'), function (b) {
+      b.addEventListener('click', function () { feitFormulier(key, b.getAttribute('data-feit')); });
+    });
+  }
+
+  function feitFormulier(key, veld) {
+    var rij = el('fBlok') && el('fBlok').querySelector('.feitrij[data-veld="' + veld + '"]');
+    if (!rij) return;
+    var f = feitenNu.filter(function (x) { return x.veld === veld; })[0];
+    if (!f) return;
+    var opties = Object.keys(FEIT_STAND).map(function (k) {
+      return '<option value="' + k + '"' + (f.stand === k ? ' selected' : '') + '>' +
+        esc(FEIT_STAND[k].kort) + '</option>';
+    }).join('');
+    rij.innerHTML = '<form class="feitform" id="ffForm">' +
+      '<label class="veld"><input type="text" id="ffWaarde" placeholder=" " value="' +
+        esc(f.waarde || '') + '"><span class="veld-label">' + esc(f.label) + '</span></label>' +
+      (f.hulp ? '<p class="veld-hulp">' + esc(f.hulp) + '</p>' : '') +
+      '<div class="rij2">' +
+        '<label class="veld keuze"><select id="ffStand">' + opties + '</select>' +
+          '<span class="veld-label">Hoe hard is dit?</span></label>' +
+        '<label class="veld"><input type="text" id="ffBron" placeholder=" " value="' +
+          esc(f.bron || '') + '"><span class="veld-label">Waar heb je dit gezien?</span></label>' +
+      '</div>' +
+      '<p class="veld-hulp" id="ffUitleg"></p>' +
+      '<p style="margin:4px 0 0">' +
+        '<button type="submit" class="knop prim">Vastleggen</button> ' +
+        '<button type="button" class="knop sec klein" id="ffTerug">Annuleren</button></p>' +
+      '<p class="melding" id="ffMelding" hidden></p>' +
+      '</form>';
+
+    function uitleg() {
+      var st = FEIT_STAND[el('ffStand').value];
+      el('ffUitleg').textContent = st ? st.uitleg : '';
+      // Niet gevonden is de enige stand zonder waarde.
+      el('ffWaarde').disabled = el('ffStand').value === 'niet_gevonden';
+    }
+    el('ffStand').addEventListener('change', uitleg);
+    uitleg();
+
+    function terug() { rij.outerHTML = feitRij(f); wireFeiten(key, feitenNu); }
+    el('ffTerug').addEventListener('click', terug);
+
+    el('ffForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var stand = el('ffStand').value;
+      var waarde = el('ffWaarde').value.trim();
+      var bron = el('ffBron').value.trim();
+      if (stand !== 'niet_gevonden' && !waarde) {
+        melding('ffMelding', 'Vul een waarde in, of zet het veld op "niet gevonden".'); return;
+      }
+      if ((stand === 'vermeld' || stand === 'vastgesteld') && !bron) {
+        melding('ffMelding', 'Zet erbij waar je dit hebt gezien. Zonder bron is het over een half jaar niet na te gaan.'); return;
+      }
+      haal('/api/admin/leveranciers/feit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ supplierKey: key, veld: veld, waarde: waarde,
+          stand: stand, bron: bron, vastgelegdDoor: naam })
+      }).then(function (j) {
+        var n = (j && j.feit) || {};
+        f.waarde = n.waarde; f.stand = n.stand; f.bron = n.bron;
+        f.vastgelegdDoor = n.vastgelegdDoor; f.vastgelegdOp = n.vastgelegdOp;
+        terug();
+      }).catch(function (err) { melding('ffMelding', 'Mislukt: ' + err.message); });
     });
   }
 

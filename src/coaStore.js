@@ -323,6 +323,33 @@ async function initCoaSchema() {
       gewijzigd_op BIGINT
     );
   `);
+  // DE BEDRIJFSGEGEVENS VAN EEN LEVERANCIER: adres, KvK, BTW, contact.
+  //
+  // Een regel per veld, niet een kolom per veld. Twee redenen:
+  //
+  //  1. Elk veld draagt zijn EIGEN stand en bron. Bij peptidekliniek komt het
+  //     adres van hun eigen site en het KvK-nummer van een Trustpilot-pagina.
+  //     Een gedeelde onderbouwing voor de hele rij maakt die twee even sterk,
+  //     en dat is precies het verschil dat niet mag vervagen.
+  //  2. Een veld erbij is een regel in VELDEN hieronder, geen migratie.
+  //
+  // LET OP waarom de stand er is. "KvK 42079966" in een vak leest als
+  // nagegaan. Van de zeven Nederlandse leveranciers is geen enkel nummer ooit
+  // in het Handelsregister opgezocht. Zonder stand zou dit vak binnen een
+  // maand een verzameling beweringen zijn met een keurig randje eromheen.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS leverancier_feit (
+      supplier_key TEXT NOT NULL,
+      veld TEXT NOT NULL,
+      waarde TEXT,
+      stand TEXT NOT NULL,
+      bron TEXT,
+      toelichting TEXT,
+      vastgelegd_door TEXT NOT NULL,
+      vastgelegd_op BIGINT NOT NULL,
+      PRIMARY KEY (supplier_key, veld)
+    );
+  `);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_supplier_idx ON coa_references (supplier_key);`);
   await pool.query(`CREATE INDEX IF NOT EXISTS coa_refs_ref_idx ON coa_references (lab, referentie);`);
   await normaliseerBestaandeLabnamen();
@@ -1235,6 +1262,124 @@ async function savePortret(supplierKey, gegevens) {
     } : null;
   } catch (e) {
     console.error('coaStore.savePortret:', (e && e.message) || e);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bedrijfsgegevens per leverancier
+// ---------------------------------------------------------------------------
+//
+// VIER STANDEN, en het verschil ertussen is de hele reden dat dit bestaat:
+//
+//   voorstel      het systeem heeft dit ergens gelezen. Nog door niemand
+//                 bekeken. Telt nergens in mee en hoort niet publiek.
+//   vermeld       de shop zegt dit zelf, en een mens heeft dat gezien.
+//                 Een bewering van de partij over zichzelf.
+//   vastgesteld   wij hebben het bij de bron nagekeken - het Handelsregister,
+//                 niet een aggregator en niet een reviewsite.
+//   niet_gevonden wij hebben gezocht en het staat er niet. Dat is een
+//                 vaststelling, geen leeg veld.
+//
+// De volgorde is oplopend in bewijskracht. Een voorstel mag nooit stilletjes
+// als vermeld eindigen: daar hoort een mens tussen te zitten.
+const FEIT_STANDEN = ['voorstel', 'vermeld', 'vastgesteld', 'niet_gevonden'];
+
+// De velden die een leverancier kan dragen. Volgorde is de weergavevolgorde.
+//
+// WAT HIER NIET IN STAAT en ook niet in hoort: aantallen, percentages en
+// scores - die komen per run uit de database. Bestuurders en eigenaren -
+// persoonsgegevens, dat is de Deep Dive en een ander juridisch verhaal.
+// En alles wat over de bedoeling van een bedrijf gaat; dit zijn feiten.
+const FEIT_VELDEN = [
+  { id: 'handelsnaam', label: 'Handelsnaam', groep: 'naam' },
+  { id: 'rechtspersoon', label: 'Rechtspersoon', groep: 'naam',
+    hulp: 'De juridische naam, als die afwijkt van de handelsnaam.' },
+  { id: 'straat', label: 'Straat en huisnummer', groep: 'adres' },
+  { id: 'postcode', label: 'Postcode', groep: 'adres' },
+  { id: 'plaats', label: 'Plaats', groep: 'adres' },
+  // Apart van de drie hierboven: drie van de zeven Nederlandse leveranciers
+  // noemen helemaal geen fysiek adres. Dat is iets anders dan een leeg veld,
+  // en voor een webshop die aan consumenten verkoopt is het wettelijk vereist.
+  { id: 'adresVermeld', label: 'Adres vermeld op de site', groep: 'adres',
+    hulp: 'Noemt de shop ergens een fysiek adres? Los van of wij het konden nagaan.' },
+  { id: 'kvk', label: 'KvK-nummer', groep: 'register' },
+  { id: 'btw', label: 'BTW-nummer', groep: 'register' },
+  { id: 'sbi', label: 'SBI-hoofdactiviteit', groep: 'register',
+    hulp: 'Waarvoor het bedrijf staat ingeschreven.' },
+  { id: 'inschrijfdatum', label: 'Eerste inschrijving KvK', groep: 'register' },
+  { id: 'magazijn', label: 'Magazijn', groep: 'verzending',
+    hulp: 'Eigen magazijn op hetzelfde adres, een ander adres, of doorverzending. Dit is altijd een bewering van de shop.' },
+  { id: 'verzendingVanuit', label: 'Verzending vanuit', groep: 'verzending' },
+  { id: 'email', label: 'E-mailadres', groep: 'contact' },
+  { id: 'telefoon', label: 'Telefoon', groep: 'contact' },
+  { id: 'whatsapp', label: 'WhatsApp', groep: 'contact' },
+  { id: 'betaalmethoden', label: 'Betaalmethoden', groep: 'handel',
+    hulp: 'iDEAL, creditcard, bankoverschrijving, crypto.' },
+  { id: 'voorwaarden', label: 'Algemene voorwaarden', groep: 'handel',
+    hulp: 'De URL, of niet_gevonden.' },
+  { id: 'retourbeleid', label: 'Retour- en herroepingsbeleid', groep: 'handel',
+    hulp: 'De URL, of niet_gevonden.' }
+];
+const FEIT_VELD_IDS = new Set(FEIT_VELDEN.map((v) => v.id));
+
+async function feiten(supplierKey) {
+  if (!supplierKey) return [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT veld, waarde, stand, bron, toelichting, vastgelegd_door, vastgelegd_op
+         FROM leverancier_feit WHERE supplier_key = $1`, [supplierKey]
+    );
+    const per = {};
+    rows.forEach((r) => { per[r.veld] = r; });
+    // Altijd alle velden teruggeven, ook de lege. Een veld dat ontbreekt in de
+    // lijst is onzichtbaar, en dan weet niemand dat het nog open staat.
+    return FEIT_VELDEN.map((v) => {
+      const r = per[v.id];
+      return {
+        veld: v.id, label: v.label, groep: v.groep, hulp: v.hulp || null,
+        waarde: r ? r.waarde : null,
+        stand: r ? r.stand : null,
+        bron: r ? r.bron : null,
+        toelichting: r ? r.toelichting : null,
+        vastgelegdDoor: r ? r.vastgelegd_door : null,
+        vastgelegdOp: r ? Number(r.vastgelegd_op) : null
+      };
+    });
+  } catch (e) {
+    console.error('coaStore.feiten:', (e && e.message) || e);
+    return [];
+  }
+}
+
+// Een veld vastleggen. Zonder naam van degene die het deed gaat er niets in,
+// net als bij de labstand en de vestiging.
+async function saveFeit(supplierKey, veld, gegevens) {
+  const g = gegevens || {};
+  const door = String(g.vastgelegdDoor || '').trim();
+  const stand = String(g.stand || '').trim();
+  if (!supplierKey || !FEIT_VELD_IDS.has(veld) || !door) return null;
+  if (FEIT_STANDEN.indexOf(stand) === -1) return null;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO leverancier_feit (supplier_key, veld, waarde, stand, bron, toelichting, vastgelegd_door, vastgelegd_op)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (supplier_key, veld) DO UPDATE SET
+         waarde = EXCLUDED.waarde, stand = EXCLUDED.stand, bron = EXCLUDED.bron,
+         toelichting = EXCLUDED.toelichting,
+         vastgelegd_door = EXCLUDED.vastgelegd_door, vastgelegd_op = EXCLUDED.vastgelegd_op
+       RETURNING *`,
+      [supplierKey, veld, String(g.waarde == null ? '' : g.waarde).trim() || null, stand,
+       String(g.bron || '').trim() || null, String(g.toelichting || '').trim() || null, door, Date.now()]
+    );
+    const r = rows[0];
+    return r ? {
+      veld: r.veld, waarde: r.waarde, stand: r.stand, bron: r.bron,
+      toelichting: r.toelichting, vastgelegdDoor: r.vastgelegd_door,
+      vastgelegdOp: Number(r.vastgelegd_op)
+    } : null;
+  } catch (e) {
+    console.error('coaStore.saveFeit:', (e && e.message) || e);
     return null;
   }
 }
@@ -3222,6 +3367,7 @@ module.exports = {
   bewijskrachtVanLab, bewijskrachtViaPlatform, LAB_TELT_NIET_MEE, A22_STRIKT,
   vestigingen, saveVestiging, labBriefhoofden,
   portret, savePortret,
+  feiten, saveFeit, FEIT_VELDEN, FEIT_STANDEN,
   labSignalen,
   saveLabOordeel, labOordelen, laboordeelVoorLeverancier, labSleutel, LAB_STATUSSEN,
   saveNaamOordeel, naamOordelen, naamSleutel, naamkoppelingVan, NAAM_STATUSSEN,
