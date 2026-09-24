@@ -102,6 +102,24 @@
 
   /* De site live of offline. Dezelfde pil als in de kopbalk van de admin, zodat
      het op twee plekken hetzelfde ding is en niet twee verschillende dingen. */
+  /* Een stap in de gratis check: aanzetten is een pil, maar hier hoort wat
+     hij kost en wat hij oplevert naast te staan. Daarom een regel en geen rij
+     pillen - dit is een keuze per stap, geen lijstje afvinken. */
+  .staprij{ display:grid; grid-template-columns:auto 1fr auto; gap:14px;
+    align-items:start; padding:14px 0; border-top:1px solid var(--border) }
+  .staprij:first-of-type{ border-top:0 }
+  .staprij .wat b{ font-family:var(--font-kop); font-weight:600; font-size:1rem;
+    color:var(--heading-3); display:block }
+  .staprij .wat span{ font-size:.85rem; color:var(--text-subtle) }
+  .staprij .duur{ font-size:.82rem; color:var(--text-faint); white-space:nowrap;
+    text-align:right; font-variant-numeric:tabular-nums }
+  .draagt{ font-size:.7rem; padding:2px 8px; border-radius:999px; white-space:nowrap;
+    border:1px solid var(--ok); color:var(--ok); background:var(--ok-soft);
+    margin-left:8px; vertical-align:middle }
+  .waarschuwing{ margin:14px 0 0; padding:12px 14px; border-radius:10px;
+    border:1px solid var(--warn); background:var(--warn-soft); font-size:.88rem }
+  .waarschuwing[hidden]{ display:none }
+
   .standrij{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin:0 0 16px }
   .stand-knop{ display:inline-flex; align-items:center; gap:10px; cursor:pointer;
     border:1px solid var(--ok); background:var(--ok-soft); color:var(--ok);
@@ -127,6 +145,8 @@
   <nav class="zijmenu" id="zijmenu">
     <h2>Leverancier</h2>
     <button type="button" data-blad="bedrijfsgegevens" aria-current="true">Bedrijfsgegevens</button>
+    <h2 style="margin-top:18px">Check</h2>
+    <button type="button" data-blad="lagen">Gratis of Deep Dive</button>
     <h2 style="margin-top:18px">Site</h2>
     <button type="button" data-blad="site">Live of offline</button>
   </nav>
@@ -291,6 +311,7 @@
       return;
     }
     if (blad === 'site') return tekenSite();
+    if (blad === 'lagen') return tekenLagen();
     el('blad').innerHTML = '<h1>Bedrijfsgegevens</h1>' +
       '<p class="sub">Welke gegevens we per entiteit willen hebben, en waar ze terechtkomen. ' +
       (magSchrijven ? ''
@@ -304,6 +325,104 @@
       data.entiteiten.map(entBlok).join('') +
       nieuwVeldBlok();
     bind();
+  }
+
+  // --- welke stappen de gratis check draait ---------------------------------
+  //
+  // Acht onderzoeksstappen, twee zitten er standaard in de gratis check. Dit
+  // stond in pipeline.js en was dus een uitrol.
+  //
+  // LET OP wat hier NIET mee verandert. De score van de gratis check rust op
+  // 60% COA en 40% LAB. Een stap erbij kleurt meer categorieën in, maar telt
+  // niet mee in dat cijfer. coaDataset of laboratorium UITzetten betekent dat
+  // er helemaal geen score meer uitkomt - dat is methodiek en niet zomaar een
+  // voorkeur, dus het scherm zegt het, en de knop blijft van Ruben.
+  var STAPUITLEG = {
+    identiteit: 'Leest de contact-, voorwaarden-, privacy- en over-ons-pagina van de shop. Dit is de stap die adres, KvK en BTW zou kunnen voeden.',
+    domein: 'Domeinregistratie, archief en hoe lang de winkel bestaat.',
+    coaDataset: 'De labrapporten zelf ophalen en uitlezen. De zwaarste stap, en de basis van alles.',
+    laboratorium: 'Naslaan of de labverwijzingen bij het lab oplossen.',
+    socialAffiliates: 'Affiliates, kortingscodes en commerciële relaties.',
+    reputatie: 'Trustpilot, Reddit en klachten.',
+    regelgeving: 'IGJ, NVWA, verkoopverboden en waarschuwingen.',
+    tegenbewijs: 'Wat er juist vóór deze partij pleit.'
+  };
+  var lagen = null, lagenKeuze = null;
+
+  function duurKort(ms, runs) {
+    if (!ms) return 'nog niet gemeten';
+    var m = Math.round(ms / 60000), s2 = Math.round(ms / 1000);
+    return (m >= 1 ? m + ' min' : s2 + ' sec') + ' · ' + runs + ' run' + (runs === 1 ? '' : 's');
+  }
+
+  function tekenLagen() {
+    if (!lagen) { el('blad').innerHTML = '<h1>Gratis of Deep Dive</h1><p class="leeg">Laden…</p>'; return; }
+    var dragend = lagen.dragendeStappen || [];
+    var mist = dragend.filter(function (k) { return !lagenKeuze.has(k); });
+    var totaal = 0;
+    lagen.stappen.forEach(function (st) { if (lagenKeuze.has(st.key) && st.gemiddeldeMs) totaal += st.gemiddeldeMs; });
+
+    var h = '<h1>Gratis of Deep Dive</h1>' +
+      '<p class="sub">Welke onderzoeksstappen een bezoeker gratis krijgt. Wat je hier uitzet, draait in de Deep Dive. ' +
+      (magDeurDicht ? '' : 'Alleen een beheerder kan dit omzetten.') + '</p>' +
+      '<div class="blok" style="background:var(--purple-50)">' +
+        '<p class="duiding" style="margin:0">Een stap erbij kost tijd en geld per check, en kleurt meer categorieën in. ' +
+        'De <strong>score</strong> verandert er niet van: die rust op 60% COA en 40% lab. ' +
+        'De tijden hieronder zijn gemeten over echte runs, niet geschat.</p></div>' +
+      '<div class="blok">' +
+        lagen.stappen.map(function (st) {
+          var aan = lagenKeuze.has(st.key);
+          return '<div class="staprij">' +
+            '<button type="button" class="pil" aria-pressed="' + aan + '" data-stap="' + esc(st.key) + '"' +
+              (magDeurDicht ? '' : ' disabled') + '>' + (aan ? 'gratis' : 'deep') + '</button>' +
+            '<span class="wat"><b>' + esc(st.label) +
+              (dragend.indexOf(st.key) !== -1 ? '<span class="draagt">de score rust hierop</span>' : '') +
+              '</b><span>' + esc(STAPUITLEG[st.key] || '') + '</span></span>' +
+            '<span class="duur">' + esc(duurKort(st.gemiddeldeMs, st.runs)) + '</span>' +
+            '</div>';
+        }).join('') +
+        '<p class="waarschuwing" id="lWaarschuw"' + (mist.length ? '' : ' hidden') + '>' +
+          (mist.length ? 'Zonder ' + mist.map(function (k) {
+            var st = lagen.stappen.filter(function (x) { return x.key === k; })[0];
+            return esc(st ? st.label : k);
+          }).join(' en ') + ' komt er uit de gratis check geen score meer. Dat kan, maar het is een methodische keuze — leg hem bij Annemarie neer.' : '') +
+        '</p>' +
+        (magDeurDicht ? '<div class="knoppen">' +
+          '<button type="button" class="knop prim" id="lBewaar">Vastleggen</button>' +
+          '<button type="button" class="knop sec klein" id="lTerug">Annuleren</button></div>' : '') +
+        '<p class="melding" id="lMelding" hidden></p>' +
+      '</div>' +
+      '<p class="duiding">Samen ongeveer ' + (totaal ? Math.round(totaal / 60000) + ' minuten' : 'onbekend') +
+        ' per gratis check, plus de categoriebeoordeling en het samenstellen van het rapport.</p>';
+    el('blad').innerHTML = h;
+    if (!magDeurDicht) return;
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-stap]'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-stap');
+        if (lagenKeuze.has(k)) lagenKeuze.delete(k); else lagenKeuze.add(k);
+        tekenLagen();
+      });
+    });
+    document.getElementById('lTerug').addEventListener('click', function () {
+      lagenKeuze = new Set(lagen.stappen.filter(function (st) { return st.inGratis; })
+        .map(function (st) { return st.key; }));
+      tekenLagen();
+    });
+    document.getElementById('lBewaar').addEventListener('click', function () {
+      var b = document.getElementById('lBewaar');
+      b.disabled = true;
+      haal('/api/admin/lagen', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stappen: Array.prototype.slice.call(lagenKeuze), door: naam })
+      }).then(function (j) {
+        lagen.stappen.forEach(function (st) { st.inGratis = (j.stappen || []).indexOf(st.key) !== -1; });
+        tekenLagen();
+        melding('lMelding', 'Vastgelegd. Dit geldt vanaf de eerstvolgende check.');
+      }).catch(function (err) {
+        melding('lMelding', 'Mislukt: ' + err.message, true); b.disabled = false;
+      });
+    });
   }
 
   // --- de site live of offline ---------------------------------------------
@@ -470,11 +589,17 @@
         // De STAFROUTE en niet /api/stand: die stuurt het zinnetje alleen mee
         // als de check dicht is, en dan zou je hier een leeg veld bewerken en
         // de tekst bij het opslaan onbedoeld op de standaard zetten.
-        haal('/api/admin/stand').catch(function () { return null; })
+        haal('/api/admin/stand').catch(function () { return null; }),
+        haal('/api/admin/lagen').catch(function () { return null; })
       ]);
     }).then(function (paar) {
       var j = paar[0];
       stand = paar[1];
+      lagen = paar[2];
+      if (lagen && lagen.stappen) {
+        lagenKeuze = new Set(lagen.stappen.filter(function (st) { return st.inGratis; })
+          .map(function (st) { return st.key; }));
+      }
       data = { velden: j.velden || [], profielen: j.profielen || {},
         groepen: j.groepen || [], entiteiten: j.entiteiten || [], lagen: j.lagen || [] };
       laadKeuze();

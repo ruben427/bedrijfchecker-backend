@@ -137,6 +137,68 @@ app.get('/api/stand', rl.read, async (req, res) => {
   });
 });
 
+// WELKE STAPPEN DE GRATIS CHECK DRAAIT.
+//
+// Er draaien acht onderzoeksstappen; twee daarvan zitten in de gratis check.
+// Dat stond in pipeline.js en was dus een uitrol; nu is het een klik.
+//
+// LET OP wat hier NIET mee verandert. De score van de gratis check rust op
+// 60% COA en 40% LAB (scoringEngine.js). Een stap erbij zetten kleurt meer
+// categorieen in, maar telt niet mee in dat cijfer; coaDataset of laboratorium
+// UITzetten betekent dat er geen score meer uitkomt. Dat is methodiek, en het
+// scherm zegt dat erbij.
+app.get('/api/admin/lagen', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const [vrij, duur] = await Promise.all([
+      pipeline.vrijeStappen(),
+      db.getStepStats().catch(() => ({}))
+    ]);
+    res.json({
+      stappen: pipeline.RESEARCH_STEP_KEYS.map((k) => {
+        const d = pipeline.STEP_DEFS.find((x) => x.key === k);
+        const m = duur[k] || null;
+        return {
+          key: k, label: d ? d.label : k,
+          inGratis: vrij.indexOf(k) !== -1,
+          // Gemeten, niet geschat: het lopende gemiddelde over alle runs.
+          gemiddeldeMs: m ? m.avgMs : null,
+          runs: m ? m.count : 0
+        };
+      }),
+      // Waar de score op rust. Het scherm waarschuwt als een van deze twee uit
+      // gaat; weigeren doet het niet - dit is Rubens knop.
+      dragendeStappen: ['coaDataset', 'laboratorium'],
+      standaard: pipeline.FREE_STEP_KEYS
+    });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
+// Omzetten mag alleen de BEHEERDER: dit verandert wat elke bezoeker gratis
+// krijgt en wat elke run kost.
+app.post('/api/admin/lagen', rl.caseAction, auth.requireOwnerToken, async (req, res) => {
+  if (!auth.isAdmin(req)) return res.status(403).json({ error: 'geen_beheerder',
+    message: 'Alleen een beheerder kan de gratis check veranderen.' });
+  try {
+    const b = req.body || {};
+    const gekozen = Array.isArray(b.stappen) ? b.stappen.map(String) : [];
+    // In de volgorde van de pipeline, niet in de volgorde van het klikken:
+    // coaDataset moet voor laboratorium draaien.
+    const schoon = pipeline.RESEARCH_STEP_KEYS.filter((k) => gekozen.indexOf(k) !== -1);
+    if (!schoon.length) {
+      return res.status(400).json({ error: 'geen_stappen',
+        message: 'Zet minstens een stap aan. Een gratis check zonder stappen levert een leeg rapport op.' });
+    }
+    const door = b.door ? String(b.door).slice(0, 80) : null;
+    await db.setInstelling('freeStappen', { stappen: schoon }, door);
+    console.log('[lagen] gratis check draait nu: ' + schoon.join(', ') + (door ? ' (door ' + door + ')' : ''));
+    res.json({ ok: true, stappen: schoon });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // De VOLLEDIGE stand, voor de staf. /api/stand hierboven stuurt het bericht
 // bewust alleen mee als het ook geldt - anders leest een open site een
 // onderhoudstekst mee die nergens voor staat. De instellingenpagina moet het

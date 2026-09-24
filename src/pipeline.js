@@ -105,6 +105,31 @@ const RESEARCH_STEP_KEYS = ['identiteit', 'domein', 'coaDataset', 'laboratorium'
 const FREE_STEP_KEYS = ['coaDataset', 'laboratorium'];
 const DEEP_STEP_KEYS = RESEARCH_STEP_KEYS.filter((k) => FREE_STEP_KEYS.indexOf(k) === -1);
 
+// Welke stappen de GRATIS check draait, uit de instellingen. FREE_STEP_KEYS
+// hierboven is vanaf 24 september de terugval, niet meer de waarheid.
+//
+// TWEE DINGEN DIE HIER VASTLIGGEN en niet met een vinkje te verzetten zijn:
+//
+//  1. DE VOLGORDE. Altijd die van RESEARCH_STEP_KEYS, wat er ook is
+//     aangeklikt. coaDataset moet voor laboratorium draaien, want die laatste
+//     leest welke labs er op de gelezen rapporten staan. Een scherm waarop je
+//     de volgorde per ongeluk omkeert zou dat stilletjes breken.
+//  2. EEN LEGE LIJST BESTAAT NIET. Staat er niets aan, dan valt hij terug op
+//     FREE_STEP_KEYS. Een gratis check die geen enkele stap draait levert een
+//     leeg rapport op zonder dat iemand ziet waarom.
+async function vrijeStappen() {
+  try {
+    const rij = await db.getInstelling('freeStappen');
+    const w = rij && rij.waarde;
+    if (w && Array.isArray(w.stappen)) {
+      const gekozen = new Set(w.stappen);
+      const uit = RESEARCH_STEP_KEYS.filter((k) => gekozen.has(k));
+      if (uit.length) return uit;
+    }
+  } catch (e) { /* db plat: val terug op de vaste lijst */ }
+  return FREE_STEP_KEYS.slice();
+}
+
 function stepLabel(key) {
   const d = STEP_DEFS.find((s) => s.key === key);
   return d ? d.label : key;
@@ -2266,7 +2291,8 @@ async function runFreeTier(caseId, ctx) {
     siteShot.ensureShot(ctx.website)
       .then((r) => { if (r && r.status) console.log('schermafdruk ' + ctx.website + ': ' + r.status); })
       .catch((e) => console.log('schermafdruk ' + ctx.website + ' mislukt: ' + ((e && e.message) || e)));
-    for (const key of FREE_STEP_KEYS) {
+    const stappen = await vrijeStappen();
+    for (const key of stappen) {
       await ensureNotStopped(caseId);
       await runResearchStep(caseId, ctx, key);
     }
@@ -2325,7 +2351,11 @@ async function hervatNaWachten(caseId, ctx) {
 // dataset — dus geen apart "deep-rapport", hetzelfde rapport wordt verrijkt.
 async function runDeepTier(caseId, ctx) {
   try {
-    for (const key of DEEP_STEP_KEYS) {
+    // De Deep Dive is de REST. Zet je een stap in de gratis check aan, dan
+    // verdwijnt hij hier vanzelf - anders draaide hij twee keer, en dan betaalt
+    // iemand voor werk dat al gedaan was.
+    const vrij = new Set(await vrijeStappen());
+    for (const key of RESEARCH_STEP_KEYS.filter((k) => !vrij.has(k))) {
       await ensureNotStopped(caseId);
       await runResearchStep(caseId, ctx, key);
     }
@@ -2350,6 +2380,7 @@ module.exports = {
   hervatNaWachten,
   filterRodeVlaggen, schoonKlasse,
   ensureNotStopped, stopAudit, maakGestrandeRunsLos, STRANDING_MS, RESEARCH_STEP_KEYS, FREE_STEP_KEYS, DEEP_STEP_KEYS, STEP_DEFS,
+  vrijeStappen,
   extractCoaFromUpload, COA_EXTRACTOR_VERSION, resolveerLabReferenties, meldStap, herleesDocument,
   toetsZuiverheidsbelofte,
   // Uitsluitend om na te kunnen rekenen wat de twee assen met een rapport doen:
