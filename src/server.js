@@ -137,6 +137,20 @@ app.get('/api/stand', rl.read, async (req, res) => {
   });
 });
 
+// De VOLLEDIGE stand, voor de staf. /api/stand hierboven stuurt het bericht
+// bewust alleen mee als het ook geldt - anders leest een open site een
+// onderhoudstekst mee die nergens voor staat. De instellingenpagina moet het
+// wel altijd zien, anders bewerk je een tekst die je niet kunt lezen en zet je
+// hem bij het opslaan onbedoeld terug op de standaard.
+app.get('/api/admin/stand', rl.read, auth.requireOwnerToken, requireLezer, async (req, res) => {
+  try {
+    const stand = await publiekeStand();
+    res.json({ publiekeCheck: stand.open, bericht: stand.bericht, door: stand.door, op: stand.op });
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
+});
+
 // Omzetten mag alleen de BEHEERDER. Een beoordelaar mag oordelen vastleggen,
 // niet de deur voor de buitenwereld dichtdoen.
 app.post('/api/admin/stand', rl.caseAction, auth.requireOwnerToken, async (req, res) => {

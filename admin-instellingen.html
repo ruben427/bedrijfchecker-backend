@@ -52,13 +52,26 @@
   .ent.nl{ background:var(--accent-light) } .ent.eu{ background:var(--purple-600) }
   .ent.ow{ background:var(--text-subtle) }
 
-  .laag{ margin:18px 0 0 }
-  .laag:first-of-type{ margin-top:8px }
-  .laagkop{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin:0 0 8px }
+  /* Elke laag klapt open. Dicht zie je alleen de naam en hoeveel er aanstaat;
+     twee rijen van eenendertig pillen tegelijk is niet te overzien. */
+  .laag{ margin:10px 0 0; border:1px solid var(--border); border-radius:var(--radius-md,12px);
+    overflow:hidden }
+  .laagkop{ width:100%; display:flex; align-items:center; gap:12px; border:0;
+    background:var(--surface); font:inherit; text-align:left; cursor:pointer;
+    padding:14px 16px }
+  .laagkop:hover{ background:var(--purple-50) }
+  .laagkop:focus-visible{ outline:2px solid var(--blauw-500); outline-offset:-2px }
   .laagkop b{ font-family:var(--font-kop); font-weight:600; font-size:.95rem;
-    color:var(--heading-3) }
-  .laagkop span{ font-size:.82rem; color:var(--text-subtle) }
-  .laagkop .tel{ margin-left:auto; font-size:.8rem; color:var(--text-faint) }
+    color:var(--heading-3); flex:none }
+  .laagkop .wat{ font-size:.82rem; color:var(--text-subtle); min-width:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  .laagkop .tel{ margin-left:auto; font-size:.8rem; color:var(--text-faint); flex:none }
+  .chev{ width:18px; height:18px; flex:none; color:var(--text-subtle);
+    transition:transform .15s }
+  .laagkop[aria-expanded="true"] .chev{ transform:rotate(180deg) }
+  .laagkop[aria-expanded="true"]{ border-bottom:1px solid var(--border) }
+  .laaglijf{ padding:16px }
+  .laaglijf[hidden]{ display:none }
 
   /* DE PILLEN. Uit is een grijze outline, aan is het blauw van het logo.
      Het is een aan-uitknop, dus aria-pressed en geen checkbox die je niet ziet. */
@@ -86,6 +99,19 @@
   .rij2{ display:grid; grid-template-columns:1fr 1fr; gap:14px }
   @media (max-width:640px){ .rij2{ grid-template-columns:1fr } }
   .vink{ display:flex; align-items:center; gap:8px; font-size:.9rem; margin:10px 0 }
+
+  /* De site live of offline. Dezelfde pil als in de kopbalk van de admin, zodat
+     het op twee plekken hetzelfde ding is en niet twee verschillende dingen. */
+  .standrij{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin:0 0 16px }
+  .stand-knop{ display:inline-flex; align-items:center; gap:10px; cursor:pointer;
+    border:1px solid var(--ok); background:var(--ok-soft); color:var(--ok);
+    border-radius:999px; padding:8px 16px; font:inherit; font-size:.9rem }
+  .stand-knop .bol{ width:10px; height:10px; border-radius:50%; background:currentColor }
+  .stand-knop.uit{ flex-direction:row-reverse; border-color:var(--danger);
+    background:var(--danger-soft); color:var(--danger) }
+  .stand-knop.onbekend{ border-style:dashed; border-color:var(--border);
+    background:none; color:var(--text-faint) }
+  .stand-knop[disabled]{ cursor:not-allowed; opacity:.6 }
 </style>
 
 <header class="kop-balk">
@@ -99,8 +125,10 @@
 
 <main class="inhoud">
   <nav class="zijmenu" id="zijmenu">
-    <h2>Instellingen</h2>
-    <button type="button" data-blad="leverancier" aria-current="true">Leverancier</button>
+    <h2>Leverancier</h2>
+    <button type="button" data-blad="bedrijfsgegevens" aria-current="true">Bedrijfsgegevens</button>
+    <h2 style="margin-top:18px">Site</h2>
+    <button type="button" data-blad="site">Live of offline</button>
   </nav>
 
   <section id="blad">
@@ -130,7 +158,8 @@
 
   var token = lees(SLEUTEL_TOKEN), naam = lees(SLEUTEL_NAAM);
   var data = { velden: [], profielen: {}, groepen: [], entiteiten: [], lagen: [] };
-  var magSchrijven = false, zonderNaam = false;
+  var magSchrijven = false, zonderNaam = false, magDeurDicht = false;
+  var blad = 'bedrijfsgegevens', stand = null;
 
   function haal(pad, opties) {
     var o = opties || {};
@@ -144,6 +173,10 @@
         return r.json();
       });
   }
+
+  var CHEV = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M6 9l6 6 6-6"/></svg>';
 
   var ENT = {
     nl: { klas: 'nl', titel: 'Nederland',
@@ -187,14 +220,29 @@
       (v.hulp ? ' title="' + esc(v.hulp) + '"' : '') + '>' + esc(v.label) + '</button>';
   }
 
+  // Onthouden wat openstond, zodat een hertekening na het vastleggen niet
+  // alles dichtklapt onder je handen.
+  var open = {};
+
   function laagBlok(e, l) {
     var d = LAAG[l] || { titel: l, uitleg: '' };
-    var aantal = keuze[e][l].size;
+    var sleutel = e + ':' + l;
+    var uit = !open[sleutel];
     return '<div class="laag" data-laag="' + esc(l) + '">' +
-      '<div class="laagkop"><b>' + esc(d.titel) + '</b><span>' + esc(d.uitleg) + '</span>' +
-        '<span class="tel">' + aantal + ' van ' + data.velden.length + '</span></div>' +
-      '<div class="pillen">' + data.velden.map(function (v) { return pil(e, l, v); }).join('') + '</div>' +
-      '</div>';
+      '<button type="button" class="laagkop" data-klap="' + esc(sleutel) + '"' +
+        ' aria-expanded="' + (!uit) + '" aria-controls="lijf-' + esc(sleutel) + '">' +
+        CHEV + '<b>' + esc(d.titel) + '</b><span class="wat">' + esc(d.uitleg) + '</span>' +
+        '<span class="tel" data-tel="' + esc(sleutel) + '">' + keuze[e][l].size +
+        ' van ' + data.velden.length + '</span></button>' +
+      '<div class="laaglijf" id="lijf-' + esc(sleutel) + '"' + (uit ? ' hidden' : '') + '>' +
+        '<div class="pillen">' +
+          data.velden.map(function (v) { return pil(e, l, v); }).join('') + '</div>' +
+        (magSchrijven ? '<div class="knoppen">' +
+          '<button type="button" class="knop prim" data-bewaar="' + esc(sleutel) + '">Vastleggen</button>' +
+          '<button type="button" class="knop sec klein" data-herstel="' + esc(sleutel) + '">Annuleren</button>' +
+          '</div>' : '') +
+        '<p class="melding" id="m-' + esc(sleutel).replace(/:/g, '-') + '" hidden></p>' +
+      '</div></div>';
   }
 
   function entBlok(e) {
@@ -204,11 +252,6 @@
         '<h3>' + esc(d.titel) + '</h3></div>' +
       '<p class="duiding">' + esc(d.uitleg) + '</p>' +
       data.lagen.map(function (l) { return laagBlok(e, l); }).join('') +
-      (magSchrijven ? '<div class="knoppen">' +
-        '<button type="button" class="knop prim" data-bewaar="' + esc(e) + '">Vastleggen</button>' +
-        '<button type="button" class="knop sec klein" data-herstel="' + esc(e) + '">Terug naar opgeslagen</button>' +
-        '</div>' : '') +
-      '<p class="melding" id="m-' + esc(e) + '" hidden></p>' +
       '</div>';
   }
 
@@ -247,7 +290,8 @@
         '<p style="margin-top:12px"><a class="knop prim" href="admin.html">Naar de admin</a></p></div>';
       return;
     }
-    el('blad').innerHTML = '<h1>Leverancier</h1>' +
+    if (blad === 'site') return tekenSite();
+    el('blad').innerHTML = '<h1>Bedrijfsgegevens</h1>' +
       '<p class="sub">Welke gegevens we per entiteit willen hebben, en waar ze terechtkomen. ' +
       (magSchrijven ? ''
         : zonderNaam ? 'Er staat geen naam bij je sleutel in deze browser. Meld je opnieuw aan in de admin — elk profiel draagt wie het vastlegde.'
@@ -260,6 +304,72 @@
       data.entiteiten.map(entBlok).join('') +
       nieuwVeldBlok();
     bind();
+  }
+
+  // --- de site live of offline ---------------------------------------------
+  //
+  // Dezelfde schakelaar als in de kopbalk van de admin, maar hier staat ook het
+  // ZINNETJE dat een bezoeker dan leest. Dat kon de server al sinds de eerste
+  // versie; er was alleen nergens een veld voor, dus stond er altijd de
+  // standaardtekst.
+  //
+  // LET OP wat dicht WEL en NIET is. Dicht betekent dat de server een
+  // startende check van een bezoeker weigert. De pagina zelf blijft gewoon op
+  // te halen - een knop verbergen is geen afsluiten, alleen het weigeren aan
+  // de serverkant is dat.
+  function tekenSite() {
+    var open = stand && stand.publiekeCheck === true;
+    var onbekend = !stand;
+    var h = '<h1>Live of offline</h1>' +
+      '<p class="sub">Of een bezoeker een check kan starten, en wat hij leest als dat niet kan. ' +
+      (magDeurDicht ? '' : 'Alleen een beheerder kan dit omzetten.') + '</p>' +
+      '<div class="blok">' +
+        '<div class="standrij">' +
+          '<button type="button" class="stand-knop' + (onbekend ? ' onbekend' : (open ? '' : ' uit')) +
+            '" id="sKnop" aria-pressed="' + (!!open) + '"' + (magDeurDicht && !onbekend ? '' : ' disabled') + '>' +
+            '<span class="bol" aria-hidden="true"></span>' +
+            '<span>' + (onbekend ? 'onbekend' : (open ? 'Live' : 'Offline')) + '</span></button>' +
+          '<span class="duiding" style="margin:0">' +
+            (onbekend ? 'De stand is niet op te halen.'
+              : open ? 'Bezoekers kunnen een check starten.'
+                     : 'De server weigert een startende check. De pagina blijft bereikbaar.') +
+            '</span>' +
+        '</div>' +
+        (stand && stand.door ? '<p class="duiding" style="margin:0 0 16px">Laatst omgezet door ' +
+          esc(stand.door) + '.</p>' : '') +
+        '<label class="veld"><textarea id="sBericht" rows="3" placeholder=" ">' +
+          esc((stand && stand.bericht) || '') + '</textarea>' +
+          '<span class="veld-label">Wat een bezoeker leest als de check dicht is</span></label>' +
+        '<p class="veld-hulp">Zeg wat er aan de hand is en wanneer het weer kan. ' +
+        'Laat je dit leeg, dan staat er de standaardtekst.</p>' +
+        (magDeurDicht ? '<div class="knoppen">' +
+          '<button type="button" class="knop prim" id="sBewaar">Zinnetje vastleggen</button></div>' : '') +
+        '<p class="melding" id="sMelding" hidden></p>' +
+      '</div>';
+    el('blad').innerHTML = h;
+    if (!magDeurDicht) return;
+
+    function zet(nieuwOpen, bericht) {
+      return haal('/api/admin/stand', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ open: nieuwOpen, bericht: bericht, door: naam })
+      }).then(function (j) { stand = j; tekenSite(); });
+    }
+
+    var k = document.getElementById('sKnop');
+    if (k) k.addEventListener('click', function () {
+      k.disabled = true;
+      zet(!open, document.getElementById('sBericht').value.trim())
+        .catch(function (err) { melding('sMelding', 'Mislukt: ' + err.message, true); k.disabled = false; });
+    });
+    var b = document.getElementById('sBewaar');
+    if (b) b.addEventListener('click', function () {
+      b.disabled = true;
+      // De stand zelf blijft wat hij is: dit legt alleen de tekst vast.
+      zet(!!open, document.getElementById('sBericht').value.trim())
+        .catch(function (err) { melding('sMelding', 'Mislukt: ' + err.message, true); })
+        .then(function () { b.disabled = false; });
+    });
   }
 
   function melding(id, tekst, fout) {
@@ -277,37 +387,51 @@
         var s = keuze[e][l];
         if (s.has(v)) s.delete(v); else s.add(v);
         b.setAttribute('aria-pressed', String(s.has(v)));
-        var tel = b.closest('.laag').querySelector('.tel');
+        var tel = document.querySelector('[data-tel="' + e + ':' + l + '"]');
         if (tel) tel.textContent = s.size + ' van ' + data.velden.length;
+      });
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll('[data-klap]'), function (b) {
+      b.addEventListener('click', function () {
+        var k = b.getAttribute('data-klap');
+        open[k] = !open[k];
+        b.setAttribute('aria-expanded', String(!!open[k]));
+        var lijf = document.getElementById('lijf-' + k);
+        if (lijf) lijf.hidden = !open[k];
       });
     });
 
     Array.prototype.forEach.call(document.querySelectorAll('[data-bewaar]'), function (b) {
       b.addEventListener('click', function () {
-        var e = b.getAttribute('data-bewaar');
+        var deel = b.getAttribute('data-bewaar').split(':');
+        var e = deel[0], l = deel[1], id = 'm-' + e + '-' + l;
         b.disabled = true;
-        // Per laag een verzoek: de server vervangt de hele lijst van die laag,
-        // dus half opsturen zou half uitzetten betekenen.
-        Promise.all(data.lagen.map(function (l) {
-          return haal('/api/admin/velden/profiel', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ entiteit: e, laag: l,
-              velden: Array.prototype.slice.call(keuze[e][l]), door: naam })
-          });
-        })).then(function () {
-          data.lagen.forEach(function (l) {
-            if (!data.profielen[e]) data.profielen[e] = {};
-            data.profielen[e][l] = Array.prototype.slice.call(keuze[e][l]);
-          });
-          melding('m-' + e, 'Vastgelegd.');
+        // De server VERVANGT de hele lijst van deze laag. Half opsturen zou
+        // dus half uitzetten betekenen; daarom gaat de complete selectie mee.
+        haal('/api/admin/velden/profiel', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entiteit: e, laag: l,
+            velden: Array.prototype.slice.call(keuze[e][l]), door: naam })
+        }).then(function () {
+          if (!data.profielen[e]) data.profielen[e] = {};
+          data.profielen[e][l] = Array.prototype.slice.call(keuze[e][l]);
+          melding(id, 'Vastgelegd.');
         }).catch(function (err) {
-          melding('m-' + e, 'Mislukt: ' + err.message, true);
+          melding(id, 'Mislukt: ' + err.message, true);
         }).then(function () { b.disabled = false; });
       });
     });
 
+    // Annuleren zet ALLEEN deze laag terug naar wat er is opgeslagen. Een
+    // knop die ook de laag ernaast terugdraait zou verrassen.
     Array.prototype.forEach.call(document.querySelectorAll('[data-herstel]'), function (b) {
-      b.addEventListener('click', function () { laadKeuze(); teken(); });
+      b.addEventListener('click', function () {
+        var deel = b.getAttribute('data-herstel').split(':');
+        var e = deel[0], l = deel[1];
+        keuze[e][l] = new Set(((data.profielen[e] || {})[l]) || []);
+        teken();
+      });
     });
 
     var f = document.getElementById('nvForm');
@@ -338,8 +462,19 @@
       // De naam komt uit het aanmelden in de admin.
       magSchrijven = !!(j && j.magBeoordelen) && !!naam;
       zonderNaam = !!(j && j.magBeoordelen) && !naam;
-      return haal('/api/admin/velden');
-    }).then(function (j) {
+      // De deur voor de buitenwereld dichtdoen mag alleen de BEHEERDER. Een
+      // beoordelaar legt oordelen vast; dat is iets anders dan de site uitzetten.
+      magDeurDicht = !!(j && j.rol === 'beheerder');
+      return Promise.all([
+        haal('/api/admin/velden'),
+        // De STAFROUTE en niet /api/stand: die stuurt het zinnetje alleen mee
+        // als de check dicht is, en dan zou je hier een leeg veld bewerken en
+        // de tekst bij het opslaan onbedoeld op de standaard zetten.
+        haal('/api/admin/stand').catch(function () { return null; })
+      ]);
+    }).then(function (paar) {
+      var j = paar[0];
+      stand = paar[1];
       data = { velden: j.velden || [], profielen: j.profielen || {},
         groepen: j.groepen || [], entiteiten: j.entiteiten || [], lagen: j.lagen || [] };
       laadKeuze();
@@ -349,6 +484,16 @@
         esc(e.message) + '</p>';
     });
   }
+
+  Array.prototype.forEach.call(document.querySelectorAll('#zijmenu [data-blad]'), function (b) {
+    b.addEventListener('click', function () {
+      blad = b.getAttribute('data-blad');
+      Array.prototype.forEach.call(document.querySelectorAll('#zijmenu [data-blad]'), function (a) {
+        a.setAttribute('aria-current', String(a === b));
+      });
+      teken();
+    });
+  });
 
   if (!token) teken(); else laden();
 })();
