@@ -371,8 +371,13 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
     // Voorcheck: is dit überhaupt een peptide-/research-chemicals-leverancier?
     // Zo niet, dan slaan we het aanmaken van een case en de volledige (dure)
     // pipeline over — precies het idee van Ruben: URL geldig? -> relevant? ->
-    // pas dan starten. Fail-open (zie relevanceCheck.js): bij twijfel of een
-    // technische hobbel gaat de audit gewoon door.
+    // pas dan starten.
+    //
+    // A12 / BESLUIT ANNEMARIE M30 (19 september 2026): die fail-open is niet
+    // meer één regel. "Technisch falen is geen negatief bewijs; onduidelijke
+    // identiteit blokkeert wel correct onderzoek." Een technische hobbel laat
+    // de audit dus doorlopen (met de beperking hieronder vastgelegd), een
+    // onopgeloste leverancier niet.
     const relevance = await checkPeptideSupplierRelevance({ naam, website });
     // BESLUIT RUBEN 23 september 2026 (taak raccoonpeptides.com): een adres dat
     // doorlinkt naar een andere winkel is niet te controleren, en dan geven we
@@ -386,6 +391,18 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
         error: 'doorgelinkt',
         doorgelinktNaar: relevance.doorgelinktNaar,
         message: 'Deze website is niet te controleren: hij stuurt je door naar een andere winkel.' + (relevance.reasoning ? ' ' + relevance.reasoning : '') + ' Het adres hiernaast is ingevuld - druk nog een keer op start om die te controleren.'
+      });
+    }
+    // A12 / M30: onopgeloste identiteit. Dit is uitdrukkelijk GEEN oordeel dat
+    // het hier geen leverancier is — wij konden het niet vaststellen. Daarom
+    // een eigen foutcode en een vraag om een onderscheidender adres, en niet
+    // de tekst van not_peptide_supplier, die wel een oordeel uitspreekt.
+    if (!relevance.relevant && relevance.beperking === 'UNRESOLVED') {
+      return res.status(422).json({
+        error: 'onopgelost',
+        message: 'We konden niet vaststellen wat voor site dit is, en beginnen daarom niet aan een onderzoek.'
+          + (relevance.reasoning ? ' ' + relevance.reasoning : '')
+          + ' Probeer een adres dat duidelijker laat zien om welke winkel het gaat, bijvoorbeeld de pagina met het aanbod.'
       });
     }
     if (!relevance.relevant) {
@@ -433,6 +450,18 @@ app.post('/api/audits', rl.startAudit, auth.requireOwnerToken, uploadFields, asy
 
     const id = uuidv4();
     const created = await db.createCase(id, Object.assign({}, ctx, { ownerTokenHash: req.ownerTokenHash }));
+
+    // A12 / M30: "mag de run doorgaan met een expliciete beperking". Expliciet
+    // betekent: terug te vinden bij de case, niet alleen in een logregel. Gaat
+    // via mergePhaseData, want phaseData is geen kolom in updateCase.
+    if (relevance.beperking === 'SOURCE_UNAVAILABLE') {
+      await db.mergePhaseData(id, 'voorcheck', {
+        beperkingen: ['SOURCE_UNAVAILABLE'],
+        verdict: relevance.verdict,
+        reden: relevance.reasoning || '',
+        opgemerktOp: Date.now()
+      }).catch(() => {});
+    }
 
     // Geüploade bestanden persistent bewaren (niet alleen transiet gebruiken
     // tijdens deze run) zodat ze later terug te vinden zijn en, bij een

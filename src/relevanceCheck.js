@@ -12,6 +12,10 @@
 // om te beoordelen, en een legitieme leverancier blokkeren omdat de voorcheck
 // zelf haperde is erger dan een enkele onnodige volledige audit.
 //
+// 25 sep: die fail-open is gesplitst. Zie het blok A12/M30 hieronder — hij
+// geldt nog wel voor technisch falen, niet meer voor een onopgeloste
+// leverancier.
+//
 // 15 sep: bol.com (en vergelijkbare brede webshops) kwam er nog doorheen —
 // niet door de fail-open hierboven, maar doordat het model bij twijfel al
 // snel "onbekend" antwoordde (en "onbekend" telde ook als relevant=true).
@@ -22,6 +26,44 @@
 // ook als peptiden daar niet met zoveel woorden worden uitgesloten.
 // "onbekend" is nu voorbehouden aan pagina's zonder bruikbare tekst
 // (cookiemelding/laadscherm/foutmelding), niet meer aan "ambigu qua topic".
+
+// ---------------------------------------------------------------------------
+// A12 — DE VOORCHECK GESPLITST (BESLUIT ANNEMARIE, M30, 19 september 2026)
+//
+// Tot nu toe eindigden twee heel verschillende gevallen op dezelfde uitkomst:
+// verdict "onbekend" met relevant: true. De run ging in beide gevallen door.
+//
+// Haar besluit op M30, letterlijk:
+//
+//   "Niet fail-open, niet fail-closed, maar gesplitst. Bij SOURCE_UNAVAILABLE
+//    of tooluitval mag de run doorgaan met een expliciete beperking, mits de
+//    entiteit via andere invoer voldoende is vastgesteld. Bij UNRESOLVED of
+//    een ambigue leverancier niet doorgaan tot de URL of identiteit voldoende
+//    is opgelost. Technisch falen is geen negatief bewijs; onduidelijke
+//    identiteit blokkeert wel correct onderzoek."
+//
+// Waar die twee in dit bestand zitten:
+//
+//  * SOURCE_UNAVAILABLE — wij kregen geen paginatekst: de extract gaf niets
+//    terug, of er viel onderweg iets om. Er is dan niets beoordeeld. Dat is
+//    onze storing, niet iets wat de leverancier heeft gedaan, dus de run mag
+//    door. Wel wordt de beperking vastgelegd (server.js schrijft hem bij de
+//    case weg), zodat later terug te zien is dat deze run zonder voorcheck
+//    is begonnen.
+//
+//  * UNRESOLVED — er was wel paginatekst, maar daaruit viel niet op te maken
+//    wat voor site dit is. De identiteit is dan onopgelost en daarmee blokkeert
+//    hij correct onderzoek: niet starten, en vragen om een onderscheidender
+//    adres (bijvoorbeeld de winkel- of productpagina in plaats van een
+//    landingspagina).
+//
+// LET OP — wat hier bewust NIET in zit: haar voorwaarde "mits de entiteit via
+// andere invoer voldoende is vastgesteld". Wanneer een entiteit langs naam,
+// KvK-nummer of een geupload document "voldoende vastgesteld" heet, is een
+// methodische drempel die niemand heeft vastgelegd. Die zou deze tak strenger
+// maken dan hij nu is; tot die drempel er is loopt SOURCE_UNAVAILABLE door
+// zoals hij altijd liep, nu met de beperking erbij. Geen gok in de code.
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // DOORGELINKTE SHOPS (BESLUIT RUBEN, 23 september 2026, taak "Nieuwe
@@ -112,16 +154,42 @@ async function checkPeptideSupplierRelevance(ctx) {
     const extract = await tavilyExtract([ctx.website], { depth: 'advanced' });
     const pageText = (extract.ok[0] && extract.ok[0].content) || '';
     if (!pageText) {
-      return { relevant: true, verdict: 'onbekend', reasoning: 'De pagina kon niet opgehaald worden voor de voorcheck.' };
+      // SOURCE_UNAVAILABLE (M30): geen paginatekst, dus niets beoordeeld.
+      // Doorlopen mag, met de beperking expliciet erbij.
+      return {
+        relevant: true,
+        verdict: 'bron_onbereikbaar',
+        beperking: 'SOURCE_UNAVAILABLE',
+        reasoning: 'De pagina kon niet opgehaald worden voor de voorcheck.'
+      };
     }
     const prompt = 'Je beoordeelt UITSLUITEND op basis van onderstaande paginatekst of dit een website is van een leverancier/verkoper van peptiden en/of research chemicals (bedoeld voor onderzoek, lichaamskracht/bodybuilding of vergelijkbaar gebruik) — dus geen nieuwsartikel, blogpost, algemeen platform, brede webshop/marktplaats die van alles verkoopt, of overduidelijk onrelateerde website.\n\n' +
       'Website: ' + ctx.website + '\nPaginatekst (eerste deel):\n' + pageText.slice(0, 3000) + '\n\n' +
       'Antwoord met compacte JSON, exact dit schema: {"beoordeling":"ja|nee|onbekend","onderbouwing":string}. Kies "nee" zodra duidelijk is dat dit een brede webshop, marktplaats of algemene retailer is met allerlei ongerelateerde productcategorieën (elektronica, huishouden, boodschappen, mode, etc.) — ook als peptiden of research chemicals daar nergens expliciet worden uitgesloten; een brede winkel als deze is per definitie geen gespecialiseerde peptide-/research-chemicals-leverancier. Kies "onbekend" alleen wanneer de paginatekst zelf niets bruikbaars bevat om op te beoordelen (bv. enkel een cookiemelding, laadscherm of foutmelding) — niet zomaar omdat het onderwerp niet met zoveel woorden genoemd wordt. Houd onderbouwing tot 1-2 zinnen.';
     const data = await sampleJsonSafe(prompt, { label: 'relevantieCheck', maxTokens: 512 });
-    const verdict = (data && data.beoordeling) || 'onbekend';
-    return { relevant: verdict !== 'nee', verdict, reasoning: (data && data.onderbouwing) || '' };
+    const beoordeling = (data && data.beoordeling) || 'onbekend';
+    const onderbouwing = (data && data.onderbouwing) || '';
+    // UNRESOLVED (M30): er was paginatekst, maar wat voor site dit is bleef
+    // onopgelost. Onduidelijke identiteit blokkeert correct onderzoek, dus
+    // hier stopt het tot er een onderscheidender adres ligt.
+    if (beoordeling === 'onbekend') {
+      return {
+        relevant: false,
+        verdict: 'onopgelost',
+        beperking: 'UNRESOLVED',
+        reasoning: onderbouwing
+      };
+    }
+    return { relevant: beoordeling !== 'nee', verdict: beoordeling, reasoning: onderbouwing };
   } catch (e) {
-    return { relevant: true, verdict: 'onbekend', reasoning: 'Voorcheck kon niet worden uitgevoerd: ' + e.message };
+    // Tooluitval (M30, SOURCE_UNAVAILABLE): technisch falen is geen negatief
+    // bewijs. Doorlopen, met de beperking erbij.
+    return {
+      relevant: true,
+      verdict: 'bron_onbereikbaar',
+      beperking: 'SOURCE_UNAVAILABLE',
+      reasoning: 'Voorcheck kon niet worden uitgevoerd: ' + e.message
+    };
   }
 }
 

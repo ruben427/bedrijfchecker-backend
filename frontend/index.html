@@ -969,7 +969,11 @@
       } else if (e.code === 'invalid_coa_url'){
         state.startEigenCoaError = e.message || 'Die link kunnen we niet lezen.';
         renderDashboard();
-      } else if (e.code === 'invalid_url' || e.code === 'not_peptide_supplier'){
+      // A12 / besluit Annemarie M30: 'onopgelost' is geen oordeel over de shop
+      // maar de vaststelling dat wij niet konden zien wat voor site dit is.
+      // Zelfde plek als de andere adresfouten: bij het veld, niet in een
+      // alert, want de volgende stap is een ander adres intikken.
+      } else if (e.code === 'invalid_url' || e.code === 'not_peptide_supplier' || e.code === 'onopgelost'){
         state.startUrlError = e.message || 'Vul een geldige web URL in.';
         renderDashboard();
       } else {
