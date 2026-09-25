@@ -10,6 +10,7 @@ const vestiging = require('./vestiging');
 const coaCrawler = require('./coaCrawler');
 const siteShot = require('./siteShot');
 const pipeline = require('./pipeline');
+const bedrijfsgegevens = require('./bedrijfsgegevens');
 const auth = require('./auth');
 const anthropicClient = require('./anthropicClient');
 const rl = require('./rateLimit');
@@ -135,6 +136,43 @@ app.get('/api/stand', rl.read, async (req, res) => {
     // een onderhoudstekst mee die nergens voor staat.
     bericht: stand.open ? null : stand.bericht
   });
+});
+
+// DE BEDRIJFSGEGEVENS VAN DE SITE VAN DE SHOP LATEN OPHALEN.
+//
+// Leest de eigen pagina's van de winkel - contact, voorwaarden, privacy, over
+// ons - en zet wat daar letterlijk staat klaar als VOORSTEL. Niet als vermeld
+// en niet als vastgesteld: een voorstel is iets wat het systeem ergens heeft
+// gelezen en wat nog door niemand is bekeken.
+//
+// Een voorstel overschrijft nooit iets dat al op vermeld of vastgesteld staat.
+// Anders kan een run het KvK-nummer dat iemand in het Handelsregister heeft
+// nagekeken terugzetten naar een gok van een contactpagina.
+//
+// EEN LEVERANCIER PER AANROEP, en synchroon. Dit haalt twintig pagina's op en
+// doet er een modelaanroep over; dat duurt tientallen seconden. Zeven
+// leveranciers achter elkaar in een verzoek zou een gateway-time-out geven en
+// dan weet niemand wat er wel en niet is gelukt.
+app.post('/api/admin/leveranciers/gegevens-ophalen', rl.caseAction, auth.requireOwnerToken, requireBeoordelaar, async (req, res) => {
+  try {
+    const b = req.body || {};
+    const key = coaStore.supplierKeyFromUrl(String(b.supplierKey || '').trim());
+    if (!key) return res.status(400).json({ error: 'geen_leverancier', message: 'Geef mee om welke leverancier het gaat.' });
+    const door = String(b.door || '').trim();
+    if (!door) return res.status(400).json({ error: 'geen_naam', message: 'Vul in wie dit laat ophalen.' });
+    const verslag = await bedrijfsgegevens.haalVoorstellen(key, { door: door, website: b.website || null });
+    if (!verslag.ok) {
+      // GEEN 200 met een lege lijst. Een site die niet te lezen was is een
+      // storing, niet "er staat niets" - en dat verschil moet aan de aanroeper
+      // duidelijk zijn, anders wordt het als leegte overgenomen.
+      return res.status(502).json({ error: verslag.reden, message: verslag.reden === 'geen_pagina_gelezen'
+        ? 'Geen enkele pagina van deze site was te lezen. Mogelijk een botfilter. Dit is niet hetzelfde als "geen gegevens gevonden".'
+        : 'Ophalen is niet gelukt: ' + verslag.reden, verslag });
+    }
+    res.json(verslag);
+  } catch (e) {
+    res.status(500).json(sanitizeError(e, req));
+  }
 });
 
 // WELKE STAPPEN DE GRATIS CHECK DRAAIT.

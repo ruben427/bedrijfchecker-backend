@@ -18,6 +18,7 @@
 const express = require('express');
 const { z } = require('zod');
 const coaStore = require('./coaStore');
+const bedrijfsgegevens = require('./bedrijfsgegevens');
 const teksten = require('./teksten');
 const db = require('./db');
 const pipeline = require('./pipeline');
@@ -43,6 +44,7 @@ const { safeEqual } = require('./auth');
 const REDACTIE_TOOLS = [
   'zoek_leverancier_coas', 'zoek_labreferenties', 'nieuwe_signalen',
   'toon_laboratoria', 'toon_leveranciers', 'toon_naamkoppelingen', 'toon_rapport',
+  'toon_bedrijfsgegevens', 'haal_bedrijfsgegevens',
   'beoordeel_laboratorium', 'beoordeel_naamkoppeling',
   'geef_tekstfeedback', 'verklaar_tekst', 'open_tekstoordelen', 'schrijfregels'
 ];
@@ -512,6 +514,88 @@ async function buildServer(rol) {
   );
 
   server.registerTool(
+    'toon_bedrijfsgegevens',
+    {
+      title: 'De bedrijfsgegevens van een leverancier',
+      description: 'Adres, KvK, BTW, contact en de rest van de bedrijfsgegevens die wij van een leverancier hebben. Per veld staat erbij hoe hard het is: voorstel (het systeem heeft het ergens gelezen, nog door niemand bekeken), vermeld (de shop zegt het zelf en een mens heeft dat gezien), vastgesteld (bij de bron nagekeken) of niet_gevonden. Een veld zonder stand is nog nooit aangeraakt. Lees dit voordat je iets vastlegt: het verschil tussen een voorstel en een vaststelling is waar dit hele vak om draait.',
+      inputSchema: z.object({
+        leverancier: z.string().min(3).describe('De leverancierssleutel, bijvoorbeeld peptidekliniek.nl')
+      }).strict(),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
+    },
+    async ({ leverancier }) => {
+      const key = coaStore.supplierKeyFromUrl(leverancier);
+      const [feiten, portret] = await Promise.all([coaStore.feiten(key), coaStore.portret(key)]);
+      const gevuld = feiten.filter((f) => f.stand);
+      const regels = gevuld.length
+        ? gevuld.map((f) => '- ' + f.label + ': ' +
+            (f.stand === 'niet_gevonden' ? '(niet gevonden)' : (f.waarde || '—')) +
+            ' [' + f.stand + ']' + (f.bron ? ' bron: ' + f.bron : '') +
+            (f.vastgelegdDoor ? ' — door ' + f.vastgelegdDoor : '') +
+            (f.persoonsgegeven ? ' — PERSOONSGEGEVEN' : '')).join('\n')
+        : 'Nog geen enkel bedrijfsgegeven vastgelegd voor deze leverancier.';
+      const leeg = feiten.filter((f) => !f.stand).map((f) => f.label);
+      return {
+        content: [{ type: 'text', text: 'Bedrijfsgegevens van ' + key + '\n\n' + regels +
+          (leeg.length ? '\n\nNog nooit aangeraakt: ' + leeg.join(', ') : '') +
+          (portret ? '\n\nPortret (door ' + (portret.vastgelegdDoor || '?') + '):\n' + portret.tekst : '\n\nEr is nog geen portret.') }],
+        structuredContent: {
+          leverancier: key,
+          portret: portret ? { tekst: portret.tekst, door: portret.vastgelegdDoor } : null,
+          velden: feiten.map((f) => ({
+            veld: f.veld, label: f.label, groep: f.groep,
+            waarde: f.waarde, stand: f.stand, bron: f.bron,
+            door: f.vastgelegdDoor, persoonsgegeven: f.persoonsgegeven || false
+          }))
+        }
+      };
+    }
+  );
+
+  server.registerTool(
+    'haal_bedrijfsgegevens',
+    {
+      title: 'Laat de bedrijfsgegevens van de site van de shop ophalen',
+      description: 'Leest de eigen pagina\'s van een webwinkel - contact, algemene voorwaarden, privacy, over ons - en zet wat daar LETTERLIJK staat klaar als VOORSTEL bij de velden van die leverancier. Gebruik dit om een leverancier in een keer te vullen in plaats van veld voor veld. Wat eruit komt is uitdrukkelijk GEEN vaststelling: een voorstel betekent dat het systeem het ergens heeft gelezen en dat nog niemand ernaar heeft gekeken. Een voorstel overschrijft nooit een veld dat al op vermeld of vastgesteld staat - mensenwerk gaat voor. Duurt tientallen seconden per leverancier: een aanroep per leverancier, niet meerdere tegelijk. Komt er geen enkele pagina binnen, dan is dat een storing (mogelijk een botfilter) en niet "er staat niets".',
+      inputSchema: z.object({
+        leverancier: z.string().min(3).describe('De leverancierssleutel, bijvoorbeeld peptidekliniek.nl'),
+        door: z.string().min(1).describe('Naam van degene die dit laat ophalen. Komt bij elk voorstel te staan.')
+      }).strict(),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true }
+    },
+    async ({ leverancier, door }) => {
+      const key = coaStore.supplierKeyFromUrl(leverancier);
+      const verslag = await bedrijfsgegevens.haalVoorstellen(key, { door });
+      if (!verslag.ok) {
+        // Een site die niet te lezen was is een STORING en geen lege uitkomst.
+        // isError zodat de aanroeper het niet als "er staat niets" overneemt.
+        return {
+          isError: true,
+          content: [{ type: 'text', text: 'Ophalen mislukt voor ' + key + ': ' + verslag.reden +
+            (verslag.reden === 'geen_pagina_gelezen'
+              ? '. Geen enkele pagina was te lezen — mogelijk een botfilter. Dit is NIET hetzelfde als "geen gegevens gevonden", en er is niets weggeschreven.'
+              : '.') }],
+          structuredContent: verslag
+        };
+      }
+      const regels = verslag.opgeslagen.length
+        ? verslag.opgeslagen.map((r) => '- ' + r.veld + ': ' + r.waarde + '  (bron: ' + r.bron + ')').join('\n')
+        : '(niets nieuws)';
+      const over = verslag.overgeslagen.length
+        ? '\n\nOvergeslagen:\n' + verslag.overgeslagen.map((r) => '- ' + r.veld + ' — ' + r.reden).join('\n')
+        : '';
+      return {
+        content: [{ type: 'text', text: 'Als VOORSTEL weggeschreven bij ' + key +
+          ' (' + verslag.paginasGelezen.length + ' pagina\'s gelezen):\n' + regels + over +
+          (verslag.sjabloonadres ? '\n\nLET OP, op de site staat een sjabloonadres: ' + verslag.sjabloonadres : '') +
+          (verslag.nietGevonden.length ? '\n\nStond er niet op: ' + verslag.nietGevonden.join(', ') : '') +
+          '\n\nNiets hiervan is vastgesteld. Een mens moet er nog naar kijken.' }],
+        structuredContent: verslag
+      };
+    }
+  );
+
+  server.registerTool(
     'toon_leveranciers',
     {
       title: 'Overzicht van alle leveranciers',
@@ -841,7 +925,8 @@ const TOOL_NAMEN = [
   'verifieer_labreferentie', 'zoek_labreferenties', 'beoordeel_laboratorium',
   'nieuwe_signalen', 'markeer_gesignaleerd', 'beoordeel_naamkoppeling',
   'geef_tekstfeedback', 'open_tekstoordelen', 'verwerk_tekstoordeel', 'schrijfregels',
-  'toon_laboratoria', 'toon_leveranciers', 'toon_naamkoppelingen', 'toon_rapport', 'verklaar_tekst'
+  'toon_laboratoria', 'toon_leveranciers', 'toon_naamkoppelingen', 'toon_rapport', 'verklaar_tekst',
+  'toon_bedrijfsgegevens', 'haal_bedrijfsgegevens'
 ];
 function toolNamen(rol) {
   if (rol === 'redactie') return TOOL_NAMEN.filter((n) => REDACTIE_TOOLS.indexOf(n) !== -1);
